@@ -16,7 +16,7 @@ import {
 import { useLanguage } from '../../context';
 
 export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -66,65 +66,6 @@ export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
 
         {/* Actions + Language Switcher */}
         <div className="nav-actions">
-          {/* Language Switcher Pill */}
-          <div 
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              background: '#f1f5f9',
-              borderRadius: '20px',
-              padding: '2px',
-              border: '1px solid var(--border-subtle)',
-              fontSize: '12px',
-              fontWeight: 700
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setLanguage('vi')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '4px 10px',
-                borderRadius: '16px',
-                border: 'none',
-                background: language === 'vi' ? '#ffffff' : 'transparent',
-                color: language === 'vi' ? 'var(--brand-primary)' : 'var(--text-muted)',
-                boxShadow: language === 'vi' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontWeight: language === 'vi' ? 700 : 500
-              }}
-              title="Tiếng Việt"
-            >
-              <span>🇻🇳</span>
-              <span>VI</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setLanguage('en')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '4px 10px',
-                borderRadius: '16px',
-                border: 'none',
-                background: language === 'en' ? '#ffffff' : 'transparent',
-                color: language === 'en' ? 'var(--brand-primary)' : 'var(--text-muted)',
-                boxShadow: language === 'en' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                fontWeight: language === 'en' ? 700 : 500
-              }}
-              title="English"
-            >
-              <span>🇬🇧</span>
-              <span>EN</span>
-            </button>
-          </div>
-
           {currentUser ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{
@@ -198,29 +139,6 @@ export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
           flexDirection: 'column',
           gap: '12px'
         }}>
-          {/* Mobile Language Switcher */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>{t('nav.switchLanguage')}:</span>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => setLanguage('vi')}
-                className={`btn ${language === 'vi' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '4px 12px', fontSize: '12px' }}
-              >
-                🇻🇳 Tiếng Việt
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanguage('en')}
-                className={`btn ${language === 'en' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '4px 12px', fontSize: '12px' }}
-              >
-                🇬🇧 English
-              </button>
-            </div>
-          </div>
-
           <a href="#hero" className="nav-link-item" onClick={() => setMobileMenuOpen(false)}>
             <Home size={15} /> {t('nav.home')}
           </a>

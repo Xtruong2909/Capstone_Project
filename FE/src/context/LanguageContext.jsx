@@ -6,30 +6,16 @@ const LanguageContext = createContext();
 const STORAGE_KEY = 'aerotraffic_language';
 
 export function LanguageProvider({ children }) {
-  const [language, setLanguage] = useState(() => {
-    try {
-      const savedLang = localStorage.getItem(STORAGE_KEY);
-      if (savedLang === 'vi' || savedLang === 'en') {
-        return savedLang;
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-    return 'vi'; // Default to Vietnamese
-  });
+  const [language] = useState('vi');
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, language);
-      document.documentElement.lang = language;
+      localStorage.setItem(STORAGE_KEY, 'vi');
+      document.documentElement.lang = 'vi';
     } catch {
       // Ignore
     }
   }, [language]);
-
-  const toggleLanguage = () => {
-    setLanguage((prev) => (prev === 'vi' ? 'en' : 'vi'));
-  };
 
   /**
    * Helper translation function supporting dot-notated paths, e.g. t('nav.home')
@@ -72,7 +58,7 @@ export function LanguageProvider({ children }) {
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t }}>
+    <LanguageContext.Provider value={{ language, t }}>
       {children}
     </LanguageContext.Provider>
   );

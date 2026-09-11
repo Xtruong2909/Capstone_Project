@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   Mail, 
@@ -31,6 +31,19 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
   const [demoOtp, setDemoOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setMode(initialMode);
+    setForgotStep('email');
+    setErrors({});
+    setSuccessMsg('');
+    setOtp('');
+    setDemoOtp('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
