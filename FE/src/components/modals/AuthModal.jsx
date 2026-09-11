@@ -12,6 +12,9 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../context';
 
+const ADMIN_EMAIL = 'admin@aerotraffic.ai';
+const ADMIN_PASSWORD = 'Admin@123';
+
 export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAuthSuccess, onOpenLegal }) {
   const { t } = useLanguage();
   const [mode, setMode] = useState(initialMode); // 'login' or 'register'
@@ -60,7 +63,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
       newErrors.email = t('auth.errEmailEmpty');
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = t('auth.errEmailInvalid');
-    } else if (forgotStep === 'email' && !email.toLowerCase().endsWith('@gmail.com')) {
+    } else if (mode === 'forgot' && forgotStep === 'email' && !email.toLowerCase().endsWith('@gmail.com')) {
       newErrors.email = t('auth.errGmailOnly');
     }
 
@@ -164,7 +167,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', onAu
       if (mode === 'login') {
         setSuccessMsg(t('auth.loginSuccess'));
         setTimeout(() => {
-          onAuthSuccess?.({ email, name: email.split('@')[0] });
+          const isAdmin = email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+          onAuthSuccess?.({
+            email,
+            name: isAdmin ? 'Administrator' : email.split('@')[0],
+            role: isAdmin ? 'admin' : 'user'
+          });
           onClose();
         }, 1000);
       } else {

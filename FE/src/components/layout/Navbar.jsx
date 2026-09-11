@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Plane, 
   Layers, 
   GitCommit, 
   LogIn, 
@@ -19,6 +18,8 @@ export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
   const { t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [avatar, setAvatar] = useState('');
 
   useEffect(() => {
     const handleScroll = () => {
@@ -27,6 +28,31 @@ export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setAvatar('');
+      setProfileMenuOpen(false);
+      return;
+    }
+
+    const savedAvatar = localStorage.getItem(`atr_avatar_${currentUser.email}`);
+    setAvatar(savedAvatar || '');
+  }, [currentUser]);
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageData = reader.result;
+      setAvatar(imageData);
+      localStorage.setItem(`atr_avatar_${currentUser.email}`, imageData);
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
 
   return (
     <header className="navbar-wrapper" style={{
@@ -37,10 +63,10 @@ export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
         {/* LOGO */}
         <a href="#hero" className="brand-logo">
           <div className="brand-icon-box">
-            <Plane size={20} />
+            <img src="/atr-drone-logo.svg" alt="ATR drone logo" />
           </div>
           <div className="brand-text">
-            <h1>AeroTraffic AI</h1>
+            <h1>ATR</h1>
             <span>{t('nav.brandSub')}</span>
           </div>
         </a>
@@ -67,21 +93,39 @@ export default function Navbar({ onOpenAuth, currentUser, onLogout }) {
         {/* Actions + Language Switcher */}
         <div className="nav-actions">
           {currentUser ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                background: 'var(--brand-light)',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--brand-primary)'
-              }}>
-                <User size={15} />
+            <div className="profile-menu-wrap">
+              <button
+                type="button"
+                className="profile-trigger"
+                onClick={() => setProfileMenuOpen((open) => !open)}
+                aria-expanded={profileMenuOpen}
+              >
+                <span className="profile-avatar">
+                  {avatar ? <img src={avatar} alt="Ảnh đại diện" /> : <User size={15} />}
+                </span>
                 <span>{currentUser.name || t('nav.user')}</span>
-              </div>
+                {currentUser.role === 'admin' && <strong>Admin</strong>}
+              </button>
+
+              {profileMenuOpen && (
+                <div className="profile-menu">
+                  <div className="profile-menu-heading">Tài khoản của bạn</div>
+                  <div className="profile-menu-preview">
+                    <span className="profile-avatar profile-avatar-large">
+                      {avatar ? <img src={avatar} alt="Ảnh đại diện" /> : <User size={22} />}
+                    </span>
+                    <div>
+                      <strong>{currentUser.name || t('nav.user')}</strong>
+                      <span>{currentUser.email}</span>
+                    </div>
+                  </div>
+                  <label className="avatar-upload-button">
+                    Chọn ảnh đại diện
+                    <input type="file" accept="image/*" onChange={handleAvatarChange} />
+                  </label>
+                </div>
+              )}
+
               <button
                 type="button"
                 className="btn btn-secondary"

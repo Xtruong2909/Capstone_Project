@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ATR drone logo">
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d9cdb"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#blue)"/>
+  <g fill="none" stroke="#fff" stroke-width="27" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="164" cy="164" r="53"/>
+    <circle cx="348" cy="164" r="53"/>
+    <circle cx="164" cy="348" r="53"/>
+    <circle cx="348" cy="348" r="53"/>
+    <path d="M214 164h84M164 214v84M348 214v84M214 348h84"/>
+    <path d="M214 164c0 31 20 49 42 49h0c22 0 42-18 42-49M214 348c0-31 20-49 42-49h0c22 0 42 18 42 49"/>
+    <path d="M256 213v86M218 256h76" stroke-width="22"/>
+    <path d="M205 308l102-102" stroke-width="26"/>
+    <path d="M285 206h22v22" stroke-width="20"/>
+  </g>
+</svg>
