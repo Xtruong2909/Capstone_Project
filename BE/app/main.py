@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.api import api_router
@@ -12,7 +12,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Cấu hình CORS cho phép Frontend kết nối
+# Cáº¥u hÃ¬nh CORS cho phÃ©p Frontend káº¿t ná»‘i
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,3 +31,9 @@ def root():
         "docs": "/docs",
         "health": f"{settings.API_V1_STR}/health",
     }
+
+
+def start():
+    """Khởi chạy Uvicorn Server dev mode."""
+    import uvicorn
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
