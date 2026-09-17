@@ -1,8 +1,16 @@
-﻿from fastapi import FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.api import api_router
 from app.core.config import settings
+from app.core.db import engine
+from app.models import Base
+
+# Tự động tạo bảng Database cơ bản khi khởi động
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"[Warning] Không thể tự tạo bảng DB tự động: {e}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -12,7 +20,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Cáº¥u hÃ¬nh CORS cho phÃ©p Frontend káº¿t ná»‘i
+# Cấu hình CORS cho phép Frontend kết nối
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
