@@ -1,102 +1,105 @@
-﻿# 🚀 Hướng Dẫn Cài Đặt & Chạy Dự Án Cho Thành Viên Mới (Developer Setup Guide)
+﻿# 🚀 Developer Setup Guide
 
-Chào mừng bạn đến với dự án **Capstone Project**! Tài liệu này hướng dẫn chi tiết từng bước thiết lập môi trường để bạn có thể chạy được trọn bộ **Database PostgreSQL + PostGIS**, **Backend Python FastAPI (`uv`)** và **Frontend ReactJS (`FE`)** trên máy cá nhân một cách nhanh nhất.
+Welcome to the **Capstone Project**! This document provides a step-by-step onboarding guide to set up your local environment for **PostgreSQL + PostGIS**, **Backend Python FastAPI (`uv`)**, and **Frontend ReactJS (`FE`)**.
 
 ---
 
-## 🛠️ 1. Yêu Cầu Cài Đặt Ban Đầu (Prerequisites)
+## 🛠️ 1. Prerequisites
 
-Trước khi bắt đầu, hãy đảm bảo máy tính của bạn đã cài sẵn các công cụ sau:
+Ensure the following tools are installed on your machine:
 
-1. **Git**: Trình quản lý mã nguồn.
-2. **VS Code**: Trình biên soạn code (Khuyên dùng).
-3. **Docker Desktop**: Công cụ chạy Database ngầm.
-4. **`uv`**: Trình quản lý Python cực nhanh thế hệ mới.
-   * *Lệnh cài đặt trên Windows (PowerShell):*
+1. **Git**: Version control system.
+2. **VS Code**: Recommended Code Editor.
+3. **Docker Desktop**: Container engine for Database. [Download here](https://www.docker.com/products/docker-desktop/).
+4. **`uv`**: Next-generation Python package manager.
+   * *Installation command on Windows (PowerShell):*
      ```powershell
      powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
      ```
 
 ---
 
-## 📋 2. Các Bước Khởi Chạy Dự Án (Từng Bước A-Z)
+## 📋 2. Project Setup Steps
 
-### 🔹 Bước 1: Pull Code Mới Nhất Về Máy
-Mở Terminal tại thư mục `Capstone_Project`:
+### 🔹 Step 1: Pull Latest Repository Code
+Open Terminal inside `Capstone_Project`:
 ```powershell
-git checkout dev
-git pull origin dev
+git checkout BE-nhuy
+git pull origin BE-nhuy
 ```
 
-### 🔹 Bước 2: Tạo File Cấu Hình Môi Trường (.env)
-Copy file mẫu `.env.example` thành file `.env` tại thư mục `Capstone_Project`:
+### 🔹 Step 2: Create Environment Configuration (.env)
+Copy the environment template file:
 ```powershell
 Copy-Item .env.example .env
 ```
 
-### 🔹 Bước 3: Khởi Chạy Database PostgreSQL + PostGIS (Docker)
-1. Mở ứng dụng **Docker Desktop** trên máy bạn.
-2. Tại thư mục `Capstone_Project`, chạy câu lệnh:
+### 🔹 Step 3: Launch PostgreSQL + PostGIS Database (Docker)
+1. Open **Docker Desktop**.
+2. Run the following command inside `Capstone_Project`:
 ```powershell
 docker compose up -d
 ```
-👉 *Kiểm tra:* Database PostgreSQL với Extension `PostGIS` sẽ được tạo và chạy tại `localhost:5432` với DB Name: `urban_traffic`, User: `admin`, Password: `123`.
+👉 *Verification:* PostgreSQL Database with PostGIS extension will start at `localhost:5432` (DB Name: `urban_traffic`, User: `admin`, Password: `123`).
 
-### 🔹 Bước 4: Khởi Động Backend Python FastAPI (Thư mục `BE/`)
-1. Di chuyển vào thư mục `BE`:
+### 🔹 Step 4: Launch Python FastAPI Backend (`BE/`)
+1. Navigate to the `BE` directory:
    ```powershell
    cd BE
    ```
-2. Chạy lệnh tự động đồng bộ thư viện của `uv`:
+2. Sync all Python dependencies automatically:
    ```powershell
    uv sync
    ```
-   *(Lệnh này sẽ tự động tải Python 3.11, tạo môi trường ảo `.venv` và cài trọn bộ thư viện FastAPI, SQLAlchemy, GeoAlchemy2... trong vài giây).*
+3. Start the FastAPI Backend Server:
+   * **Option A (Short command)**:
+     ```powershell
+     uv run dev
+     ```
+   * **Option B (Standard command)**:
+     ```powershell
+     uv run uvicorn app.main:app --reload --port 8000
+     ```
+👉 *Verification:* 
+* API Root: `http://localhost:8000/`
+* Swagger UI Docs: **`http://localhost:8000/docs`**
+* Health Endpoint: `http://localhost:8000/api/v1/health`
 
-3. Khởi chạy Server FastAPI Backend:
-   ```powershell
-   uv run uvicorn app.main:app --reload --port 8000
-   ```
-👉 *Kiểm tra:* 
-* Mở trình duyệt xem Trang API: `http://localhost:8000/`
-* Mở giao diện Swagger UI tương tác: **`http://localhost:8000/docs`**
-* Kiểm tra trạng thái DB: `http://localhost:8000/api/v1/health`
-
-### 🔹 Bước 5: Khởi Động Frontend ReactJS (Thư mục `FE/`)
-1. Mở một cửa sổ Terminal mới, di chuyển vào thư mục `FE`:
+### 🔹 Step 5: Launch ReactJS Frontend (`FE/`)
+1. Open a new Terminal tab and navigate to `FE`:
    ```powershell
    cd FE
    ```
-2. Cài đặt packages Node.js:
+2. Install Node.js packages:
    ```powershell
    npm install
    ```
-3. Chạy ứng dụng ReactJS:
+3. Start the React development server:
    ```powershell
    npm run dev
    ```
-👉 *Kiểm tra:* Mở trình duyệt xem giao diện Frontend tại: `http://localhost:5173/`
+👉 *Verification:* Open browser at `http://localhost:5173/`
 
 ---
 
-## 📏 3. Quy Chuẩn Lập Trình & Sử Dụng AI (Coding Standards)
+## 📏 3. Coding Standards & AI Guidelines
 
-Dự án đã tích hợp sẵn hệ thống quy chuẩn dành cho cả **Người** và các **Công cụ AI (Antigravity, Cursor, Copilot, ChatGPT...)**:
+The project includes built-in guidelines for both developers and AI tools (Antigravity, Cursor, Copilot, ChatGPT):
 
-* **AI Standards**: File `AGENTS.md` và `.cursorrules` nằm ở thư mục gốc. Khi bạn dùng AI để sinh code, AI sẽ **tự động đọc và tuân thủ 100% quy chuẩn đặt tên, phân tầng architecture và bảo mật**.
-* **Auto Format**: VS Code đã được cài đặt tự động format code khi nhấn `Ctrl + S`.
+* **AI Standards**: Located at `AGENTS.md` and `.cursorrules` in the root folder.
+* **Auto Format**: VS Code is pre-configured to format code automatically on `Ctrl + S`.
 
 ---
 
-## 🤝 4. Quy Trình Push Code Lên Git (Git Workflow)
+## 🤝 4. Git Workflow
 
-1. **Không commit trực tiếp lên `main`**. Luôn làm việc trên nhánh của bạn (ví dụ: `BE-nhuy`, `FE-dev`).
-2. **Thêm thay đổi & Commit**:
+1. Never commit directly to `main`. Always work on your feature branch (e.g., `BE-nhuy`, `FE-dev`).
+2. Stage and Commit:
    ```powershell
    git add .
-   git commit -m "feat: mô tả ngắn gọn tính năng vừa làm"
+   git commit -m "feat: short description of your changes"
    ```
-3. **Push lên GitHub**:
+3. Push to GitHub:
    ```powershell
-   git push origin <tên-nhánh-của-bạn>
+   git push origin <your-branch-name>
    ```

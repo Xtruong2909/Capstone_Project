@@ -1,25 +1,30 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import require_roles
 from app.core.security import hash_password
 from app.models.user import User, UserRole
-from app.schemas.user import UserResponse, UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
 
 router = APIRouter()
 admin_only = require_roles(UserRole.ADMIN)
 
 
-@router.get("/", response_model=List[UserResponse], summary="[Admin] Xem danh sách người dùng và vai trò")
+@router.get(
+    "/", response_model=list[UserResponse], summary="[Admin] Xem danh sách người dùng và vai trò"
+)
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(admin_only)):
     """Admin xem danh sách toàn bộ người dùng và vai trò trong hệ thống."""
     return db.query(User).order_by(User.id.asc()).all()
 
 
-@router.post("/", response_model=UserResponse, summary="[Admin] Tạo người dùng và gán vai trò (Role)")
-def create_user(request: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_only)):
+@router.post(
+    "/", response_model=UserResponse, summary="[Admin] Tạo người dùng và gán vai trò (Role)"
+)
+def create_user(
+    request: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(admin_only)
+):
     """Admin tạo tài khoản mới và gán 1 trong 4 vai trò: Admin, Data Engineer, Data Scientist, Business User."""
     existing = db.query(User).filter(User.email == request.email).first()
     if existing:
@@ -38,8 +43,17 @@ def create_user(request: UserCreate, db: Session = Depends(get_db), current_user
     return UserResponse.model_validate(new_user)
 
 
-@router.put("/{user_id}", response_model=UserResponse, summary="[Admin] Cập nhật vai trò hoặc trạng thái tài khoản")
-def update_user(user_id: int, request: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(admin_only)):
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="[Admin] Cập nhật vai trò hoặc trạng thái tài khoản",
+)
+def update_user(
+    user_id: int,
+    request: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
     """Admin phân lại vai trò (Role) hoặc kích hoạt/khóa tài khoản."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     GOONG_MAP_KEY: str = ""
     GOONG_REST_KEY: str = ""
 
-    model_config = SettingsConfigDict(
-        env_file="../.env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

@@ -1,8 +1,8 @@
-﻿# 🏛️ Tổng Quan Kiến Trúc Hệ Thống (System Architecture)
+﻿# 🏛️ System Architecture Overview
 
-Document này mô tả sơ đồ kiến trúc tổng thể của dự án **Capstone Urban Traffic Pattern Analysis**.
+This document describes the technical architecture for the **Capstone Urban Traffic Pattern Analysis** project.
 
-## 📐 Sơ Đồ Khối Kỹ Thuật
+## 📐 System Block Diagram
 
 ```mermaid
 graph TD
@@ -26,9 +26,9 @@ graph TD
     FastAPI -->|Geocoding / Routing| GoongAPI
 ```
 
-## 🛠️ Tech Stack Chi Tiết
+## 🛠️ Detailed Tech Stack
 
 * **Frontend (`FE/`)**: ReactJS (Vite), Axios, TailwindCSS, `@goongmaps/goong-js`.
 * **Backend (`BE/`)**: Python 3.11, FastAPI, Uvicorn, SQLAlchemy 2.0, Pydantic v2, GeoAlchemy2, `uv` Package Manager.
-* **Database**: PostgreSQL 16 với PostGIS extension.
-* **Quy chuẩn Code**: Xem chi tiết tại [AGENTS.md](../AGENTS.md).
+* **Database**: PostgreSQL 16 with PostGIS extension.
+* **Coding Standards**: Refer to [AGENTS.md](../AGENTS.md).

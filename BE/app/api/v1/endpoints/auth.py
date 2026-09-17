@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.security import verify_password, hash_password, create_access_token
 from app.core.deps import get_current_user
+from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User, UserRole
 from app.schemas.user import LoginRequest, Token, UserResponse
 
@@ -29,7 +29,9 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     token_data = {"sub": str(user.id), "role": user.role.value, "email": user.email}
     access_token = create_access_token(data=token_data)
 
-    return Token(access_token=access_token, token_type="bearer", user=UserResponse.model_validate(user))
+    return Token(
+        access_token=access_token, token_type="bearer", user=UserResponse.model_validate(user)
+    )
 
 
 @router.get("/me", response_model=UserResponse, summary="Lấy thông tin User hiện tại")
@@ -42,10 +44,30 @@ def get_profile(current_user: User = Depends(get_current_user)):
 def seed_default_users(db: Session = Depends(get_db)):
     """Tạo nhanh 4 tài khoản mẫu đại diện cho 4 Role nếu DB chưa có."""
     default_users = [
-        {"email": "admin@metroflow.ai", "name": "Quản Trị Viên (Admin)", "role": UserRole.ADMIN, "pwd": "123"},
-        {"email": "engineer@metroflow.ai", "name": "Kỹ Sư Dữ Liệu (Data Engineer)", "role": UserRole.DATA_ENGINEER, "pwd": "123"},
-        {"email": "scientist@metroflow.ai", "name": "Nhà Khoa Học Dữ Liệu (Data Scientist)", "role": UserRole.DATA_SCIENTIST, "pwd": "123"},
-        {"email": "business@metroflow.ai", "name": "Người Dùng Nghiệp Vụ (Business User)", "role": UserRole.BUSINESS_USER, "pwd": "123"},
+        {
+            "email": "admin@metroflow.ai",
+            "name": "Quản Trị Viên (Admin)",
+            "role": UserRole.ADMIN,
+            "pwd": "123",
+        },
+        {
+            "email": "engineer@metroflow.ai",
+            "name": "Kỹ Sư Dữ Liệu (Data Engineer)",
+            "role": UserRole.DATA_ENGINEER,
+            "pwd": "123",
+        },
+        {
+            "email": "scientist@metroflow.ai",
+            "name": "Nhà Khoa Học Dữ Liệu (Data Scientist)",
+            "role": UserRole.DATA_SCIENTIST,
+            "pwd": "123",
+        },
+        {
+            "email": "business@metroflow.ai",
+            "name": "Người Dùng Nghiệp Vụ (Business User)",
+            "role": UserRole.BUSINESS_USER,
+            "pwd": "123",
+        },
     ]
 
     created = []

@@ -7,11 +7,19 @@ from app.core.db import get_db
 router = APIRouter()
 
 
-@router.get("/health", summary="Kiểm tra trạng thái Hệ thống & Database")
+@router.get("/health", summary="System & Database Health Check")
 def health_check(db: Session = Depends(get_db)):
+    """Check backend service connectivity to PostgreSQL and PostGIS extension status."""
     try:
-        # Query kiểm tra PostGIS
         result = db.execute(text("SELECT PostGIS_Full_Version();")).scalar()
-        return {"status": "online", "database": "connected", "postgis_version": result}
+        return {
+            "status": "online",
+            "database": "connected",
+            "postgis_version": result,
+        }
     except Exception as e:
-        return {"status": "online", "database": "error", "detail": str(e)}
+        return {
+            "status": "online",
+            "database": "error",
+            "detail": str(e),
+        }
