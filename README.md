@@ -53,38 +53,35 @@ The platform follows a clean, decoupled, layered microservice/modular architectu
 
 ```mermaid
 flowchart TD
-    subgraph ClientLayer["🖥️ Frontend (React 19 + Vite)"]
-        UI["UI Features & Dashboards\n(Lucide Icons, Tailwind)"]
-        Hooks["Custom React Hooks\n(State & Caching)"]
-        ServicesFE["API Client Layer\n(Axios Services)"]
-        GoongSDK["Goong Map JS SDK\n(Spatial & Heatmap Render)"]
+    subgraph FE["Frontend Application (React 19 + Vite)"]
+        UI["UI Components & Analytics Dashboard"]
+        Hooks["Custom React Hooks & State Management"]
+        Client["Axios API Client Layer"]
+        GoongSDK["Goong Map JS SDK (Spatial & Heatmap)"]
+        UI --> Hooks --> Client
+        UI --> GoongSDK
     end
 
-    subgraph APILayer["⚡ Backend (FastAPI + Python 3.11)"]
-        Router["API Routers\n(/api/v1/endpoints)"]
-        ServiceBE["Business Services Layer\n(Traffic Analytics, Experiment Runner)"]
-        ForecastEngine["Forecasting Engine\n(ARIMA & Prophet Models)"]
-        CRUD["CRUD & Query Layer\n(SQLAlchemy 2.0)"]
+    subgraph BE["Backend Application (FastAPI + Python 3.11)"]
+        Router["API Routers (/api/v1)"]
+        Service["Traffic Analytics & Processing Services"]
+        Forecast["Forecasting Engine (ARIMA & Prophet)"]
+        CRUD["SQLAlchemy 2.0 CRUD Layer"]
+        Router --> Service
+        Service --> Forecast
+        Service --> CRUD
     end
 
-    subgraph DataLayer["💾 Persistence & Spatial Engine"]
-        Postgres[("PostgreSQL 16\n+ PostGIS Spatial Extension")]
-        Datasets[("Public Datasets\n(inD & pNEUMA)")]
+    subgraph Storage["Persistence & External Services"]
+        DB[("PostgreSQL 16 + PostGIS Spatial Engine")]
+        Datasets[("Public Datasets (inD & pNEUMA)")]
+        GoongAPI["Goong Map REST API (Geocoding & Tiles)"]
     end
 
-    subgraph ExternalServices["🌐 External Integrations"]
-        GoongAPI["Goong Map REST API\n(Geocoding & Tiles)"]
-    end
-
-    UI --> Hooks --> ServicesFE
-    UI --> GoongSDK
-    ServicesFE -->|REST API Requests| Router
-    Router --> ServiceBE
-    ServiceBE --> ForecastEngine
-    ServiceBE --> CRUD
-    CRUD --> Postgres
-    ServiceBE --> GoongAPI
-    ServiceBE --> Datasets
+    Client --> Router
+    CRUD --> DB
+    Service --> Datasets
+    Service --> GoongAPI
 ```
 
 ---
@@ -110,7 +107,7 @@ flowchart TD
 * **Database Engine**: PostgreSQL 16
 * **Spatial Extension**: PostGIS 3.4 (High-performance geometric & spatial indexing)
 * **Containerization**: Docker Compose
-* **Environment Configuration**: Pydantic Settings (`.env`)
+* **Configuration Management**: Pydantic Settings
 
 ---
 
@@ -143,7 +140,6 @@ Capstone_Project/
 ├── docs/                         # System Documentation & Specifications
 ├── docker-compose.yml            # Local PostgreSQL + PostGIS Container Setup
 ├── dev.ps1                       # PowerShell Local Backend Launcher
-├── .env.example                  # Environment Configuration Template
 ├── AGENTS.md                     # AI Autonomous Execution Guidelines
 └── CONTRIBUTING.md               # Git Workflow & Conventional Commits
 ```
@@ -157,37 +153,10 @@ Ensure you have the following installed on your machine:
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL + PostGIS)
 * [Python 3.11+](https://www.python.org/downloads/) and [`uv`](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 * [Node.js 18+](https://nodejs.org/) & `npm`
-* A free [Goong Map API Key](https://goong.io/)
 
 ---
 
-### 2. Environment Setup
-
-Clone the repository and copy the environment configuration:
-
-```bash
-git clone https://github.com/Xtruong2909/Capstone_Project.git
-cd Capstone_Project
-cp .env.example .env
-```
-
-Open `.env` and fill in your credentials:
-```env
-# Database Configuration
-POSTGRES_SERVER=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=123
-POSTGRES_DB=urban_traffic
-
-# Goong Map API Keys
-GOONG_MAP_KEY=your_client_map_key
-GOONG_REST_KEY=your_server_rest_key
-```
-
----
-
-### 3. Start Database (PostGIS)
+### 2. Start Database (PostGIS)
 
 Launch the spatial PostgreSQL container:
 ```bash
@@ -198,7 +167,7 @@ docker compose up -d
 
 ---
 
-### 4. Start Backend Server
+### 3. Start Backend Server
 
 Using `uv` with fast virtualenv sync:
 ```powershell
@@ -214,7 +183,7 @@ uv --directory BE run uvicorn app.main:app --reload --port 8000
 
 ---
 
-### 5. Start Frontend Application
+### 4. Start Frontend Application
 
 In a new terminal window:
 ```bash
