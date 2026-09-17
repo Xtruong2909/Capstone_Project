@@ -5,23 +5,15 @@ description = "Capstone Urban Traffic Backend API"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "alembic>=1.14.0",
     "fastapi>=0.115.0",
-    "geoalchemy2>=0.17.0",
-    "numpy>=2.4.6",
-    "pandas>=3.0.5",
-    "prophet>=1.4.0",
-    "psycopg2-binary>=2.9.10",
-    "pyarrow>=25.0.1",
-    "pydantic-settings>=2.7.0",
-    "pydantic>=2.10.0",
-    "python-multipart>=0.0.32",
-    "scikit-learn>=1.9.1",
-    "scipy>=1.17.1",
-    "shapely>=2.1.2",
-    "sqlalchemy>=2.0.36",
-    "statsmodels>=0.15.0",
     "uvicorn[standard]>=0.34.0",
+    "sqlalchemy>=2.0.36",
+    "psycopg2-binary>=2.9.10",
+    "geoalchemy2>=0.17.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "alembic>=1.14.0",
+    "email-validator>=2.3.0",
 ]
 
 [dependency-groups]
@@ -36,7 +28,3 @@ target-version = "py311"
 
 [tool.ruff.lint]
 ignore = ["B008", "BLE001"]
-
-
-[project.scripts]
-dev = "app.main:start"
