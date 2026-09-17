@@ -1,0 +1,19 @@
+﻿version: '3.8'
+
+services:
+  # Database PostgreSQL với Extension PostGIS (Cho dữ liệu vị trí/bản đồ)
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: capstone_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: "123"
+      POSTGRES_DB: urban_traffic
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
