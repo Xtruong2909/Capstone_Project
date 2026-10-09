@@ -3,6 +3,8 @@ import FeaturesSection from './components/FeaturesSection'
 import WorkflowSection from './components/WorkflowSection'
 import DatasetsSection from './components/DatasetsSection'
 import { CtaSection, HomeFooter } from './components/CtaFooter'
+import SideOutline from './components/SideOutline'
+import BackToTop from './components/BackToTop'
 import { useNavigate } from 'react-router-dom'
 import './HomePage.css'
 
@@ -12,6 +14,8 @@ export default function HomePage() {
 
   return (
     <>
+      <SideOutline />
+      <BackToTop />
       <main>
         <HeroSection onSignIn={openLogin} />
         <FeaturesSection />

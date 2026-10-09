@@ -44,6 +44,12 @@
   margin-left: auto;
 }
 
+/* Wide screens: links live in the left outline instead */
+@media (min-width: 1280px) {
+  .navbar__links { display: none !important; }
+  .navbar__cta { margin-left: auto; }
+}
+
 .navbar__links a {
   padding: 8px 14px;
   border-radius: 8px;
