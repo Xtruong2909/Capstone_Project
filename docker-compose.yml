@@ -1,19 +1,51 @@
-﻿version: '3.8'
-
+﻿
 services:
-  # Database PostgreSQL với Extension PostGIS (Cho dữ liệu vị trí/bản đồ)
   postgres:
     image: postgis/postgis:16-3.4
     container_name: capstone_postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: "123"
       POSTGRES_DB: urban_traffic
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d urban_traffic"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./BE
+      dockerfile: Dockerfile
+    container_name: capstone_backend
+    restart: unless-stopped
+    env_file:
+      - ./BE/.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql://admin:123@postgres:5432/urban_traffic
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./FE
+      dockerfile: Dockerfile
+    container_name: capstone_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
