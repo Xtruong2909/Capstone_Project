@@ -1,5 +1,3 @@
-import { useCallback, useState } from 'react'
-import HomeNavbar from './components/HomeNavbar'
 import HeroSection from './components/HeroSection'
 import FeaturesSection from './components/FeaturesSection'
 import WorkflowSection from './components/WorkflowSection'
@@ -11,11 +9,9 @@ import './HomePage.css'
 export default function HomePage() {
   const navigate = useNavigate()
   const openLogin = () => navigate('/login')
-  
 
   return (
     <>
-      <HomeNavbar onSignIn={openLogin} />
       <main>
         <HeroSection onSignIn={openLogin} />
         <FeaturesSection />
@@ -27,3 +23,4 @@ export default function HomePage() {
     </>
   )
 }
+

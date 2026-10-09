@@ -1,16 +1,13 @@
 .login-page {
-  position: fixed;
-  inset: 0;
+  min-height: calc(100vh - 68px);
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  padding: 24px;
+  padding: 32px 24px;
 
   background: #eef3f9;
-
-  z-index: 1000;
 }
 
 .login-card {
@@ -446,7 +443,7 @@
   }
 
   .login-card {
-    min-height: 100vh;
+    min-height: calc(100vh - 68px);
 
     border-radius: 0;
   }
@@ -454,6 +451,6 @@
   .login-form-content {
     width: calc(100% - 40px);
 
-    padding-top: 90px;
+    padding-top: 70px;
   }
 }

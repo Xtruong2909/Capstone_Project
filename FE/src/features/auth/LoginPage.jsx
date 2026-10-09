@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -18,12 +17,7 @@ import "./LoginPage.css";
 export default function LoginPage() {
   const navigate = useNavigate();
 
-  const {
-    login,
-    isLoading,
-    error,
-    setError,
-  } = useAuth();
+  const { login, isLoading, error, setError } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,7 +39,6 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-
         {/* Left: Branding */}
         <section className="login-brand-panel">
           <div className="brand-overlay">
@@ -55,9 +48,7 @@ export default function LoginPage() {
               <div>
                 <h1>Urban Traffic</h1>
                 <h2>Analytics</h2>
-                <span>
-                  Traffic Dataset Management & Forecasting
-                </span>
+                <span>Traffic Dataset Management & Forecasting</span>
               </div>
             </div>
 
@@ -69,9 +60,8 @@ export default function LoginPage() {
               </h3>
 
               <p>
-                Analyze real traffic data, discover patterns,
-                and forecast future trends to build smarter
-                and more sustainable cities.
+                Analyze real traffic data, discover patterns, and forecast
+                future trends to build smarter and more sustainable cities.
               </p>
             </div>
 
@@ -80,21 +70,33 @@ export default function LoginPage() {
                 <div className="feature-icon">
                   <BarChart3 size={22} />
                 </div>
-                <span>Data-Driven<br />Insights</span>
+                <span>
+                  Data-Driven
+                  <br />
+                  Insights
+                </span>
               </div>
 
               <div className="brand-feature">
                 <div className="feature-icon">
                   <Network size={22} />
                 </div>
-                <span>Accurate<br />Forecasting</span>
+                <span>
+                  Accurate
+                  <br />
+                  Forecasting
+                </span>
               </div>
 
               <div className="brand-feature">
                 <div className="feature-icon">
                   <ShieldCheck size={22} />
                 </div>
-                <span>Safer & Smarter<br />Cities</span>
+                <span>
+                  Safer & Smarter
+                  <br />
+                  Cities
+                </span>
               </div>
             </div>
           </div>
@@ -107,13 +109,13 @@ export default function LoginPage() {
             <span>English</span>
             <span className="language-arrow">⌄</span>
           </div> */}
-            <button
-              type="button"
-              className="login-back-home"
-              onClick={() => navigate("/")}
-            >
-              ← Back to Home
-            </button>
+          <button
+            type="button"
+            className="login-back-home"
+            onClick={() => navigate("/")}
+          >
+            ← Back to Home
+          </button>
           <div className="login-form-content">
             <h2>Welcome Back</h2>
 
@@ -164,9 +166,7 @@ export default function LoginPage() {
                     }
                     onClick={() => setShowPassword((prev) => !prev)}
                   >
-                    {showPassword
-                      ? <EyeOff size={18} />
-                      : <Eye size={18} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
@@ -176,9 +176,7 @@ export default function LoginPage() {
                   <input
                     type="checkbox"
                     checked={rememberMe}
-                    onChange={(e) =>
-                      setRememberMe(e.target.checked)
-                    }
+                    onChange={(e) => setRememberMe(e.target.checked)}
                   />
                   <span>Remember me</span>
                 </label>
@@ -186,9 +184,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   className="forgot-password"
-                  onClick={() => {
-                    // TODO: Implement forgot-password flow
-                  }}
+                  onClick={() => navigate("/forgot-password")}
                 >
                   Forgot password?
                 </button>
@@ -210,17 +206,8 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* <div className="login-footer">
-              <span>Don't have an account?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  // Tài khoản được quản lý bởi Administrator
-                }}
-              >
-                Register now
-              </button>
-            </div> */}
+            {/* 
+             */}
           </div>
         </section>
       </div>
