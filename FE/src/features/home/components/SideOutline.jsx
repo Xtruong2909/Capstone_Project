@@ -40,7 +40,8 @@ export default function SideOutline() {
                 className={activeId === id ? 'is-active' : ''}
                 onClick={(e) => handleClick(e, l.href)}
               >
-                {l.label}
+                <span className="side-outline__bar" />
+                <span className="side-outline__label">{l.label}</span>
               </a>
             </li>
           )
