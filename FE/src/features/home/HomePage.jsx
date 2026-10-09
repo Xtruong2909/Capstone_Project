@@ -5,7 +5,6 @@ import FeaturesSection from './components/FeaturesSection'
 import WorkflowSection from './components/WorkflowSection'
 import DatasetsSection from './components/DatasetsSection'
 import { CtaSection, HomeFooter } from './components/CtaFooter'
-import LoginModal from './components/LoginModal'
 import { useNavigate } from 'react-router-dom'
 import './HomePage.css'
 
