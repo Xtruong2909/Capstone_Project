@@ -6,12 +6,13 @@ import WorkflowSection from './components/WorkflowSection'
 import DatasetsSection from './components/DatasetsSection'
 import { CtaSection, HomeFooter } from './components/CtaFooter'
 import LoginModal from './components/LoginModal'
+import { useNavigate } from 'react-router-dom'
 import './HomePage.css'
 
 export default function HomePage() {
-  const [loginOpen, setLoginOpen] = useState(false)
-  const openLogin = useCallback(() => setLoginOpen(true), [])
-  const closeLogin = useCallback(() => setLoginOpen(false), [])
+  const navigate = useNavigate()
+  const openLogin = () => navigate('/login')
+  
 
   return (
     <>
@@ -24,7 +25,6 @@ export default function HomePage() {
         <CtaSection onSignIn={openLogin} />
       </main>
       <HomeFooter />
-      <LoginModal isOpen={loginOpen} onClose={closeLogin} />
     </>
   )
 }

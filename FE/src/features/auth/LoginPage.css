@@ -172,6 +172,23 @@
   background: #ffffff;
 }
 
+.login-back-home {
+  position: absolute;
+
+  top: 20px;
+  right: 20px;
+
+  border: none;
+
+  background: transparent;
+
+  color: #1264f5;
+
+  font-weight: 500;
+
+  cursor: pointer;
+}
+
 .language-selector {
   position: absolute;
 

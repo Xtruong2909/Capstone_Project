@@ -1,5 +1,13 @@
 import HomePage from './features/home/HomePage'
+import LoginPage from "./features/auth/LoginPage";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 export default function App() {
-  return <HomePage />
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
