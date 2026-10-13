@@ -1,28 +1,68 @@
-import { ArrowRight, PlayCircle } from 'lucide-react'
+import { ArrowRight, PlayCircle, Clock, Cpu, BarChart2, CheckCircle2 } from 'lucide-react'
 import DashboardMockup from './DashboardMockup'
 
 export default function HeroSection({ onSignIn }) {
   return (
-    <section className="hero" id="top">
+    <section className="hero" id="overview">
       <div className="container hero__inner">
         <div className="hero__copy">
-          <span className="eyebrow">Urban Traffic Analytics Platform</span>
+          <div className="hero__badge-row">
+            <span className="eyebrow">Data Analytics • Machine Learning</span>
+          </div>
+
           <h1>
-            Analyze urban traffic and <span className="grad">forecast congestion</span> in minutes
+            UAV-Based Urban Traffic Analysis &amp;{' '}
+            <span className="grad">Short-Term Flow Prediction</span>
           </h1>
+
           <p className="hero__lead">
-            A unified web platform to manage UAV traffic datasets, uncover spatial-temporal patterns,
-            and forecast short-term traffic flow with baseline and machine learning models.
+            An applied platform extracting vehicle trajectories from drone data (pNEUMA),
+            resampling microscopic flows into 1–5 minute time series, and forecasting
+            immediate urban traffic volume using Random Forest and LSTM architectures.
           </p>
+
           <div className="hero__actions">
             <button id="hero-get-started" className="btn btn--primary btn--lg" onClick={onSignIn}>
-              Get started <ArrowRight size={18} />
+              Access Platform <ArrowRight size={18} />
             </button>
             <a href="#workflow" className="btn btn--ghost btn--lg">
-              <PlayCircle size={18} /> See how it works
+              <PlayCircle size={18} /> How the Pipeline Works
             </a>
           </div>
+
+          {/* Quick Highlight Metrics based on project specs */}
+          <div className="hero__highlights">
+            <div className="hero__highlight-item">
+              <span className="hero__highlight-icon"><Clock size={16} /></span>
+              <div>
+                <strong>1, 3 &amp; 5 Min</strong>
+                <small>Forecasting Horizons</small>
+              </div>
+            </div>
+            <div className="hero__highlight-item">
+              <span className="hero__highlight-icon"><Cpu size={16} /></span>
+              <div>
+                <strong>Random Forest &amp; LSTM</strong>
+                <small>Predictive Engine</small>
+              </div>
+            </div>
+            <div className="hero__highlight-item">
+              <span className="hero__highlight-icon"><BarChart2 size={16} /></span>
+              <div>
+                <strong>pNEUMA Benchmark</strong>
+                <small>Athens UAV Trajectories</small>
+              </div>
+            </div>
+            <div className="hero__highlight-item">
+              <span className="hero__highlight-icon"><CheckCircle2 size={16} /></span>
+              <div>
+                <strong>MAE &amp; RMSE</strong>
+                <small>No Lookahead Leakage</small>
+              </div>
+            </div>
+          </div>
         </div>
+
         <div className="hero__visual">
           <DashboardMockup />
         </div>

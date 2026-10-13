@@ -1,43 +1,169 @@
 import {
-  Users, Database, ShieldCheck, CheckCircle2, BarChart3, LineChart, TrendingUp,
-  FlaskConical, FileText, ScrollText, Sparkles, Map,
+  Database,
+  BarChart3,
+  Clock,
+  TrendingUp,
+  CheckCircle2,
+  LayoutDashboard,
+  Car,
+  AlertTriangle,
 } from 'lucide-react'
 
 export const NAV_LINKS = [
+  { label: 'Overview', href: '#overview' },
   { label: 'Features', href: '#features' },
-  { label: 'Workflow', href: '#workflow' },
+  { label: 'Pipeline', href: '#workflow' },
+  { label: 'ML Models', href: '#models' },
   { label: 'Datasets', href: '#datasets' },
 ]
 
-// Modules FE-01 to FE-13 (Role.docx)
+// 6 core groups & advanced modules from De_tai_Phan_tich_giao_thong_UAV.docx (Trajectory data only)
 export const FEATURES = [
-  { icon: Users, color: 'blue', title: 'User, Role & Permission Management', desc: 'Authentication, role assignment, and dataset-level access control with grant / revoke.' },
-  { icon: Database, color: 'blue', title: 'Traffic Dataset Management', desc: 'Upload SinD, pNEUMA, or your own data. Preview, version, archive, and store processed datasets.' },
-  { icon: ShieldCheck, color: 'green', title: 'Data Validation & Preprocessing', desc: 'Detect missing values, duplicates, and invalid timestamps or coordinates, then clean and normalize.' },
-  { icon: CheckCircle2, color: 'green', title: 'Dataset Approval & Access', desc: 'Administrators approve or reject datasets and share approved versions with business users.' },
-  { icon: BarChart3, color: 'purple', title: 'Traffic Pattern Analysis', desc: 'Vehicle count, speed, density, flow, peak periods, and congestion hotspot detection.' },
-  { icon: Map, color: 'purple', title: 'Traffic Visualization', desc: 'Interactive charts, 1 and 5-minute time series, historical trends, and traffic heatmaps.' },
-  { icon: TrendingUp, color: 'orange', title: 'Short-Term Flow Forecasting', desc: 'Baseline (Persistence) and Random Forest Regression (optional LSTM) for 1, 3, and 5-minute horizons.' },
-  { icon: LineChart, color: 'orange', title: 'Evaluation & Model Comparison', desc: 'MAE and RMSE metrics with actual vs. predicted flow comparison, benchmarked on pNEUMA.' },
-  { icon: FlaskConical, color: 'blue', title: 'Experiment Management', desc: 'Configure, run, copy, and compare experiments with full reproducibility support.' },
-  { icon: BarChart3, color: 'blue', title: 'Traffic Analytics Dashboard', desc: 'One place for statistics, trends, hotspots, forecasts, and experiment comparisons.' },
-  { icon: FileText, color: 'green', title: 'Reporting & Export', desc: 'Generate analysis and forecasting reports with charts and export to PDF or Excel.' },
-  { icon: ScrollText, color: 'purple', title: 'Audit Trail', desc: 'Every upload, approval, permission change, experiment, and report is logged.' },
-  { icon: Sparkles, color: 'orange', title: 'AI-Assisted Analytics', desc: 'Summaries, anomaly detection, congestion risk insights, and natural-language Q&A.' },
+  {
+    icon: Database,
+    color: 'blue',
+    tag: 'Group 01',
+    title: 'UAV Trajectory Ingestion & Storage',
+    desc: 'Ingest, validate, and store high-resolution drone trajectory files (CSV format) containing vehicle coordinates, speeds, and timestamps.',
+  },
+  {
+    icon: BarChart3,
+    color: 'purple',
+    tag: 'Group 02',
+    title: 'Traffic Pattern Analysis',
+    desc: 'Compute real-time flow rate (veh/min), average velocities (km/h), and estimated spatial vehicle density across observed street corridors.',
+  },
+  {
+    icon: Clock,
+    color: 'blue',
+    tag: 'Group 03',
+    title: '1-Min & 5-Min Temporal Aggregation',
+    desc: 'Resample raw microscopic trajectory records into regular 1-minute and 5-minute time-series buckets for statistical modeling.',
+  },
+  {
+    icon: TrendingUp,
+    color: 'orange',
+    tag: 'Group 04',
+    title: 'Short-Term Flow Forecasting (1–5 Min)',
+    desc: 'Predict upcoming traffic flow across 1, 3, and 5-minute horizons, capturing short-term volume surges before bottlenecks form.',
+  },
+  {
+    icon: CheckCircle2,
+    color: 'green',
+    tag: 'Group 05',
+    title: 'Model Evaluation & Benchmarking',
+    desc: 'Strict chronological time-based train/test splits to eliminate lookahead data leakage, evaluated quantitatively via MAE and RMSE.',
+  },
+  {
+    icon: LayoutDashboard,
+    color: 'blue',
+    tag: 'Group 06',
+    title: 'Interactive Analytics Dashboard',
+    desc: 'Interactive comparison between actual observed flow and multi-model predictions, trend charts, error metrics, and operational insights.',
+  },
+  {
+    icon: Car,
+    color: 'purple',
+    tag: 'Advanced',
+    title: 'Vehicle Type Classification',
+    desc: 'Differentiate flow composition across motorcycles, passenger cars, taxis, and buses based on trajectory tracking properties.',
+  },
+  {
+    icon: AlertTriangle,
+    color: 'orange',
+    tag: 'Advanced',
+    title: 'Congestion Risk Early Warning',
+    desc: 'Identify sudden density surges and deceleration clusters in real time to signal impending local traffic congestion risks.',
+  },
 ]
 
+// 6-step proposed data pipeline from De_tai_Phan_tich_giao_thong_UAV.docx
 export const WORKFLOW = [
-  { step: '01', title: 'Upload', desc: 'Ingest traffic datasets with metadata.' },
-  { step: '02', title: 'Validate', desc: 'Check quality, clean, and version data.' },
-  { step: '03', title: 'Approve', desc: 'Admin reviews and grants access.' },
-  { step: '04', title: 'Analyze', desc: 'Explore density, flow, and hotspots.' },
-  { step: '05', title: 'Forecast', desc: 'Train baseline and Random Forest models.' },
-  { step: '06', title: 'Report', desc: 'Evaluate, compare, and export results.' },
+  {
+    step: '01',
+    title: 'UAV Trajectory Ingestion',
+    desc: 'Import drone vehicle trajectory datasets formatted in the pNEUMA standard CSV schema.',
+  },
+  {
+    step: '02',
+    title: 'Preprocessing & Cleaning',
+    desc: 'Filter missing values, validate timestamps, and extract per-vehicle velocities and coordinates.',
+  },
+  {
+    step: '03',
+    title: 'Temporal Aggregation',
+    desc: 'Resample continuous tracking points into 1-minute and 5-minute traffic flow time-series.',
+  },
+  {
+    step: '04',
+    title: 'Machine Learning Training',
+    desc: 'Train Historical Average baseline, Random Forest Regression, and optional LSTM sequence models.',
+  },
+  {
+    step: '05',
+    title: 'Chronological Evaluation',
+    desc: 'Benchmark model error across 1, 3, and 5-min forecasting horizons using MAE and RMSE metrics.',
+  },
+  {
+    step: '06',
+    title: 'Dashboard & Visualization',
+    desc: 'Explore real-time observed vs. predicted traffic flows and operational flow trends.',
+  },
 ]
 
+// Models specified in Section 4 of De_tai_Phan_tich_giao_thong_UAV.docx
+export const MODELS = [
+  {
+    id: 'baseline',
+    name: 'Historical Average / Persistence',
+    role: 'Baseline Benchmark',
+    complexity: 'Low',
+    complexityColor: 'green',
+    desc: 'Uses recent historical rolling averages as a naive reference point to establish baseline error bounds.',
+    inputs: 'Past rolling window averages (t-1, t-2)',
+  },
+  {
+    id: 'rf',
+    name: 'Random Forest Regression',
+    role: 'Primary Machine Learning Model',
+    complexity: 'Medium',
+    complexityColor: 'blue',
+    desc: 'Ensemble of decision trees modeling non-linear interactions across past 5-minute lag traffic flows, velocity, and temporal trends.',
+    inputs: 'Flow of past 5 minutes (t-1 to t-5), average speed, active vehicles, time trend',
+  },
+  {
+    id: 'lstm',
+    name: 'LSTM (Long Short-Term Memory)',
+    role: 'Deep Learning Sequence Model (Extension)',
+    complexity: 'Medium – High',
+    complexityColor: 'purple',
+    desc: 'Recurrent neural architecture capturing sequential dependencies when UAV observation sessions offer sufficient length.',
+    inputs: 'Sequential multivariate window vectors with sliding temporal horizons',
+  },
+]
+
+// Research trajectory datasets from Section 3 (No video processing)
 export const DATASETS = [
-  { name: 'SinD', tag: 'Signalized Intersection', desc: 'Drone-captured trajectories at signalized intersections. Used for pattern analysis and forecasting.', status: 'Approved' },
-  { name: 'pNEUMA', tag: 'Benchmark Dataset', desc: 'Large-scale urban drone dataset used as the benchmark for model evaluation.', status: 'Benchmark' },
-  { name: 'User-provided', tag: 'Custom Upload', desc: 'Upload your own traffic data, validate it, and put it through the approval workflow.', status: 'Pending' },
+  {
+    name: 'pNEUMA Dataset (EPFL)',
+    tag: 'Primary Benchmark',
+    status: 'Recommended',
+    desc: 'Large-scale urban traffic trajectory dataset recorded by UAV swarms over downtown Athens, Greece. Contains vehicle ID, vehicle type, coordinates, speeds, and timestamps.',
+    source: 'EPFL Open-Traffic Research Laboratory',
+    link: 'https://open-traffic.epfl.ch/index.php/downloads/',
+  },
+  {
+    name: 'Custom UAV Trajectory CSV',
+    tag: 'User Ingestion',
+    status: 'Supported',
+    desc: 'Upload pre-processed drone trajectory CSV recordings with spatial coordinates, bounding box metadata, and velocities for custom intersection analytics.',
+    source: 'Local Drone Survey / User Upload',
+  },
+  {
+    name: 'Standardized Trajectory Sessions',
+    tag: 'Multi-Corridor Data',
+    status: 'Ready for ML',
+    desc: 'Pre-cleaned, normalized trajectory sessions ready for time-series extraction, lag feature engineering, and model training.',
+    source: 'Standardized Data Repository',
+  },
 ]
-

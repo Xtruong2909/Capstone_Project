@@ -47,13 +47,13 @@ export default function HomeNavbar({ onSignIn }) {
     }
   }
 
-  // Khi ở trang khác ngoài trang chủ (như /login, /forgot-password), navbar luôn hiển thị nền solid và border rõ ràng
   const isSolid = scrolled || location.pathname !== '/'
 
   return (
     <header className={`navbar ${isSolid ? 'navbar--scrolled' : ''}`}>
       <div className="container navbar__inner">
         <Logo />
+
         <nav className={`navbar__links ${open ? 'is-open' : ''}`} aria-label="Primary">
           {NAV_LINKS.map((l) => (
             <a
@@ -64,13 +64,21 @@ export default function HomeNavbar({ onSignIn }) {
               {l.label}
             </a>
           ))}
-          <button className="btn btn--primary navbar__cta-mobile" onClick={handleSignIn}>
-            Sign in
-          </button>
+
+          {/* Nút đăng nhập chỉ xuất hiện bên trong menu drawer trên thiết bị di động */}
+          {open && (
+            <button className="btn btn--primary navbar__cta-mobile" onClick={handleSignIn}>
+              <LogIn size={16} /> Sign in
+            </button>
+          )}
         </nav>
+
+        {/* Nút đăng nhập chính trên máy tính để bàn */}
         <button id="nav-sign-in" className="btn btn--primary navbar__cta" onClick={handleSignIn}>
           <LogIn size={16} /> Sign in
         </button>
+
+        {/* Nút toggle mở menu trên di động */}
         <button
           className="navbar__toggle"
           aria-label="Toggle menu"
@@ -83,4 +91,3 @@ export default function HomeNavbar({ onSignIn }) {
     </header>
   )
 }
-

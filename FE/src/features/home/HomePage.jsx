@@ -1,6 +1,7 @@
 import HeroSection from './components/HeroSection'
 import FeaturesSection from './components/FeaturesSection'
 import WorkflowSection from './components/WorkflowSection'
+import ModelsSection from './components/ModelsSection'
 import DatasetsSection from './components/DatasetsSection'
 import { CtaSection, HomeFooter } from './components/CtaFooter'
 import BackToTop from './components/BackToTop'
@@ -18,6 +19,7 @@ export default function HomePage() {
         <HeroSection onSignIn={openLogin} />
         <FeaturesSection />
         <WorkflowSection />
+        <ModelsSection />
         <DatasetsSection />
         <CtaSection onSignIn={openLogin} />
       </main>
@@ -25,4 +27,3 @@ export default function HomePage() {
     </>
   )
 }
-
