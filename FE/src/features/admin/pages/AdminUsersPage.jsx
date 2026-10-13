@@ -225,7 +225,12 @@ export default function AdminUsersPage() {
 
       {/* Modal Thêm người dùng mới */}
       {isModalOpen && (
-        <div className="modal-backdrop">
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsModalOpen(false)
+          }}
+        >
           <div className="modal-dialog">
             <div className="modal-header">
               <h3>Thêm người dùng mới</h3>

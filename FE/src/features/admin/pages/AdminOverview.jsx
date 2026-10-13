@@ -12,6 +12,12 @@ import {
   ArrowRight,
   ShieldCheck,
   Cpu,
+  FlaskConical,
+  KeyRound,
+  Plus,
+  Trash2,
+  X,
+  TrendingUp,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import apiClient from '../../../services/apiClient'
@@ -21,24 +27,40 @@ export default function AdminOverview() {
   const [dbStatus, setDbStatus] = useState(null)
   const [users, setUsers] = useState([])
   const [datasets, setDatasets] = useState([])
+  const [experimentsData, setExperimentsData] = useState({ stats: {}, experiments: [] })
+  const [accessGrants, setAccessGrants] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
+
+  // Modal grant access
+  const [isGrantModalOpen, setIsGrantModalOpen] = useState(false)
+  const [grantForm, setGrantForm] = useState({
+    user_id: '',
+    dataset_version_id: '',
+    expires_at: '',
+  })
+  const [grantSubmitting, setGrantSubmitting] = useState(false)
+  const [grantError, setGrantError] = useState(null)
 
   const fetchData = async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const [statsData, dbHealth, usersData, datasetsData] = await Promise.all([
+      const [statsData, dbHealth, usersData, datasetsData, expData, grantsData] = await Promise.all([
         adminService.getStats(),
         apiClient.get('/health/db').catch(() => ({ data: { status: 'disconnected' } })),
         adminService.getUsers({ limit: 100 }).catch(() => []),
-        adminService.getDatasets({ limit: 20 }).catch(() => []),
+        adminService.getDatasets({ limit: 50 }).catch(() => []),
+        adminService.getExperimentsOverview().catch(() => ({ stats: {}, experiments: [] })),
+        adminService.getAccessGrants({ limit: 50 }).catch(() => []),
       ])
       setStats(statsData)
       setDbStatus(dbHealth.data)
       setUsers(usersData)
       setDatasets(datasetsData)
+      setExperimentsData(expData)
+      setAccessGrants(grantsData)
     } catch (err) {
       setError('Không thể tải dữ liệu thống kê từ hệ thống.')
     } finally {
@@ -61,6 +83,44 @@ export default function AdminOverview() {
       await fetchData()
     } catch (err) {
       alert(err.response?.data?.detail || 'Thao tác phê duyệt thất bại.')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleGrantSubmit = async (e) => {
+    e.preventDefault()
+    if (!grantForm.user_id || !grantForm.dataset_version_id) {
+      setGrantError('Vui lòng chọn người dùng và phiên bản dữ liệu.')
+      return
+    }
+    setGrantSubmitting(true)
+    setGrantError(null)
+    try {
+      await adminService.grantAccess({
+        user_id: grantForm.user_id,
+        dataset_version_id: grantForm.dataset_version_id,
+        expires_at: grantForm.expires_at ? new Date(grantForm.expires_at).toISOString() : null,
+      })
+      setIsGrantModalOpen(false)
+      setGrantForm({ user_id: '', dataset_version_id: '', expires_at: '' })
+      const updatedGrants = await adminService.getAccessGrants()
+      setAccessGrants(updatedGrants)
+    } catch (err) {
+      setGrantError(err.response?.data?.detail || 'Không thể cấp quyền truy cập.')
+    } finally {
+      setGrantSubmitting(false)
+    }
+  }
+
+  const handleRevokeGrant = async (grantId) => {
+    if (!confirm('Bạn có chắc chắn muốn thu hồi quyền truy cập này?')) return
+    setActionLoading(grantId)
+    try {
+      await adminService.revokeAccess(grantId)
+      setAccessGrants((prev) => prev.filter((g) => g.id !== grantId))
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Thu hồi quyền thất bại.')
     } finally {
       setActionLoading(null)
     }
@@ -104,6 +164,22 @@ export default function AdminOverview() {
 
   // Filter pending datasets
   const pendingDatasets = datasets.filter((d) => d.approval_status === 'PENDING')
+
+  // Candidate users for grant (exclude admin)
+  const candidateUsers = users.filter((u) => u.role_id !== 'admin')
+
+  // Get experiment stats
+  const expStats = experimentsData.stats || {}
+  const experimentsList = experimentsData.experiments || []
+
+  const getRoleBadgeClass = (roleId) => {
+    switch (roleId) {
+      case 'data_engineer': return 'badge--engineer'
+      case 'data_scientist': return 'badge--scientist'
+      case 'business_user': return 'badge--business'
+      default: return 'badge--inactive'
+    }
+  }
 
   return (
     <div>
@@ -149,7 +225,7 @@ export default function AdminOverview() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
               <span className="badge badge--active">Đang hoạt động</span>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Cổng: 8000</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Port: 8000</span>
             </div>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Python 3.12 (uvicorn worker)</span>
           </div>
@@ -162,7 +238,7 @@ export default function AdminOverview() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
               <span className="badge badge--active">Đang phục vụ</span>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Cổng: 5173</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Port: 5173</span>
             </div>
             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Vite 8 + React Router 7</span>
           </div>
@@ -212,8 +288,8 @@ export default function AdminOverview() {
         </div>
       </div>
 
-      {/* 3. Pending Approvals & User Role Breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
+      {/* 3. Middle Section: Pending Approvals & Role Breakdown */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
         {/* Left: Pending Dataset Approvals Queue */}
         <div className="admin-card" style={{ marginBottom: 0 }}>
           <div className="admin-card__header">
@@ -378,6 +454,307 @@ export default function AdminOverview() {
           </div>
         </div>
       </div>
+
+      {/* 4. PROPOSAL 1: Trung tâm Giám sát Huấn luyện Mô hình AI/ML (ML Forecasting Experiments Monitor) */}
+      <div className="admin-card" style={{ marginBottom: '1.75rem' }}>
+        <div className="admin-card__header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <FlaskConical size={18} color="#9333ea" />
+            <h3 className="admin-card__title">Giám sát Thí nghiệm & Huấn luyện Mô hình AI/ML</h3>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: '#334155', background: '#f8fafc', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              Tổng: <strong>{expStats.total_experiments ?? 0}</strong>
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#2563eb', background: '#eff6ff', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+              Đang train: <strong>{expStats.running_count ?? 0}</strong>
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#16a34a', background: '#f0fdf4', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+              Hoàn tất: <strong>{expStats.completed_count ?? 0}</strong>
+            </span>
+            {expStats.best_model_name && (
+              <span style={{ fontSize: '0.75rem', color: '#0f172a', background: '#faf5ff', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <TrendingUp size={12} color="#9333ea" />
+                <span>Mô hình tối ưu: <strong>{expStats.best_model_name}</strong> (R²={expStats.best_r2_score})</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {experimentsList.length === 0 ? (
+          <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center' }}>
+            <FlaskConical size={32} style={{ color: '#94a3b8', margin: '0 auto 0.75rem' }} />
+            <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', color: '#0f172a' }}>
+              Chưa có tiến trình thí nghiệm nào được khởi tạo
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '640px', marginInline: 'auto' }}>
+              Khi Data Scientist tiến hành huấn luyện các mô hình dự báo chuỗi thời gian (ARIMA hoặc Facebook Prophet),
+              tiến trình thực thi, thời gian tính toán và chỉ số benchmark (MAE, RMSE, MAPE, R²) sẽ hiển thị theo thời gian thực tại đây.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Tên thí nghiệm</th>
+                  <th>Mô hình</th>
+                  <th>Biến mục tiêu</th>
+                  <th>Khoảng tổng hợp</th>
+                  <th>Trạng thái</th>
+                  <th>Người thực hiện</th>
+                  <th>Đánh giá (Metrics)</th>
+                  <th>Thời gian</th>
+                </tr>
+              </thead>
+              <tbody>
+                {experimentsList.map((exp) => (
+                  <tr key={exp.id}>
+                    <td>
+                      <strong style={{ color: '#0f172a' }}>{exp.name}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        {exp.dataset_name} ({exp.dataset_version_tag})
+                      </div>
+                    </td>
+                    <td>
+                      <span className="badge badge--scientist">{exp.model_type}</span>
+                    </td>
+                    <td>{exp.target_variable}</td>
+                    <td>{exp.temporal_aggregation_sec / 60} phút</td>
+                    <td>
+                      <span className={`badge ${
+                        exp.status === 'COMPLETED' ? 'badge--active' :
+                        exp.status === 'RUNNING' ? 'badge--pending' : 'badge--rejected'
+                      }`}>
+                        {exp.status === 'COMPLETED' ? 'Hoàn thành' :
+                         exp.status === 'RUNNING' ? 'Đang chạy' : exp.status}
+                      </span>
+                    </td>
+                    <td>{exp.creator_name || '—'}</td>
+                    <td>
+                      {exp.metrics ? (
+                        <div style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                          <span>R²: <strong>{exp.metrics.r2_score}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Chưa có metrics</span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {new Date(exp.created_at).toLocaleDateString('vi-VN')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* 5. PROPOSAL 3: Ma trận Cấp quyền Dữ liệu (Dataset Access Governance Matrix) */}
+      <div className="admin-card" style={{ marginBottom: 0 }}>
+        <div className="admin-card__header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <KeyRound size={18} color="#2563eb" />
+            <h3 className="admin-card__title">Ma trận Phân quyền & Cấp quyền Dữ liệu UAV</h3>
+          </div>
+
+          <button
+            type="button"
+            className="btn-action btn-action--primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+            onClick={() => setIsGrantModalOpen(true)}
+          >
+            <Plus size={14} />
+            <span>Cấp quyền mới</span>
+          </button>
+        </div>
+
+        {accessGrants.length === 0 ? (
+          <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center' }}>
+            <KeyRound size={32} style={{ color: '#94a3b8', margin: '0 auto 0.75rem' }} />
+            <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', color: '#0f172a' }}>
+              Chưa có quyền truy cập dữ liệu nào được gán thủ công
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '640px', marginInline: 'auto' }}>
+              Hiện các thành viên chỉ có quyền xem mặc định theo vai trò. Bạn có thể sử dụng nút <strong>"Cấp quyền mới"</strong> phía trên
+              để phân quyền trực tiếp cho Data Scientist (quyền huấn luyện mô hình) hoặc Business User (quyền xem kết quả) theo từng phiên bản dataset.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Tài khoản được cấp</th>
+                  <th>Vai trò</th>
+                  <th>Bộ dữ liệu & Phiên bản</th>
+                  <th>Người cấp</th>
+                  <th>Thời hạn</th>
+                  <th>Thời gian cấp</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accessGrants.map((grant) => (
+                  <tr key={grant.id}>
+                    <td>
+                      <strong style={{ color: '#0f172a' }}>{grant.user_name}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{grant.user_email}</div>
+                    </td>
+                    <td>
+                      <span className={`badge ${getRoleBadgeClass(grant.user_role)}`}>
+                        {grant.user_role}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 500, color: '#0f172a' }}>{grant.dataset_name}</span>{' '}
+                      <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
+                        {grant.version_tag}
+                      </code>
+                    </td>
+                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{grant.granted_by_email || 'System'}</td>
+                    <td>
+                      {grant.expires_at ? (
+                        <span style={{ fontSize: '0.8rem', color: '#d97706' }}>
+                          {new Date(grant.expires_at).toLocaleDateString('vi-VN')}
+                        </span>
+                      ) : (
+                        <span className="badge badge--active">Vô thời hạn</span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      {new Date(grant.created_at).toLocaleDateString('vi-VN')}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-action btn-action--danger"
+                        style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+                        disabled={actionLoading === grant.id}
+                        onClick={() => handleRevokeGrant(grant.id)}
+                      >
+                        <Trash2 size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
+                        Thu hồi
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal Cấp quyền truy cập mới */}
+      {isGrantModalOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsGrantModalOpen(false)
+          }}
+        >
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Cấp quyền truy cập Dataset</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setIsGrantModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleGrantSubmit} className="modal-body">
+              {grantError && (
+                <div style={{
+                  padding: '0.75rem',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '6px',
+                  color: '#dc2626',
+                  fontSize: '0.85rem',
+                  marginBottom: '1rem',
+                }}>
+                  {grantError}
+                </div>
+              )}
+
+              <div className="form-field">
+                <label className="form-label">Chọn người dùng nhận quyền</label>
+                <select
+                  required
+                  value={grantForm.user_id}
+                  onChange={(e) => setGrantForm({ ...grantForm, user_id: e.target.value })}
+                  className="admin-select"
+                  style={{ width: '100%' }}
+                >
+                  <option value="">-- Chọn thành viên --</option>
+                  {candidateUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} ({u.email}) - [{u.role_id}]
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">Chọn phiên bản Dataset</label>
+                <select
+                  required
+                  value={grantForm.dataset_version_id}
+                  onChange={(e) => setGrantForm({ ...grantForm, dataset_version_id: e.target.value })}
+                  className="admin-select"
+                  style={{ width: '100%' }}
+                >
+                  <option value="">-- Chọn phiên bản dữ liệu --</option>
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.dataset_name} ({d.version_tag}) - [{d.approval_status}]
+                    </option>
+                  ))}
+                </select>
+                {datasets.length === 0 && (
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
+                    * Hiện chưa có phiên bản dataset nào được tạo trong hệ thống.
+                  </p>
+                )}
+              </div>
+
+              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label">Thời hạn cấp quyền (Để trống nếu vô thời hạn)</label>
+                <input
+                  type="date"
+                  value={grantForm.expires_at}
+                  onChange={(e) => setGrantForm({ ...grantForm, expires_at: e.target.value })}
+                  className="admin-input"
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsGrantModalOpen(false)}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={grantSubmitting}
+                  className="btn-action btn-action--primary"
+                  style={{ padding: '0.55rem 1.25rem' }}
+                >
+                  {grantSubmitting ? 'Đang cấp...' : 'Xác nhận cấp quyền'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -62,3 +62,61 @@ class DatasetApprovalResponse(BaseModel):
 class DatasetApprovalAction(BaseModel):
     status: str  # APPROVED | REJECTED
     note: str | None = None
+
+
+class ExperimentMetricsSummary(BaseModel):
+    mae: float
+    rmse: float
+    mape: float
+    r2_score: float
+
+
+class ExperimentOverviewItem(BaseModel):
+    id: UUID
+    name: str
+    model_type: str
+    target_variable: str
+    temporal_aggregation_sec: int
+    status: str
+    execution_time_sec: float | None = None
+    creator_name: str | None = None
+    dataset_version_tag: str | None = None
+    dataset_name: str | None = None
+    metrics: ExperimentMetricsSummary | None = None
+    created_at: datetime
+
+
+class ExperimentStats(BaseModel):
+    total_experiments: int
+    running_count: int
+    completed_count: int
+    failed_count: int
+    best_model_name: str | None = None
+    best_r2_score: float | None = None
+
+
+class ExperimentsOverviewResponse(BaseModel):
+    stats: ExperimentStats
+    experiments: list[ExperimentOverviewItem]
+
+
+class DatasetAccessGrantItem(BaseModel):
+    id: UUID
+    dataset_id: UUID
+    dataset_name: str
+    dataset_version_id: UUID
+    version_tag: str
+    user_id: UUID
+    user_email: str
+    user_name: str
+    user_role: str
+    granted_by_email: str | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+
+
+class GrantAccessRequest(BaseModel):
+    dataset_version_id: UUID
+    user_id: UUID
+    expires_at: datetime | None = None
+

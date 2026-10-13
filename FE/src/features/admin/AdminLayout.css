@@ -209,8 +209,11 @@
 }
 
 .admin-content {
-  padding: 2rem;
+  padding: 1.75rem 2.25rem;
   flex: 1;
+  max-width: 1560px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 /* Stats Cards Grid */
@@ -425,27 +428,46 @@
 /* Modal */
 .modal-backdrop {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(15, 23, 42, 0.4);
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  padding: 1rem;
+  padding: 1.5rem;
+  animation: modalBackdropFadeIn 0.15s ease-out;
 }
 
 .modal-dialog {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: 14px;
   width: 100%;
-  maxWidth: 480px;
+  max-width: 520px;
+  max-height: min(90vh, 720px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+  animation: modalScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+}
+
+@keyframes modalBackdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .modal-header {
@@ -455,12 +477,13 @@
   align-items: center;
   justify-content: space-between;
   background: #f8fafc;
+  flex-shrink: 0;
 }
 
 .modal-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   color: #0f172a;
 }
 
@@ -469,8 +492,12 @@
   border: none;
   color: #64748b;
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
+  padding: 0.35rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
 }
 
 .modal-close-btn:hover {
@@ -480,30 +507,32 @@
 
 .modal-body {
   padding: 1.5rem;
+  overflow-y: auto;
 }
 
 .form-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.825rem;
   font-weight: 600;
-  color: #475569;
-  margin-bottom: 0.35rem;
+  color: #334155;
+  margin-bottom: 0.45rem;
 }
 
 .form-field {
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 .form-field input,
 .form-field select {
   width: 100%;
-  padding: 0.6rem 0.85rem;
+  padding: 0.65rem 0.85rem;
   background: #ffffff;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #0f172a;
   font-size: 0.875rem;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-field input:focus,
@@ -517,6 +546,8 @@
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #f1f5f9;
 }
 
 .btn-secondary {

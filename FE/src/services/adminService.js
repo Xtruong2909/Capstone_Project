@@ -66,4 +66,37 @@ export const adminService = {
     const response = await apiClient.post(`/admin/datasets/${versionId}/review`, action)
     return response.data
   },
+
+  /**
+   * Lấy tổng quan và danh sách thí nghiệm dự báo AI/ML
+   */
+  async getExperimentsOverview() {
+    const response = await apiClient.get('/admin/experiments/overview')
+    return response.data
+  },
+
+  /**
+   * Lấy danh sách các quyền truy cập dataset đã cấp
+   */
+  async getAccessGrants(params = {}) {
+    const response = await apiClient.get('/admin/access-grants', { params })
+    return response.data
+  },
+
+  /**
+   * Cấp quyền truy cập dataset cho người dùng
+   */
+  async grantAccess(grantData) {
+    const response = await apiClient.post('/admin/access-grants', grantData)
+    return response.data
+  },
+
+  /**
+   * Thu hồi quyền truy cập dataset
+   */
+  async revokeAccess(grantId) {
+    const response = await apiClient.delete(`/admin/access-grants/${grantId}`)
+    return response.data
+  },
 }
+

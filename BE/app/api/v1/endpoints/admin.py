@@ -10,8 +10,11 @@ from app.models.user import User
 from app.schemas.admin import (
     AdminStats,
     AuditLogResponse,
+    DatasetAccessGrantItem,
     DatasetApprovalAction,
     DatasetApprovalResponse,
+    ExperimentsOverviewResponse,
+    GrantAccessRequest,
     RoleResponse,
     UserCreate,
     UserStatusUpdate,
@@ -193,3 +196,102 @@ def review_dataset(
     )
 
     return {"message": f"Đã cập nhật trạng thái phiên bản thành {action.status}", "id": str(ver.id)}
+
+
+@router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
+def get_experiments_overview(
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ExperimentsOverviewResponse:
+    """Giám sát các thí nghiệm mô hình AI/ML (ARIMA, Prophet) và metrics."""
+    data = crud_admin.get_experiments_overview_data(db, limit=limit)
+    return ExperimentsOverviewResponse(**data)
+
+
+@router.get("/access-grants", response_model=list[DatasetAccessGrantItem], summary="Danh sách cấp quyền truy cập dataset")
+def list_access_grants(
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[DatasetAccessGrantItem]:
+    """Xem danh sách các quyền truy cập dataset đã cấp cho Data Scientist và Business User."""
+    grants = crud_admin.get_dataset_access_grants(db, skip=skip, limit=limit)
+    return [DatasetAccessGrantItem(**g) for g in grants]
+
+
+@router.post("/access-grants", response_model=DatasetAccessGrantItem, status_code=status.HTTP_201_CREATED, summary="Cấp quyền truy cập dataset mới")
+def grant_dataset_access(
+    grant_in: GrantAccessRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> DatasetAccessGrantItem:
+    """Cấp quyền truy cập một phiên bản dataset cho người dùng."""
+    grant = crud_admin.create_dataset_access_grant(
+        db,
+        dataset_version_id=grant_in.dataset_version_id,
+        user_id=grant_in.user_id,
+        admin_id=admin.id,
+        expires_at=grant_in.expires_at,
+    )
+
+    client_ip = request.client.host if request.client else None
+    crud_admin.create_audit_log(
+        db,
+        user_id=admin.id,
+        action="GRANT_DATASET_ACCESS",
+        resource_type="DATASET_ACCESS_GRANT",
+        resource_id=str(grant.id),
+        details={"user_id": str(grant_in.user_id), "version_id": str(grant_in.dataset_version_id)},
+        ip_address=client_ip,
+    )
+
+    # Return full grant details
+    all_grants = crud_admin.get_dataset_access_grants(db, skip=0, limit=100)
+    for g in all_grants:
+        if g["id"] == grant.id:
+            return DatasetAccessGrantItem(**g)
+
+    # Fallback
+    return DatasetAccessGrantItem(
+        id=grant.id,
+        dataset_id=grant.dataset_version.dataset_id if grant.dataset_version else grant.id,
+        dataset_name=grant.dataset_version.dataset.name if grant.dataset_version and grant.dataset_version.dataset else "—",
+        dataset_version_id=grant.dataset_version_id,
+        version_tag=grant.dataset_version.version_tag if grant.dataset_version else "—",
+        user_id=grant.user_id,
+        user_email=grant.user.email if grant.user else "—",
+        user_name=grant.user.full_name if grant.user else "—",
+        user_role=grant.user.role_id if grant.user else "—",
+        granted_by_email=admin.email,
+        expires_at=grant.expires_at,
+        created_at=grant.created_at,
+    )
+
+
+@router.delete("/access-grants/{grant_id}", summary="Thu hồi quyền truy cập dataset")
+def revoke_access_grant(
+    grant_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Thu hồi quyền truy cập dataset đã cấp."""
+    success = crud_admin.revoke_dataset_access_grant(db, grant_id=grant_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy bản ghi cấp quyền")
+
+    client_ip = request.client.host if request.client else None
+    crud_admin.create_audit_log(
+        db,
+        user_id=admin.id,
+        action="REVOKE_DATASET_ACCESS",
+        resource_type="DATASET_ACCESS_GRANT",
+        resource_id=str(grant_id),
+        details={"grant_id": str(grant_id)},
+        ip_address=client_ip,
+    )
+    return {"message": "Đã thu hồi quyền truy cập thành công", "grant_id": str(grant_id)}
+
