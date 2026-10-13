@@ -236,13 +236,12 @@ CREATE INDEX idx_ai_logs_user ON ai_assistant_logs(user_id);
 -- SEED MASTER DATA
 -- ====================================================================
 
--- 1. Insert 5 Roles
+-- 1. Insert 4 Roles
 INSERT INTO roles (id, name, description) VALUES
 ('admin', 'Administrator', 'Quản trị viên toàn quyền hệ thống, phê duyệt dataset và giám sát audit log'),
 ('data_engineer', 'Data Engineer', 'Kỹ sư tiếp nhận, kiểm định, làm sạch và tạo phiên bản dữ liệu UAV'),
 ('data_scientist', 'Data Scientist', 'Nhà nghiên cứu xây dựng mô hình dự báo, thiết lập thí nghiệm và đánh giá metrics'),
-('business_user', 'Business User', 'Người dùng nghiệp vụ khai thác dashboard, xem bản đồ nhiệt và tương tác trợ lý AI'),
-('student', 'Student', 'Sinh viên thực tập khám phá dữ liệu và học tập nghiên cứu');
+('business_user', 'Business User', 'Người dùng nghiệp vụ khai thác dashboard, xem bản đồ nhiệt và tương tác trợ lý AI');
 
 -- 2. Insert Default Admin User
 -- Email: admin@gmail.com / Password: 123

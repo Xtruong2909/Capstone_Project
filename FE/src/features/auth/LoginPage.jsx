@@ -17,7 +17,7 @@ import "./LoginPage.css";
 export default function LoginPage() {
   const navigate = useNavigate();
 
-  const { login, isLoading, error, setError } = useAuth();
+  const { login, isLoading, error, setError, isAuthenticated, role } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,8 +31,13 @@ export default function LoginPage() {
     const result = await login(email, password);
 
     if (result.success) {
-      // TODO: Thay bằng route Dashboard theo role
-      navigate("/");
+      const roleRoutes = {
+        admin: "/admin",
+        data_engineer: "/engineer",
+        data_scientist: "/scientist",
+        business_user: "/business",
+      };
+      navigate(roleRoutes[result.user?.role] || "/admin");
     }
   };
 

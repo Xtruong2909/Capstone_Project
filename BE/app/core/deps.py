@@ -49,3 +49,13 @@ def get_current_user(
         )
 
     return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Ensure that the authenticated user has the 'admin' role."""
+    if current_user.role_id != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Yêu cầu quyền Administrator để thực hiện thao tác này",
+        )
+    return current_user
