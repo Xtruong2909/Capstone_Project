@@ -1,4 +1,4 @@
-﻿/* ===== Layout ===== */
+/* ===== Layout ===== */
 .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
 .section { padding: 96px 0; }
 .section--tint { background: linear-gradient(180deg, #f4f8fd, var(--bg-page)); }

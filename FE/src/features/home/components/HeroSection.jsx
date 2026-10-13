@@ -11,8 +11,8 @@ export default function HeroSection({ onSignIn }) {
             Analyze urban traffic and <span className="grad">forecast congestion</span> in minutes
           </h1>
           <p className="hero__lead">
-            A unified web platform to manage traffic datasets, uncover spatial-temporal patterns,
-            and predict short-term congestion with ARIMA and Prophet.
+            A unified web platform to manage UAV traffic datasets, uncover spatial-temporal patterns,
+            and forecast short-term traffic flow with baseline and machine learning models.
           </p>
           <div className="hero__actions">
             <button id="hero-get-started" className="btn btn--primary btn--lg" onClick={onSignIn}>

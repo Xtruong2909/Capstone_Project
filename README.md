@@ -1,4 +1,4 @@
-# 🚦 Urban Traffic Analytics & Short-Term Congestion Forecasting
+# 🚦 UAV-Based Urban Traffic Analysis & Short-Term Traffic Flow Prediction
 
 <div align="center">
 
@@ -10,7 +10,7 @@
 ![PostGIS](https://img.shields.io/badge/PostGIS-Spatial_Data-blue?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
-**An End-to-End Web Platform for Spatial-Temporal Traffic Pattern Analysis & Short-Term Congestion Forecasting Using UAV-Collected Trajectory Data**
+**An End-to-End Web Platform for UAV-Based Urban Traffic Analysis & Short-Term Traffic Flow Prediction**
 
 *Capstone Project FA26SE155 • FPT University Ho Chi Minh City • Fall 2026*
 
@@ -25,11 +25,12 @@
 Urban traffic congestion presents severe economic, environmental, and public safety challenges in modern metropolitan centers. Recent advancements in **Unmanned Aerial Vehicle (UAV)** technology enable the capture of high-resolution, microscopic vehicle trajectory datasets (such as **inD** and **pNEUMA**). However, modern traffic researchers and urban analysts encounter severe workflow fragmentation—relying on disconnected Python scripts, desktop simulation suites (like SUMO), and generic forecasting tools (like Forecast Pro) that lack spatial awareness.
 
 This project delivers a **unified, web-based Urban Traffic Analytics Platform** that bridges the gap between spatial vehicle trajectories and time-series forecasting:
-1. **UAV Dataset Management & Validation**: Ingests, validates, cleans, and versions raw drone trajectory data.
-2. **Spatial-Temporal Pattern Mining**: Computes vehicle density, flow velocity, and identifies congestion hotspots using PostGIS spatial indexing.
-3. **Dual Forecasting Engine**: Transforms continuous trajectories into aggregated time-series (1m, 5m, 15m) and predicts near-future congestion (15–60 minutes) using **ARIMA** and **Facebook Prophet**.
-4. **Interactive GIS Visualization**: Provides interactive traffic heatmaps, trajectory replays, and spatial analytics using **Goong Map API**.
-5. **Reproducible Experiment Management**: Centralized hyperparameter logging, benchmark evaluation (MAE, RMSE, MAPE, $R^2$), and PDF/Excel reporting.
+1. **UAV Dataset Management & Validation**: Ingests, validates, cleans, and versions raw drone trajectory CSV datasets (e.g. selected pNEUMA subsets).
+2. **Spatial-Temporal Pattern Mining**: Computes vehicle flow (traffic count), speed, and estimated density across 1–3 selected road segments using PostGIS spatial indexing.
+3. **Short-Term Flow Forecasting Engine**: Aggregates continuous trajectories into 1-minute and 5-minute time-series and predicts traffic flow for near-future horizons (**1, 3, and 5 minutes ahead**) using **Historical Average / Persistence (Baseline)** and **Random Forest Regression** (with **LSTM** as a deep learning extension).
+4. **Interactive GIS Visualization**: Provides interactive traffic trend charts, actual vs. predicted flow comparisons, and spatial analytics using **Goong Map API**.
+5. **Reproducible Experiment Management**: Centralized hyperparameter logging, benchmark evaluation (**MAE, RMSE** with chronological train/test split), and PDF/Excel reporting.
+6. **Role-Based Access Control**: Dedicated user authorization and audit trails for 4 standardized system roles: `Administrator`, `Data Engineer`, `Data Scientist`, and `Business User`.
 
 ---
 
@@ -39,11 +40,11 @@ This project delivers a **unified, web-based Urban Traffic Analytics Platform** 
 | :--- | :--- |
 | 🛸 **UAV Dataset Pipeline** | Multi-format upload (CSV, JSON), automated data-cleaning & quality validation (missing coordinates, negative speeds, invalid timestamps), dataset versioning & archiving (`PASSED` / `FAILED` status flags). |
 | 🗺️ **Interactive GIS Heatmaps** | Integration with **Goong Map SDK**, real-time density heatmaps, spatial Region of Interest (ROI) filtering, and dynamic trajectory overlays. |
-| 📊 **Traffic Pattern Analysis** | Quantitative analysis of vehicle counts, average speeds, traffic flow, spatial density, peak-hour detection, and bottleneck recognition. |
-| 📈 **Short-Term Forecasting** | Dual statistical & ML forecasting engine (**ARIMA** & **Prophet**) with configurable time aggregation intervals (1, 5, 15 minutes) predicting traffic conditions 15–60 minutes in advance. |
-| 🔬 **Experiment Tracking** | Reproducibility engine storing dataset versions, hyperparameters, and evaluation metrics (**MAE, RMSE, MAPE, $R^2$**) for side-by-side model benchmarking. |
+| 📊 **Traffic Pattern Analysis** | Quantitative analysis of vehicle counts (flow), average speeds, estimated traffic density, peak-hour detection, and bottleneck recognition. |
+| 📈 **Short-Term Flow Forecasting** | Multi-model forecasting engine (**Historical Average Baseline** & **Random Forest Regression**, optional **LSTM**) with configurable time aggregation intervals (1, 5 minutes) predicting traffic flow 1, 3, and 5 minutes in advance. |
+| 🔬 **Experiment Tracking** | Reproducibility engine storing dataset versions, hyperparameters, and evaluation metrics (**MAE, RMSE**) for side-by-side model benchmarking. |
 | 📑 **Reporting & Export** | One-click export of analysis findings, forecasting benchmarks, and spatial heatmaps into formal **PDF & Excel** reports. |
-| 🛡️ **Role-Based Access Control** | Dedicated user authorization and audit trails for 4 system roles: `Administrator`, `Researcher`, `Traffic Analyst`, and `Student`. |
+| 🛡️ **Role-Based Access Control** | Dedicated user authorization and audit trails for 4 standardized system roles: `Administrator`, `Data Engineer`, `Data Scientist`, and `Business User`. |
 
 ---
 
@@ -65,7 +66,7 @@ flowchart TD
     subgraph BE["Backend Application (FastAPI + Python 3.11)"]
         Router["API Routers (/api/v1)"]
         Service["Traffic Analytics & Processing Services"]
-        Forecast["Forecasting Engine (ARIMA & Prophet)"]
+        Forecast["Forecasting Engine (Baseline, Random Forest & LSTM)"]
         CRUD["SQLAlchemy 2.0 CRUD Layer"]
         Router --> Service
         Service --> Forecast
@@ -74,7 +75,7 @@ flowchart TD
 
     subgraph Storage["Persistence & External Services"]
         DB[("PostgreSQL 16 + PostGIS Spatial Engine")]
-        Datasets[("Public Datasets (inD & pNEUMA)")]
+        Datasets[("Public Datasets (pNEUMA subset)")]
         GoongAPI["Goong Map REST API (Geocoding & Tiles)"]
     end
 
@@ -93,7 +94,7 @@ flowchart TD
 * **Framework**: FastAPI (Asynchronous REST API)
 * **Package Manager**: `uv` (Ultra-fast Python package manager)
 * **ORM & Database Tooling**: SQLAlchemy 2.0, GeoAlchemy2, Alembic
-* **Forecasting & Data Processing**: Statsmodels (ARIMA), Prophet, Pandas, NumPy, Scikit-learn
+* **Forecasting & Data Processing**: Scikit-learn (Random Forest Regression), Pandas, NumPy, Statsmodels/PyTorch (LSTM extension)
 * **Linter & Code Quality**: Ruff
 
 ### Frontend
@@ -200,28 +201,27 @@ npm run dev
 The platform implements an automated pipeline to benchmark short-term traffic predictions:
 
 ```text
-Raw Trajectories (inD / pNEUMA)
+Raw UAV Trajectories (pNEUMA CSV subset)
               │
               ▼
    Data Quality Validation (Coordinates, Missing Fields, Timestamps)
               │
               ▼
-   Spatial Discretization & ROI Filtering (PostGIS)
+   Spatial Discretization & ROI Filtering (1–3 Road Segments via PostGIS)
               │
               ▼
-   Temporal Aggregation (1-minute, 5-minute, 15-minute Buckets)
+   Temporal Aggregation (1-minute & 5-minute Buckets)
               │
               ▼
-   Model Training & Inference:
-       ├── ARIMA (AutoRegressive Integrated Moving Average)
-       └── Facebook Prophet (Additive Non-linear Trend & Seasonality)
+   Model Training & Inference (1, 3, 5-minute horizons):
+       ├── Historical Average / Persistence (Baseline)
+       ├── Random Forest Regression (Primary ML Model)
+       └── LSTM (Deep Learning Extension)
               │
               ▼
-   Evaluation & Benchmark:
+   Evaluation & Benchmark (Chronological Train/Test Split):
        ├── MAE  (Mean Absolute Error)
-       ├── RMSE (Root Mean Squared Error)
-       ├── MAPE (Mean Absolute Percentage Error)
-       └── R²   (Coefficient of Determination)
+       └── RMSE (Root Mean Squared Error)
 ```
 
 ---
@@ -240,7 +240,7 @@ We strictly enforce the **Feature-Branch GitFlow** and **Conventional Commits**:
 ```text
 feat: add traffic density calculation algorithm
 fix: validate missing timestamps and negative speed entries
-test: add unit tests for ARIMA forecasting service
+test: add unit tests for Random Forest forecasting service
 docs: update API documentation for dataset upload endpoints
 refactor: optimize trajectory spatial aggregation pipeline
 chore: update dependency packages
