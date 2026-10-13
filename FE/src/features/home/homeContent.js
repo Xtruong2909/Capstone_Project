@@ -1,4 +1,4 @@
-﻿import {
+import {
   Users, Database, ShieldCheck, CheckCircle2, BarChart3, LineChart, TrendingUp,
   FlaskConical, FileText, ScrollText, Sparkles, Map,
 } from 'lucide-react'
@@ -14,11 +14,11 @@ export const FEATURES = [
   { icon: Users, color: 'blue', title: 'User, Role & Permission Management', desc: 'Authentication, role assignment, and dataset-level access control with grant / revoke.' },
   { icon: Database, color: 'blue', title: 'Traffic Dataset Management', desc: 'Upload SinD, pNEUMA, or your own data. Preview, version, archive, and store processed datasets.' },
   { icon: ShieldCheck, color: 'green', title: 'Data Validation & Preprocessing', desc: 'Detect missing values, duplicates, and invalid timestamps or coordinates, then clean and normalize.' },
-  { icon: CheckCircle2, color: 'green', title: 'Dataset Approval & Access', desc: 'Administrators approve or reject datasets and share approved versions with analysts.' },
+  { icon: CheckCircle2, color: 'green', title: 'Dataset Approval & Access', desc: 'Administrators approve or reject datasets and share approved versions with business users.' },
   { icon: BarChart3, color: 'purple', title: 'Traffic Pattern Analysis', desc: 'Vehicle count, speed, density, flow, peak periods, and congestion hotspot detection.' },
-  { icon: Map, color: 'purple', title: 'Traffic Visualization', desc: 'Interactive charts, 1 / 5 / 15-minute time series, historical trends, and traffic heatmaps.' },
-  { icon: TrendingUp, color: 'orange', title: 'Short-Term Forecasting', desc: 'ARIMA and Prophet with configurable parameters and 15, 30, or 60-minute horizons.' },
-  { icon: LineChart, color: 'orange', title: 'Evaluation & Model Comparison', desc: 'MAE, RMSE, MAPE, and R² with actual vs. predicted comparison, benchmarked on pNEUMA.' },
+  { icon: Map, color: 'purple', title: 'Traffic Visualization', desc: 'Interactive charts, 1 and 5-minute time series, historical trends, and traffic heatmaps.' },
+  { icon: TrendingUp, color: 'orange', title: 'Short-Term Flow Forecasting', desc: 'Baseline (Persistence) and Random Forest Regression (optional LSTM) for 1, 3, and 5-minute horizons.' },
+  { icon: LineChart, color: 'orange', title: 'Evaluation & Model Comparison', desc: 'MAE and RMSE metrics with actual vs. predicted flow comparison, benchmarked on pNEUMA.' },
   { icon: FlaskConical, color: 'blue', title: 'Experiment Management', desc: 'Configure, run, copy, and compare experiments with full reproducibility support.' },
   { icon: BarChart3, color: 'blue', title: 'Traffic Analytics Dashboard', desc: 'One place for statistics, trends, hotspots, forecasts, and experiment comparisons.' },
   { icon: FileText, color: 'green', title: 'Reporting & Export', desc: 'Generate analysis and forecasting reports with charts and export to PDF or Excel.' },
@@ -31,7 +31,7 @@ export const WORKFLOW = [
   { step: '02', title: 'Validate', desc: 'Check quality, clean, and version data.' },
   { step: '03', title: 'Approve', desc: 'Admin reviews and grants access.' },
   { step: '04', title: 'Analyze', desc: 'Explore density, flow, and hotspots.' },
-  { step: '05', title: 'Forecast', desc: 'Run ARIMA and Prophet experiments.' },
+  { step: '05', title: 'Forecast', desc: 'Train baseline and Random Forest models.' },
   { step: '06', title: 'Report', desc: 'Evaluate, compare, and export results.' },
 ]
 
