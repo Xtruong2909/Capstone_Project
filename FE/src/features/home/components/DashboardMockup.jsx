@@ -1,103 +1,261 @@
 import {
-  Home, Database, BarChart3, Settings, HelpCircle, Car, Gauge, Users, ArrowLeftRight, TrendingUp,
+  Home,
+  Database,
+  BarChart3,
+  Settings,
+  HelpCircle,
+  Car,
+  Gauge,
+  Users,
+  Activity,
+  TrendingUp,
+  Cpu,
+  Target,
 } from 'lucide-react'
 
+// Metrics aligned with De_tai_Phan_tich_giao_thong_UAV.docx (Section 1 & 4)
 const KPIS = [
-  { icon: Car, color: 'blue', label: 'Vehicle Count', value: '12,843', delta: '12.5%' },
-  { icon: Gauge, color: 'purple', label: 'Avg. Speed', value: '42.7 km/h', delta: '5.2%' },
-  { icon: Users, color: 'green', label: 'Traffic Density', value: '68.3 veh/km', delta: '6.7%' },
-  { icon: ArrowLeftRight, color: 'blue', label: 'Traffic Flow', value: '548 veh/h', delta: '6.1%' },
+  {
+    icon: Activity,
+    color: 'blue',
+    label: 'Observed Flow (08:04)',
+    value: '52 veh/min',
+    delta: '+3.8% vs prev min',
+    sub: 'Microscopic UAV count',
+  },
+  {
+    icon: Target,
+    color: 'orange',
+    label: 'Forecasted Flow (t+1)',
+    value: '50 veh/min',
+    delta: 'Residual: -2.0 veh/min',
+    sub: 'Random Forest Model',
+  },
+  {
+    icon: Gauge,
+    color: 'purple',
+    label: 'Average Speed',
+    value: '38.4 km/h',
+    delta: 'Flow speed index',
+    sub: 'Tracked vehicles',
+  },
+  {
+    icon: Users,
+    color: 'green',
+    label: 'Estimated Density',
+    value: '46.8 veh/km',
+    delta: 'Normal flow level',
+    sub: 'Spatial segment density',
+  },
 ]
 
-const PEAKS = [
-  { t: '07:45 – 08:15', d: '156.8', s: '28.4', lvl: 'High' },
-  { t: '08:30 – 09:00', d: '118.3', s: '36.7', lvl: 'Medium' },
-  { t: '11:00 – 11:30', d: '106.4', s: '45.1', lvl: 'Medium' },
-]
+// 1-minute time series points (08:00 to 08:09) matching document example at 08:04
+const ACTUAL_FLOW = [44, 46, 48, 50, 52, 53, 55, 51, 49, 47]
+const PREDICTED_FLOW = [43, 45, 47, 51, 50, 52, 54, 52, 48, 46]
+const BASELINE_FLOW = [42, 44, 45, 47, 48, 50, 51, 49, 47, 45]
 
-const SERIES = [
-  { color: '#7c3aed', pts: [38, 40, 36, 44, 52, 48, 56, 50, 54, 46] },
-  { color: '#12a05a', pts: [26, 28, 24, 30, 34, 30, 38, 32, 30, 28] },
-  { color: '#f59e0b', pts: [18, 20, 19, 22, 24, 20, 22, 20, 21, 19] },
-  { color: '#1668e3', pts: [12, 14, 10, 15, 18, 12, 16, 14, 13, 12] },
-]
-
-function toPath(pts, w, h, max) {
+function toPath(pts, w, h, minVal, maxVal) {
   const step = w / (pts.length - 1)
-  return pts.map((p, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(1)},${(h - (p / max) * h).toFixed(1)}`).join(' ')
+  const range = maxVal - minVal
+  return pts
+    .map((p, i) => {
+      const normY = h - ((p - minVal) / range) * (h - 16) - 8
+      return `${i ? 'L' : 'M'}${(i * step).toFixed(1)},${normY.toFixed(1)}`
+    })
+    .join(' ')
 }
 
 export default function DashboardMockup() {
   return (
-    <div className="mock" role="img" aria-label="Preview of the Traffic Analytics Dashboard">
+    <div className="mock" role="img" aria-label="Preview of the UAV Traffic Flow Analytics Dashboard">
       <aside className="mock__side">
-        <div className="mock__side-item"><Home size={14} /> Dashboard</div>
-        <div className="mock__side-item"><Database size={14} /> Dataset Access</div>
-        <div className="mock__side-item is-parent"><BarChart3 size={14} /> Traffic Analytics</div>
-        <div className="mock__side-sub is-active">Analytics Dashboard</div>
-        <div className="mock__side-sub">Forecast Results</div>
-        <div className="mock__side-sub">Reporting</div>
+        <div className="mock__side-item">
+          <Home size={14} /> Overview
+        </div>
+        <div className="mock__side-item">
+          <Database size={14} /> pNEUMA Dataset
+        </div>
+        <div className="mock__side-item is-parent">
+          <BarChart3 size={14} /> Traffic Analytics
+        </div>
+        <div className="mock__side-sub is-active">1–5 Min Forecasting</div>
+        <div className="mock__side-sub">Model Comparison</div>
+        <div className="mock__side-sub">Error Benchmarks</div>
         <div className="mock__side-foot">
-          <div className="mock__side-item"><Settings size={14} /> Settings</div>
-          <div className="mock__side-item"><HelpCircle size={14} /> Help</div>
+          <div className="mock__side-item">
+            <Settings size={14} /> Settings
+          </div>
+          <div className="mock__side-item">
+            <HelpCircle size={14} /> Research Docs
+          </div>
         </div>
       </aside>
 
       <div className="mock__main">
-        <div className="mock__crumb">Home › Business Analytics › Traffic Analytics Dashboard</div>
-        <div className="mock__title">Traffic Analytics Dashboard</div>
+        <div className="mock__crumb">
+          pNEUMA Athens Drone Session › 1-Minute Aggregation › Random Forest Prediction
+        </div>
+        <div className="mock__title">
+          UAV Short-Term Traffic Flow Prediction Dashboard
+        </div>
 
+        {/* 4 Primary Indicators */}
         <div className="mock__kpis">
-          {KPIS.map(({ icon: Icon, color, label, value, delta }) => (
+          {KPIS.map(({ icon: Icon, color, label, value, delta, sub }) => (
             <div className="mock__kpi" key={label}>
-              <span className={`icon-chip icon-chip--${color}`}><Icon size={16} /></span>
+              <span className={`icon-chip icon-chip--${color}`}>
+                <Icon size={16} />
+              </span>
               <div>
                 <small>{label}</small>
                 <strong>{value}</strong>
-                <em><TrendingUp size={10} /> {delta}</em>
+                <em>{delta}</em>
               </div>
             </div>
           ))}
         </div>
 
+        {/* Chart row with 1, 3, 5 min horizon tabs */}
         <div className="mock__row">
           <div className="mock__panel mock__panel--chart">
             <div className="mock__panel-head">
-              <b>Traffic Trends</b>
-              <span className="mock__tabs"><i className="on">1H</i><i>6H</i><i>12H</i><i>24H</i></span>
+              <div>
+                <b>Traffic Flow Comparison (veh/min)</b>
+                <span className="mock__subhead">Actual (08:04: 52 veh/min) vs. Forecast (50 veh/min)</span>
+              </div>
+              <div className="mock__tabs">
+                <i className="on">1 Min Horizon</i>
+                <i>3 Min</i>
+                <i>5 Min</i>
+              </div>
             </div>
-            <svg viewBox="0 0 320 110" preserveAspectRatio="none" className="mock__chart">
+
+            <svg viewBox="0 0 340 110" preserveAspectRatio="none" className="mock__chart">
+              {/* Grid lines */}
               {[0, 1, 2, 3].map((g) => (
-                <line key={g} x1="0" x2="320" y1={g * 36 + 2} y2={g * 36 + 2} stroke="#e4ecf6" />
+                <line
+                  key={g}
+                  x1="0"
+                  x2="340"
+                  y1={g * 28 + 8}
+                  y2={g * 28 + 8}
+                  stroke="#e4ecf6"
+                  strokeDasharray="2,2"
+                />
               ))}
-              {SERIES.map((s) => (
-                <path key={s.color} d={toPath(s.pts, 320, 106, 60)} fill="none" stroke={s.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              ))}
+
+              {/* Baseline Historical Avg (Dotted Green) */}
+              <path
+                d={toPath(BASELINE_FLOW, 340, 100, 40, 60)}
+                fill="none"
+                stroke="#12a05a"
+                strokeWidth="1.6"
+                strokeDasharray="4,3"
+              />
+
+              {/* Random Forest Predicted (Amber) */}
+              <path
+                d={toPath(PREDICTED_FLOW, 340, 100, 40, 60)}
+                fill="none"
+                stroke="#f59e0b"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+
+              {/* Observed Actual Flow (Royal Blue) */}
+              <path
+                d={toPath(ACTUAL_FLOW, 340, 100, 40, 60)}
+                fill="none"
+                stroke="#1668e3"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+
+              {/* Highlight circle at 08:04 (index 4) */}
+              <circle cx={4 * (340 / 9)} cy={100 - ((52 - 40) / 20) * 84 - 8} r="4" fill="#1668e3" stroke="#fff" strokeWidth="2" />
+              <circle cx={4 * (340 / 9)} cy={100 - ((50 - 40) / 20) * 84 - 8} r="4" fill="#f59e0b" stroke="#fff" strokeWidth="2" />
             </svg>
+
+            <div className="mock__legend">
+              <span><i style={{ background: '#1668e3' }}></i> Observed Flow</span>
+              <span><i style={{ background: '#f59e0b' }}></i> Random Forest (t+1)</span>
+              <span><i style={{ background: '#12a05a' }}></i> Persistence Baseline</span>
+            </div>
           </div>
 
-          <div className="mock__panel mock__panel--map">
-            <div className="mock__panel-head"><b>Traffic Density Map</b></div>
-            <div className="mock__heat">
-              <span style={{ left: '30%', top: '45%', width: 54, height: 54 }} />
-              <span style={{ left: '55%', top: '30%', width: 64, height: 64 }} />
-              <span style={{ left: '65%', top: '58%', width: 46, height: 46 }} />
-              <span style={{ left: '18%', top: '25%', width: 34, height: 34 }} />
+          <div className="mock__panel mock__panel--bench">
+            <div className="mock__panel-head">
+              <b>Model Error Benchmarks</b>
+            </div>
+            <div className="mock__metrics-list">
+              <div className="mock__metric-card">
+                <span>Random Forest (Core ML)</span>
+                <div>
+                  <strong>MAE: 2.15 veh/min</strong>
+                  <small>RMSE: 2.84 veh/min</small>
+                </div>
+              </div>
+              <div className="mock__metric-card is-baseline">
+                <span>Historical Average (Baseline)</span>
+                <div>
+                  <strong>MAE: 4.62 veh/min</strong>
+                  <small>RMSE: 5.71 veh/min</small>
+                </div>
+              </div>
+              <div className="mock__metric-card is-lstm">
+                <span>LSTM Neural Network (Extension)</span>
+                <div>
+                  <strong>MAE: 2.08 veh/min</strong>
+                  <small>RMSE: 2.76 veh/min</small>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* Temporal Flow Table */}
         <div className="mock__panel">
-          <div className="mock__panel-head"><b>Peak Traffic Periods</b></div>
+          <div className="mock__panel-head">
+            <b>Recent 1-Minute Chronological Ingestion &amp; Forecast Validation</b>
+          </div>
           <table className="mock__table">
-            <thead><tr><th>Time period</th><th>Density</th><th>Speed</th><th>Status</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Observed Flow</th>
+                <th>Predicted (t+1)</th>
+                <th>Avg Speed</th>
+                <th>Density</th>
+                <th>Evaluation Status</th>
+              </tr>
+            </thead>
             <tbody>
-              {PEAKS.map((p) => (
-                <tr key={p.t}>
-                  <td>{p.t}</td><td>{p.d}</td><td>{p.s}</td>
-                  <td><span className={`pill pill--${p.lvl === 'High' ? 'red' : 'orange'}`}>{p.lvl}</span></td>
-                </tr>
-              ))}
+              <tr>
+                <td>08:04:00 (Doc Example)</td>
+                <td><strong>52 veh/min</strong></td>
+                <td>50 veh/min</td>
+                <td>38.4 km/h</td>
+                <td>46.8 veh/km</td>
+                <td><span className="pill pill--green">Δ -2 veh/min (Valid)</span></td>
+              </tr>
+              <tr>
+                <td>08:03:00</td>
+                <td>50 veh/min</td>
+                <td>51 veh/min</td>
+                <td>39.1 km/h</td>
+                <td>44.5 veh/km</td>
+                <td><span className="pill pill--green">Δ +1 veh/min</span></td>
+              </tr>
+              <tr>
+                <td>08:02:00</td>
+                <td>48 veh/min</td>
+                <td>47 veh/min</td>
+                <td>40.2 km/h</td>
+                <td>42.1 veh/km</td>
+                <td><span className="pill pill--green">Δ -1 veh/min</span></td>
+              </tr>
             </tbody>
           </table>
         </div>

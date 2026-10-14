@@ -2,11 +2,11 @@ from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.core.config import (
-    POSTGRES_USER,
-    POSTGRES_PASSWORD,
     POSTGRES_DB,
     POSTGRES_HOST,
+    POSTGRES_PASSWORD,
     POSTGRES_PORT,
+    POSTGRES_USER,
 )
 
 DATABASE_URL = URL.create(

@@ -1,4 +1,4 @@
-﻿
+
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -32,6 +32,8 @@ services:
       DATABASE_URL: postgresql://admin:123@postgres:5432/urban_traffic
     ports:
       - "8000:8000"
+    volumes:
+      - ./BE/app:/app/app
     depends_on:
       postgres:
         condition: service_healthy
