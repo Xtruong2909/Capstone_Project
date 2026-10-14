@@ -42,6 +42,7 @@ CREATE TABLE users (
     full_name VARCHAR(128) NOT NULL CHECK (length(trim(full_name)) >= 2),
     role_id VARCHAR(32) NOT NULL REFERENCES roles(id) ON UPDATE CASCADE,
     is_active BOOLEAN DEFAULT TRUE,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -243,12 +244,14 @@ INSERT INTO roles (id, name, description) VALUES
 ('data_scientist', 'Data Scientist', 'Nhà nghiên cứu xây dựng mô hình dự báo, thiết lập thí nghiệm và đánh giá metrics'),
 ('business_user', 'Business User', 'Người dùng nghiệp vụ khai thác dashboard, xem bản đồ nhiệt và tương tác trợ lý AI');
 
--- 2. Insert Default Admin User
--- Email: admin@gmail.com / Password: 123
+-- 2. Insert Default Users (Admin, Data Scientist, Business User)
+-- Password: 123
 INSERT INTO users (id, email, hashed_password, full_name, role_id, is_active) VALUES
-('00000000-0000-0000-0000-000000000001', 'admin@gmail.com', '123', 'System Administrator', 'admin', TRUE);
+('00000000-0000-0000-0000-000000000001', 'admin@gmail.com', '123', 'System Administrator', 'admin', TRUE),
+('00000000-0000-0000-0000-000000000002', 'scientist@gmail.com', '123', 'Dr. Le Minh (Data Scientist)', 'data_scientist', TRUE),
+('00000000-0000-0000-0000-000000000003', 'business@gmail.com', '123', 'Tran Thi Lan (Business User)', 'business_user', TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- 3. Insert Primary Benchmark Dataset (pNEUMA)
 INSERT INTO datasets (id, name, code, source, description, capture_date, location_name, created_by) VALUES
 ('11111111-1111-1111-1111-111111111111', 'pNEUMA Athens CBD Dataset', 'PNEUMA_ATHENS', 'EPFL (Barmpounakis & Geroliminis, 2020)', 'Large-scale naturalistic traffic dataset captured by a swarm of 10 drones in central Athens, Greece', '2018-10-24', 'Athens Central Business District, Greece', '00000000-0000-0000-0000-000000000001');
-

@@ -42,6 +42,7 @@ class DatasetVersion(Base):
     approval_status = Column(String(32), nullable=False, default="PENDING")
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approval_note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     dataset = relationship("Dataset", back_populates="versions")
     approver = relationship("User", foreign_keys=[approved_by])
 

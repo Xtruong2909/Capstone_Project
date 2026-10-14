@@ -1,11 +1,10 @@
 import uuid
 from datetime import UTC, datetime
 
+from app.database.database import Base
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-
-from app.database.database import Base
 
 
 class Role(Base):
@@ -28,6 +27,7 @@ class User(Base):
     full_name = Column(String(128), nullable=False)
     role_id = Column(String(32), ForeignKey("roles.id", onupdate="CASCADE"), nullable=False, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    must_change_password = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 

@@ -1,3 +1,5 @@
+import secrets
+import smtplib
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -6,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_admin
 from app.crud import crud_admin, crud_user
 from app.database.database import get_db
+from app.models.dataset import DatasetVersion
 from app.models.user import User
 from app.schemas.admin import (
     AdminStats,
@@ -20,14 +23,14 @@ from app.schemas.admin import (
     UserStatusUpdate,
 )
 from app.schemas.user import UserResponse
+from app.services.email_service import EmailConfigurationError, send_initial_credentials
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/stats", response_model=AdminStats, summary="Thống kê tổng quan hệ thống")
 def get_stats(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> AdminStats:
     """Lấy số lượng thực tế từ các bảng trong database."""
     stats = crud_admin.get_admin_stats(db)
@@ -36,13 +39,10 @@ def get_stats(
 
 @router.get("/users", response_model=list[UserResponse], summary="Danh sách người dùng")
 def list_users(
-    skip: int = 0,
-    limit: int = 100,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> list[UserResponse]:
     """Lấy toàn bộ danh sách người dùng trong hệ thống."""
-    users = crud_admin.get_all_users(db, skip=skip, limit=limit)
+    users = crud_admin.get_all_users(db, skip=0, limit=100)
     return [UserResponse.model_validate(u) for u in users]
 
 
@@ -67,7 +67,22 @@ def create_new_user(
             detail="Email đã được sử dụng trong hệ thống",
         )
 
-    user = crud_admin.create_user(db, user_in)
+    temporary_password = secrets.token_urlsafe(18)
+    user = crud_admin.create_user(db, user_in, initial_password=temporary_password)
+    try:
+        send_initial_credentials(user.email, user.full_name, temporary_password)
+    except EmailConfigurationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email chưa được cấu hình. Chưa tạo tài khoản.",
+        ) from exc
+    except (OSError, smtplib.SMTPException) as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Không gửi được email tài khoản. Chưa tạo tài khoản.",
+        ) from exc
 
     # Ghi nhận Audit Log
     client_ip = request.client.host if request.client else None
@@ -84,7 +99,11 @@ def create_new_user(
     return UserResponse.model_validate(user)
 
 
-@router.patch("/users/{user_id}/status", response_model=UserResponse, summary="Thay đổi trạng thái kích hoạt tài khoản")
+@router.patch(
+    "/users/{user_id}/status",
+    response_model=UserResponse,
+    summary="Khóa/thu hồi quyền truy cập hoặc kích hoạt lại tài khoản",
+)
 def update_user_status(
     user_id: UUID,
     status_update: UserStatusUpdate,
@@ -92,7 +111,7 @@ def update_user_status(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> UserResponse:
-    """Khóa hoặc kích hoạt lại tài khoản người dùng."""
+    """Khóa tài khoản để chặn đăng nhập/API, hoặc kích hoạt lại tài khoản."""
     if admin.id == user_id and not status_update.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -124,7 +143,6 @@ def update_user_status(
 @router.get("/roles", response_model=list[RoleResponse], summary="Danh sách vai trò hệ thống")
 def list_roles(
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> list[RoleResponse]:
     """Lấy danh sách 5 roles chuẩn hóa."""
     roles = crud_admin.get_all_roles(db)
@@ -136,7 +154,6 @@ def list_audit_logs(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> list[AuditLogResponse]:
     """Xem audit trail thực tế của hệ thống."""
     logs = crud_admin.get_audit_logs(db, skip=skip, limit=limit)
@@ -148,7 +165,6 @@ def list_datasets_for_approval(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> list[DatasetApprovalResponse]:
     """Xem danh sách các phiên bản dataset để phê duyệt."""
     datasets = crud_admin.get_dataset_versions_for_approval(db, skip=skip, limit=limit)
@@ -202,7 +218,6 @@ def review_dataset(
 def get_experiments_overview(
     limit: int = 10,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> ExperimentsOverviewResponse:
     """Giám sát các thí nghiệm mô hình AI/ML (ARIMA, Prophet) và metrics."""
     data = crud_admin.get_experiments_overview_data(db, limit=limit)
@@ -214,7 +229,6 @@ def list_access_grants(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
 ) -> list[DatasetAccessGrantItem]:
     """Xem danh sách các quyền truy cập dataset đã cấp cho Data Scientist và Business User."""
     grants = crud_admin.get_dataset_access_grants(db, skip=skip, limit=limit)
@@ -229,6 +243,22 @@ def grant_dataset_access(
     admin: User = Depends(require_admin),
 ) -> DatasetAccessGrantItem:
     """Cấp quyền truy cập một phiên bản dataset cho người dùng."""
+    # 1. Kiểm tra dataset_version_id tồn tại
+    dataset_version = db.query(DatasetVersion).filter(DatasetVersion.id == grant_in.dataset_version_id).first()
+    if not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset với ID đã cung cấp",
+        )
+
+    # 2. Kiểm tra user_id tồn tại
+    target_user = db.query(User).filter(User.id == grant_in.user_id).first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy người dùng với ID đã cung cấp",
+        )
+
     grant = crud_admin.create_dataset_access_grant(
         db,
         dataset_version_id=grant_in.dataset_version_id,
@@ -237,6 +267,7 @@ def grant_dataset_access(
         expires_at=grant_in.expires_at,
     )
 
+    # Ghi nhận Audit Log
     client_ip = request.client.host if request.client else None
     crud_admin.create_audit_log(
         db,
@@ -248,27 +279,15 @@ def grant_dataset_access(
         ip_address=client_ip,
     )
 
-    # Return full grant details
-    all_grants = crud_admin.get_dataset_access_grants(db, skip=0, limit=100)
-    for g in all_grants:
-        if g["id"] == grant.id:
-            return DatasetAccessGrantItem(**g)
+    # Lấy trực tiếp thông tin chi tiết của bản ghi vừa cấp
+    detail = crud_admin.get_dataset_access_grant_by_id(db, grant_id=grant.id)
+    if not detail:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi khi truy xuất bản ghi quyền vừa cấp",
+        )
 
-    # Fallback
-    return DatasetAccessGrantItem(
-        id=grant.id,
-        dataset_id=grant.dataset_version.dataset_id if grant.dataset_version else grant.id,
-        dataset_name=grant.dataset_version.dataset.name if grant.dataset_version and grant.dataset_version.dataset else "—",
-        dataset_version_id=grant.dataset_version_id,
-        version_tag=grant.dataset_version.version_tag if grant.dataset_version else "—",
-        user_id=grant.user_id,
-        user_email=grant.user.email if grant.user else "—",
-        user_name=grant.user.full_name if grant.user else "—",
-        user_role=grant.user.role_id if grant.user else "—",
-        granted_by_email=admin.email,
-        expires_at=grant.expires_at,
-        created_at=grant.created_at,
-    )
+    return DatasetAccessGrantItem(**detail)
 
 
 @router.delete("/access-grants/{grant_id}", summary="Thu hồi quyền truy cập dataset")
@@ -294,4 +313,3 @@ def revoke_access_grant(
         ip_address=client_ip,
     )
     return {"message": "Đã thu hồi quyền truy cập thành công", "grant_id": str(grant_id)}
-

@@ -1,15 +1,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy.orm import Session
-
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.dataset import Dataset, DatasetAccessGrant, DatasetVersion
 from app.models.experiment import EvaluationMetric, Experiment
 from app.models.user import Role, User
-from app.schemas.admin import UserCreate
-
+from app.schemas.admin import UserCreate, UserRoleId
+from sqlalchemy.orm import Session
 
 
 def get_admin_stats(db: Session) -> dict:
@@ -34,17 +32,23 @@ def get_all_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
     return db.query(User).order_by(User.created_at.desc()).offset(skip).limit(limit).all()
 
 
-def create_user(db: Session, user_in: UserCreate) -> User:
-    """Create a new user with hashed password."""
+def create_user(db: Session, user_in: UserCreate, initial_password: str) -> User:
+    """Create a user whose temporary password must be changed at first login."""
+    role_id_by_number = {
+        UserRoleId.BUSINESS_USER: "business_user",
+        UserRoleId.DATA_ENGINEER: "data_engineer",
+        UserRoleId.DATA_SCIENTIST: "data_scientist",
+    }
     user = User(
         email=user_in.email,
         full_name=user_in.full_name,
-        role_id=user_in.role_id,
-        hashed_password=hash_password(user_in.password),
+        role_id=role_id_by_number[user_in.role_id],
+        hashed_password=hash_password(initial_password),
         is_active=user_in.is_active,
+        must_change_password=True,
     )
     db.add(user)
-    db.commit()
+    db.flush()
     db.refresh(user)
     return user
 
@@ -253,6 +257,34 @@ def get_dataset_access_grants(db: Session, skip: int = 0, limit: int = 50) -> li
     return result
 
 
+def get_dataset_access_grant_by_id(db: Session, grant_id: UUID) -> dict | None:
+    """Retrieve a single dataset access grant with joined details."""
+    g = db.query(DatasetAccessGrant).filter(DatasetAccessGrant.id == grant_id).first()
+    if not g:
+        return None
+    dataset_id = None
+    dataset_name = "—"
+    if g.dataset_version:
+        dataset_id = g.dataset_version.dataset_id
+        if g.dataset_version.dataset:
+            dataset_name = g.dataset_version.dataset.name
+
+    return {
+        "id": g.id,
+        "dataset_id": dataset_id,
+        "dataset_name": dataset_name,
+        "dataset_version_id": g.dataset_version_id,
+        "version_tag": g.dataset_version.version_tag if g.dataset_version else "—",
+        "user_id": g.user_id,
+        "user_email": g.user.email if g.user else "—",
+        "user_name": g.user.full_name if g.user else "—",
+        "user_role": g.user.role_id if g.user else "—",
+        "granted_by_email": g.granter.email if g.granter else None,
+        "expires_at": g.expires_at,
+        "created_at": g.created_at,
+    }
+
+
 def create_dataset_access_grant(
     db: Session,
     dataset_version_id: UUID,
@@ -296,4 +328,3 @@ def revoke_dataset_access_grant(db: Session, grant_id: UUID) -> bool:
     db.delete(grant)
     db.commit()
     return True
-
