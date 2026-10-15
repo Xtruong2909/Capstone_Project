@@ -35,3 +35,21 @@ class Token(BaseModel):
     token_type: str = "bearer"
     user: UserResponse
     must_change_password: bool = False
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6)
+
+
+class ResetPasswordWithOtpRequest(BaseModel):
+    email: EmailStr
+    reset_token: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+    reset_token: str | None = None

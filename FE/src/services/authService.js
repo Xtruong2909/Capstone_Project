@@ -19,4 +19,32 @@ export const authService = {
     const response = await apiClient.get('/auth/me')
     return response.data
   },
+  /**
+   * Gửi yêu cầu OTP quên mật khẩu
+   * @param {string} email
+   */
+  async forgotPassword(email) {
+    const response = await apiClient.post('/auth/forgot-password', { email })
+    return response.data
+  },
+  /**
+   * Xác thực mã OTP
+   * @param {{ email: string, otp: string }} payload
+   */
+  async verifyOtp({ email, otp }) {
+    const response = await apiClient.post('/auth/verify-otp', { email, otp })
+    return response.data
+  },
+  /**
+   * Đặt lại mật khẩu mới
+   * @param {{ email: string, reset_token: string, new_password: string }} payload
+   */
+  async resetPassword({ email, reset_token, new_password }) {
+    const response = await apiClient.post('/auth/reset-password', {
+      email,
+      reset_token,
+      new_password,
+    })
+    return response.data
+  },
 }
