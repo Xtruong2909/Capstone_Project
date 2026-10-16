@@ -49,7 +49,11 @@ services:
       - "5173:5173"
     depends_on:
       - backend
+    volumes:
+    - ./FE:/app
+    - /app/node_modules
 
 volumes:
   postgres_data:
   dataset_uploads:
+  

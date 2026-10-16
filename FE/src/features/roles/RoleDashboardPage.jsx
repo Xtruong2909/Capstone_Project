@@ -1,16 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import {
   LogOut,
-  Shield,
   Database,
   TrendingUp,
   BarChart3,
   UserCheck,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
-import { useState } from "react";
-import { KeyRound } from "lucide-react";
-import ChangePasswordModal from "../auth/ChangePasswordModal";
+
 
 export default function RoleDashboardPage({
   roleTitle,
@@ -19,7 +16,7 @@ export default function RoleDashboardPage({
 }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -83,25 +80,6 @@ export default function RoleDashboardPage({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsChangePasswordOpen(true)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              padding: "0.6rem 1rem",
-              background: "transparent",
-              border: "1px solid #334155",
-              color: "#60a5fa",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "0.85rem",
-            }}
-          >
-            <KeyRound size={16} />
-            <span>Đổi mật khẩu</span>
-          </button>
           <button
             type="button"
             onClick={handleLogout}

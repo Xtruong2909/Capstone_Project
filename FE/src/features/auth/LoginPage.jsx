@@ -189,7 +189,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   className="forgot-password"
-                  onClick={() => navigate("/forgot-password")}
+                  onClick={() => alert("Vui lòng liên hệ Quản trị viên hệ thống (admin@metroflow.ai) để được cấp lại mật khẩu.")}
                 >
                   Forgot password?
                 </button>

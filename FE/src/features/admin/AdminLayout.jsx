@@ -10,13 +10,14 @@ import {
   KeyRound,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
-import ChangePasswordModal from "../auth/ChangePasswordModal";
+
+
 import "./AdminLayout.css";
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -95,14 +96,7 @@ export default function AdminLayout() {
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            className="admin-change-pwd-btn"
-            onClick={() => setIsChangePasswordOpen(true)}
-          >
-            <KeyRound size={16} />
-            <span>Đổi mật khẩu</span>
-          </button>
+
           <button
             type="button"
             className="admin-logout-btn"
@@ -117,7 +111,6 @@ export default function AdminLayout() {
       {/* Main Content Area */}
       <div className="admin-main">
         <header className="admin-header">
-          
           <div className="admin-header__title">
             <h1>Bảng điều khiển Quản trị viên</h1>
           </div>
@@ -125,7 +118,6 @@ export default function AdminLayout() {
             <div className="admin-header__badge">
               <span>Vai trò: Administrator</span>
             </div>
-           
           </div>
         </header>
 
@@ -133,12 +125,6 @@ export default function AdminLayout() {
           <Outlet />
         </main>
       </div>
-
-      {/* Modal Đổi mật khẩu */}
-      <ChangePasswordModal
-        isOpen={isChangePasswordOpen}
-        onClose={() => setIsChangePasswordOpen(false)}
-      />
     </div>
   );
 }

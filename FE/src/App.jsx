@@ -1,19 +1,18 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import MainLayout from './components/MainLayout'
-import ProtectedRoute from './components/ProtectedRoute'
-import HomePage from './features/home/HomePage'
-import LoginPage from './features/auth/LoginPage'
-import ForgotPasswordPage from './features/auth/ForgotPasswordPage'
+import { Routes, Route, Navigate } from "react-router-dom";
+import MainLayout from "./components/MainLayout";
+import ProtectedRoute from "./components/ProtectedRoute";
+import HomePage from "./features/home/HomePage";
+import LoginPage from "./features/auth/LoginPage";
 
 // Admin features
-import AdminLayout from './features/admin/AdminLayout'
-import AdminOverview from './features/admin/pages/AdminOverview'
-import AdminUsersPage from './features/admin/pages/AdminUsersPage'
-import AdminDatasetsPage from './features/admin/pages/AdminDatasetsPage'
-import AdminAuditLogsPage from './features/admin/pages/AdminAuditLogsPage'
+import AdminLayout from "./features/admin/AdminLayout";
+import AdminOverview from "./features/admin/pages/AdminOverview";
+import AdminUsersPage from "./features/admin/pages/AdminUsersPage";
+import AdminDatasetsPage from "./features/admin/pages/AdminDatasetsPage";
+import AdminAuditLogsPage from "./features/admin/pages/AdminAuditLogsPage";
 
 // Other role workspaces
-import RoleDashboardPage from './features/roles/RoleDashboardPage'
+import RoleDashboardPage from "./features/roles/RoleDashboardPage";
 
 export default function App() {
   return (
@@ -22,11 +21,10 @@ export default function App() {
       <Route element={<MainLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       </Route>
 
       {/* Admin Portal (Protected: only 'admin' role) */}
-      <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+      <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminOverview />} />
           <Route path="users" element={<AdminUsersPage />} />
@@ -36,7 +34,7 @@ export default function App() {
       </Route>
 
       {/* Data Engineer Workspace */}
-      <Route element={<ProtectedRoute allowedRoles={['data_engineer']} />}>
+      <Route element={<ProtectedRoute allowedRoles={["data_engineer"]} />}>
         <Route
           path="/engineer"
           element={
@@ -50,7 +48,7 @@ export default function App() {
       </Route>
 
       {/* Data Scientist Workspace */}
-      <Route element={<ProtectedRoute allowedRoles={['data_scientist']} />}>
+      <Route element={<ProtectedRoute allowedRoles={["data_scientist"]} />}>
         <Route
           path="/scientist"
           element={
@@ -64,7 +62,7 @@ export default function App() {
       </Route>
 
       {/* Business User Portal */}
-      <Route element={<ProtectedRoute allowedRoles={['business_user']} />}>
+      <Route element={<ProtectedRoute allowedRoles={["business_user"]} />}>
         <Route
           path="/business"
           element={
@@ -80,5 +78,5 @@ export default function App() {
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-  )
+  );
 }
