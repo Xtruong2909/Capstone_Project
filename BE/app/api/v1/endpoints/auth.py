@@ -14,7 +14,11 @@ from app.schemas.user import (
     # ... giữ nguyên các schema cũ
 )
 from app.services import otp_service
-
+from app.schemas.user import (
+    ChangePasswordProfileRequest,
+    VerifyOtpProfileRequest,
+    # ... giữ nguyên các import khác
+)
 router = APIRouter()
 
 
@@ -81,7 +85,7 @@ def get_current_user_profile(current_user: User = Depends(get_current_user)) -> 
     """Xem thông tin tài khoản và vai trò đang đăng nhập."""
     return UserResponse.model_validate(current_user)
 
-
+##########Quên mật khẩu (Forgot Password)#########
 @router.post(
     "/forgot-password",
     response_model=MessageResponse,
@@ -159,3 +163,66 @@ def reset_password(
     return MessageResponse(
         message="Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới."
     )
+
+#########Thay đổi mật khẩu trong Profile (User đang đăng nhập)#########
+
+# 1. API: Yêu cầu gửi OTP về email của tài khoản đang đăng nhập
+@router.post(
+    "/profile/request-change-password-otp",
+    response_model=MessageResponse,
+    summary="[Profile] Gửi OTP xác thực đổi mật khẩu",
+)
+def request_change_password_otp(
+    current_user: User = Depends(get_current_user),
+) -> MessageResponse:
+    """Tự động lấy email từ Token của User đang đăng nhập và gửi OTP."""
+    otp_service.generate_otp_for_email(current_user.email)
+    return MessageResponse(
+        message=f"Mã OTP xác thực đã được gửi tới hòm thư {current_user.email}."
+    )
+# 2. API: Xác thực mã OTP trong Profile
+@router.post(
+    "/profile/verify-change-password-otp",
+    response_model=MessageResponse,
+    summary="[Profile] Xác thực mã OTP đổi mật khẩu",
+)
+def verify_change_password_otp(
+    request: VerifyOtpProfileRequest,
+    current_user: User = Depends(get_current_user),
+) -> MessageResponse:
+    """Kiểm tra mã OTP dựa trên email của Token hiện tại."""
+    reset_token = otp_service.verify_otp_code(email=current_user.email, otp=request.otp)
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mã OTP không chính xác hoặc đã hết hạn (5 phút).",
+        )
+    return MessageResponse(
+        message="Xác thực OTP thành công.",
+        reset_token=reset_token,
+    )
+# 3. API: Đặt mật khẩu mới trong Profile
+@router.post(
+    "/profile/change-password",
+    response_model=MessageResponse,
+    summary="[Profile] Cập nhật mật khẩu mới qua OTP token",
+)
+def change_password_in_profile(
+    request: ChangePasswordProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    """Cập nhật mật khẩu mới cho tài khoản sau khi OTP đã hợp lệ."""
+    if not otp_service.verify_reset_token(email=current_user.email, reset_token=request.reset_token):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng lấy lại OTP.",
+        )
+    # Cập nhật mật khẩu mới vào DB
+    crud_user.change_user_password(db, current_user, request.new_password)
+    otp_service.clear_otp_session(current_user.email)
+    return MessageResponse(
+        message="Đổi mật khẩu thành công! Mật khẩu mới đã có hiệu lực."
+    )
+
+  

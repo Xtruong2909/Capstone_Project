@@ -53,3 +53,11 @@ class ResetPasswordWithOtpRequest(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     reset_token: str | None = None
+
+class VerifyOtpProfileRequest(BaseModel):
+    otp: str = Field(min_length=6, max_length=6)
+
+
+class ChangePasswordProfileRequest(BaseModel):
+    reset_token: str
+    new_password: str = Field(min_length=6, max_length=128)
