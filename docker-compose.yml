@@ -34,6 +34,7 @@ services:
       - "8000:8000"
     volumes:
       - ./BE/app:/app/app
+      - dataset_uploads:/app/uploads/datasets
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,3 +52,4 @@ services:
 
 volumes:
   postgres_data:
+  dataset_uploads:

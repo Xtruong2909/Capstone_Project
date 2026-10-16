@@ -22,9 +22,9 @@ class RoleResponse(BaseModel):
 
 
 class UserRoleId(IntEnum):
-    BUSINESS_USER = 2
-    DATA_ENGINEER = 3
-    DATA_SCIENTIST = 4
+    DATA_ENGINEER = 2
+    DATA_SCIENTIST = 3
+    BUSINESS_USER = 4
 
 
 class UserCreate(BaseModel):

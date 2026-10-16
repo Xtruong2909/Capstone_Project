@@ -1,12 +1,13 @@
 from uuid import UUID
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
+
 from app.core.security import decode_access_token
 from app.crud.crud_user import get_user_by_id
 from app.database.database import get_db
 from app.models.user import User
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.orm import Session
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -109,6 +110,16 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Yêu cầu quyền Administrator để thực hiện thao tác này",
+        )
+    return current_user
+
+
+def require_data_engineer(current_user: User = Depends(get_current_user)) -> User:
+    """Ensure that the authenticated user has the 'data_engineer' role."""
+    if current_user.role_id != "data_engineer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Yêu cầu quyền Data Engineer để tải dataset lên",
         )
     return current_user
 

@@ -33,6 +33,8 @@ class DatasetVersion(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
     version_tag = Column(String(32), nullable=False)
+    data_file_path = Column(String(512), nullable=True)
+    original_filename = Column(String(255), nullable=True)
     csv_file_path = Column(String(512), nullable=True)
     parquet_file_path = Column(String(512), nullable=True)
     geojson_file_path = Column(String(512), nullable=True)
@@ -60,4 +62,3 @@ class DatasetAccessGrant(Base):
     dataset_version = relationship("DatasetVersion")
     user = relationship("User", foreign_keys=[user_id])
     granter = relationship("User", foreign_keys=[granted_by])
-
