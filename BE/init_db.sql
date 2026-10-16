@@ -84,6 +84,8 @@ CREATE TABLE dataset_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     version_tag VARCHAR(32) NOT NULL CHECK (version_tag ~ '^v[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9_-]+)?$'),
+    data_file_path VARCHAR(512),
+    original_filename VARCHAR(255),
     csv_file_path VARCHAR(512),
     parquet_file_path VARCHAR(512),
     geojson_file_path VARCHAR(512),
