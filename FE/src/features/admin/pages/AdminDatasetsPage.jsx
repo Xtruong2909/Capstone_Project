@@ -15,7 +15,7 @@ export default function AdminDatasetsPage() {
       const data = await adminService.getDatasets()
       setDatasets(data)
     } catch (err) {
-      setError('Không thể tải danh sách phiên bản dataset.')
+      setError('Failed to load dataset versions.')
     } finally {
       setIsLoading(false)
     }
@@ -26,7 +26,10 @@ export default function AdminDatasetsPage() {
   }, [])
 
   const handleReview = async (versionId, status) => {
-    const note = prompt(`Nhập ghi chú phê duyệt/từ chối (tùy chọn):`, status === 'APPROVED' ? 'Đạt tiêu chuẩn chất lượng' : 'Chưa đạt yêu cầu')
+    const note = prompt(
+      `Enter ${status === 'APPROVED' ? 'approval' : 'rejection'} note (optional):`,
+      status === 'APPROVED' ? 'Meets UAV trajectory data quality standards' : 'Does not meet quality requirements'
+    )
     setActionLoading(versionId)
     try {
       await adminService.reviewDataset(versionId, { status, note })
@@ -34,7 +37,7 @@ export default function AdminDatasetsPage() {
         prev.map((d) => (d.id === versionId ? { ...d, approval_status: status } : d))
       )
     } catch (err) {
-      alert(err.response?.data?.detail || 'Thao tác phê duyệt thất bại.')
+      alert(err.response?.data?.detail || 'Dataset review action failed.')
     } finally {
       setActionLoading(null)
     }
@@ -42,11 +45,11 @@ export default function AdminDatasetsPage() {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'APPROVED': return <span className="badge badge--approved">Đã phê duyệt</span>
-      case 'REJECTED': return <span className="badge badge--rejected">Bị từ chối</span>
+      case 'APPROVED': return <span className="badge badge--approved">Approved</span>
+      case 'REJECTED': return <span className="badge badge--rejected">Rejected</span>
       case 'PENDING':
       default:
-        return <span className="badge badge--pending">Chờ phê duyệt</span>
+        return <span className="badge badge--pending">Pending</span>
     }
   }
 
@@ -55,7 +58,7 @@ export default function AdminDatasetsPage() {
       <div className="admin-card">
         <div className="admin-card__header">
           <h3 className="admin-card__title">
-            Danh sách phiên bản Dataset ({datasets.length})
+            Dataset Versions ({datasets.length})
           </h3>
           <button
             type="button"
@@ -64,14 +67,14 @@ export default function AdminDatasetsPage() {
             onClick={fetchDatasets}
           >
             <RefreshCw size={14} />
-            <span>Làm mới</span>
+            <span>Refresh</span>
           </button>
         </div>
 
         {isLoading ? (
           <div className="empty-state">
             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>Đang tải danh sách dataset...</p>
+            <p>Loading dataset versions...</p>
           </div>
         ) : error ? (
           <div className="empty-state">
@@ -81,9 +84,9 @@ export default function AdminDatasetsPage() {
         ) : datasets.length === 0 ? (
           <div className="empty-state">
             <Database size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>Hiện chưa có phiên bản dataset nào được gửi lên từ Data Engineer.</p>
+            <p>No dataset versions have been submitted by Data Engineers yet.</p>
             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              Khi Data Engineer tải lên và gửi bộ dữ liệu pNEUMA mới, các phiên bản sẽ xuất hiện tại đây để xem xét.
+              When a Data Engineer uploads a new pNEUMA dataset, versions will appear here for review.
             </span>
           </div>
         ) : (
@@ -91,13 +94,13 @@ export default function AdminDatasetsPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Tên bộ dữ liệu</th>
-                  <th>Phiên bản</th>
-                  <th>Định dạng</th>
-                  <th>Tổng số bản ghi</th>
-                  <th>Trạng thái</th>
-                  <th>Thời gian gửi</th>
-                  <th>Phê duyệt</th>
+                  <th>Dataset Name</th>
+                  <th>Version</th>
+                  <th>Format</th>
+                  <th>Total Records</th>
+                  <th>Status</th>
+                  <th>Submitted At</th>
+                  <th>Review Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -115,7 +118,7 @@ export default function AdminDatasetsPage() {
                     <td>{item.total_records.toLocaleString()}</td>
                     <td>{getStatusBadge(item.approval_status)}</td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(item.created_at).toLocaleString('vi-VN')}
+                      {new Date(item.created_at).toLocaleString('en-US')}
                     </td>
                     <td>
                       {item.approval_status === 'PENDING' ? (
@@ -126,7 +129,7 @@ export default function AdminDatasetsPage() {
                             disabled={actionLoading === item.id}
                             onClick={() => handleReview(item.id, 'APPROVED')}
                           >
-                            Duyệt
+                            Approve
                           </button>
                           <button
                             type="button"
@@ -134,11 +137,11 @@ export default function AdminDatasetsPage() {
                             disabled={actionLoading === item.id}
                             onClick={() => handleReview(item.id, 'REJECTED')}
                           >
-                            Từ chối
+                            Reject
                           </button>
                         </div>
                       ) : (
-                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Đã xử lý</span>
+                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Reviewed</span>
                       )}
                     </td>
                   </tr>

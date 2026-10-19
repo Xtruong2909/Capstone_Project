@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users,
-  Shield,
   Database,
   Clock,
   AlertCircle,
@@ -15,13 +14,10 @@ import {
   Plus,
   Trash2,
   X,
-  TrendingUp,
-  Sparkles,
   Activity,
   Award,
   Layers,
   ScrollText,
-  HardDrive,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import apiClient from '../../../services/apiClient'
@@ -66,7 +62,7 @@ export default function AdminOverview() {
       setExperimentsData(expData)
       setAccessGrants(grantsData)
     } catch (err) {
-      setError('Không thể tải dữ liệu thống kê từ hệ thống.')
+      setError('Failed to load system overview statistics.')
     } finally {
       setIsLoading(false)
     }
@@ -78,15 +74,15 @@ export default function AdminOverview() {
 
   const handleQuickReview = async (versionId, status) => {
     const note = prompt(
-      `Nhập ghi chú ${status === 'APPROVED' ? 'phê duyệt' : 'từ chối'} (tùy chọn):`,
-      status === 'APPROVED' ? 'Đạt tiêu chuẩn chất lượng dữ liệu UAV' : 'Chưa đạt yêu cầu'
+      `Enter ${status === 'APPROVED' ? 'approval' : 'rejection'} note (optional):`,
+      status === 'APPROVED' ? 'Meets UAV trajectory data quality standards' : 'Does not meet quality requirements'
     )
     setActionLoading(versionId)
     try {
       await adminService.reviewDataset(versionId, { status, note })
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Thao tác phê duyệt thất bại.')
+      alert(err.response?.data?.detail || 'Dataset review action failed.')
     } finally {
       setActionLoading(null)
     }
@@ -95,7 +91,7 @@ export default function AdminOverview() {
   const handleGrantSubmit = async (e) => {
     e.preventDefault()
     if (!grantForm.user_id || !grantForm.dataset_version_id) {
-      setGrantError('Vui lòng chọn người dùng và phiên bản dữ liệu.')
+      setGrantError('Please select both a user and a dataset version.')
       return
     }
     setGrantSubmitting(true)
@@ -111,20 +107,20 @@ export default function AdminOverview() {
       const updatedGrants = await adminService.getAccessGrants()
       setAccessGrants(updatedGrants)
     } catch (err) {
-      setGrantError(err.response?.data?.detail || 'Không thể cấp quyền truy cập.')
+      setGrantError(err.response?.data?.detail || 'Failed to grant dataset access.')
     } finally {
       setGrantSubmitting(false)
     }
   }
 
   const handleRevokeGrant = async (grantId) => {
-    if (!confirm('Bạn có chắc chắn muốn thu hồi quyền truy cập này?')) return
+    if (!confirm('Are you sure you want to revoke this access permission?')) return
     setActionLoading(grantId)
     try {
       await adminService.revokeAccess(grantId)
       setAccessGrants((prev) => prev.filter((g) => g.id !== grantId))
     } catch (err) {
-      alert(err.response?.data?.detail || 'Thu hồi quyền thất bại.')
+      alert(err.response?.data?.detail || 'Failed to revoke access permission.')
     } finally {
       setActionLoading(null)
     }
@@ -134,7 +130,7 @@ export default function AdminOverview() {
     return (
       <div className="empty-state">
         <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 1rem', color: '#2563eb' }} />
-        <p>Đang tải dữ liệu tổng quan hệ thống...</p>
+        <p>Loading system overview...</p>
       </div>
     )
   }
@@ -150,7 +146,7 @@ export default function AdminOverview() {
           style={{ marginTop: '1rem' }}
           onClick={fetchData}
         >
-          Thử lại
+          Retry
         </button>
       </div>
     )
@@ -214,13 +210,13 @@ export default function AdminOverview() {
       <div className="admin-hero-banner">
         <div className="admin-hero-banner__top">
           <div className="admin-hero-banner__content">
-            <h2 className="admin-hero-banner__title">Tổng quan Quản trị</h2>
+            <h2 className="admin-hero-banner__title">Administration Overview</h2>
           </div>
 
           <div className="admin-hero-banner__actions">
             <div className={`status-pill-live ${isOnline ? 'status-pill-live--online' : 'status-pill-live--offline'}`}>
               <span className={`status-pulse-dot ${isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'}`} />
-              <span>{isOnline ? 'CSDL trực tuyến' : 'Mất kết nối CSDL'}</span>
+              <span>{isOnline ? 'Database Online' : 'Database Offline'}</span>
             </div>
 
             <button
@@ -229,7 +225,7 @@ export default function AdminOverview() {
               onClick={() => setIsGrantModalOpen(true)}
             >
               <Plus size={16} />
-              <span>Cấp quyền</span>
+              <span>Grant Access</span>
             </button>
 
             <button
@@ -238,7 +234,7 @@ export default function AdminOverview() {
               onClick={fetchData}
             >
               <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-              <span>Làm mới</span>
+              <span>Refresh</span>
             </button>
           </div>
         </div>
@@ -252,7 +248,7 @@ export default function AdminOverview() {
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.total_users ?? users.length}</div>
-                <div className="hero-quick-tile__label">Người dùng</div>
+                <div className="hero-quick-tile__label">Users</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -265,7 +261,7 @@ export default function AdminOverview() {
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.pending_approvals ?? pendingDatasets.length}</div>
-                <div className="hero-quick-tile__label">Chờ phê duyệt</div>
+                <div className="hero-quick-tile__label">Pending Approvals</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -278,7 +274,7 @@ export default function AdminOverview() {
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.total_datasets ?? 0}</div>
-                <div className="hero-quick-tile__label">Bộ dữ liệu</div>
+                <div className="hero-quick-tile__label">Datasets</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -291,7 +287,7 @@ export default function AdminOverview() {
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.total_audit_logs ?? 0}</div>
-                <div className="hero-quick-tile__label">Nhật ký</div>
+                <div className="hero-quick-tile__label">Audit Logs</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -306,7 +302,7 @@ export default function AdminOverview() {
           <div className="stat-card__top">
             <div className="stat-card__info">
               <h3>{activeUserRatePct}%</h3>
-              <p>Tài khoản hoạt động</p>
+              <p>Active Accounts</p>
             </div>
             <div className="stat-card__icon stat-card__icon--blue">
               <Activity size={22} />
@@ -325,7 +321,7 @@ export default function AdminOverview() {
           <div className="stat-card__top">
             <div className="stat-card__info">
               <h3>{approvalRatePct}%</h3>
-              <p>Tỷ lệ phê duyệt</p>
+              <p>Approval Rate</p>
             </div>
             <div className="stat-card__icon stat-card__icon--green">
               <CheckCircle2 size={22} />
@@ -344,7 +340,7 @@ export default function AdminOverview() {
           <div className="stat-card__top">
             <div className="stat-card__info">
               <h3>{experimentSuccessRatePct}%</h3>
-              <p>Tỷ lệ huấn luyện thành công</p>
+              <p>Training Success Rate</p>
             </div>
             <div className="stat-card__icon stat-card__icon--purple">
               <FlaskConical size={22} />
@@ -363,7 +359,7 @@ export default function AdminOverview() {
           <div className="stat-card__top">
             <div className="stat-card__info">
               <h3>{validGrantRatePct}%</h3>
-              <p>Hiệu lực cấp quyền dữ liệu</p>
+              <p>Valid Access Grants</p>
             </div>
             <div className="stat-card__icon stat-card__icon--amber">
               <KeyRound size={22} />
@@ -388,7 +384,7 @@ export default function AdminOverview() {
                 <Clock size={18} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <h3 className="admin-card__title">Chờ phê duyệt</h3>
+                <h3 className="admin-card__title">Pending Approvals</h3>
                 {pendingDatasets.length > 0 && (
                   <span className="badge badge--pending">{pendingDatasets.length}</span>
                 )}
@@ -410,7 +406,7 @@ export default function AdminOverview() {
                 gap: '0.3rem',
               }}
             >
-              <span>Xem tất cả</span>
+              <span>View All</span>
               <ArrowRight size={14} />
             </Link>
           </div>
@@ -428,7 +424,7 @@ export default function AdminOverview() {
                 <CheckCircle2 size={26} />
               </div>
               <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                Không có dataset chờ duyệt
+                No pending datasets
               </h4>
             </div>
           ) : (
@@ -444,7 +440,7 @@ export default function AdminOverview() {
                       <span>•</span>
                       <span style={{ fontWeight: 600, color: '#334155' }}>{item.file_format}</span>
                       <span>•</span>
-                      <span>{(item.total_records || 0).toLocaleString()} dòng</span>
+                      <span>{(item.total_records || 0).toLocaleString()} rows</span>
                     </div>
                   </div>
                   <div className="mini-approval-actions">
@@ -455,7 +451,7 @@ export default function AdminOverview() {
                       disabled={actionLoading === item.id}
                       onClick={() => handleQuickReview(item.id, 'APPROVED')}
                     >
-                      Phê duyệt
+                      Approve
                     </button>
                     <button
                       type="button"
@@ -464,7 +460,7 @@ export default function AdminOverview() {
                       disabled={actionLoading === item.id}
                       onClick={() => handleQuickReview(item.id, 'REJECTED')}
                     >
-                      Từ chối
+                      Reject
                     </button>
                   </div>
                 </div>
@@ -480,10 +476,10 @@ export default function AdminOverview() {
               <div className="admin-card__icon-box admin-card__icon-box--blue">
                 <ShieldCheck size={18} />
               </div>
-              <h3 className="admin-card__title">Cơ cấu Vai trò</h3>
+              <h3 className="admin-card__title">Role Distribution</h3>
             </div>
             <span className="badge badge--active">
-              {activeUsersCount}/{users.length} hoạt động
+              {activeUsersCount}/{users.length} active
             </span>
           </div>
 
@@ -580,14 +576,14 @@ export default function AdminOverview() {
         </div>
       </div>
 
-      {/* 4. Trung tâm Giám sát Huấn luyện Mô hình AI/ML (ML Forecasting Experiments Monitor) */}
+      {/* 4. ML Forecasting Experiments Monitor */}
       <div className="admin-card">
         <div className="admin-card__header">
           <div className="admin-card__header-left">
             <div className="admin-card__icon-box admin-card__icon-box--purple">
               <FlaskConical size={18} />
             </div>
-            <h3 className="admin-card__title">Thí nghiệm AI/ML</h3>
+            <h3 className="admin-card__title">AI/ML Experiments</h3>
           </div>
         </div>
 
@@ -599,7 +595,7 @@ export default function AdminOverview() {
             </div>
             <div>
               <div className="exp-kpi-box__val">{expStats.total_experiments ?? 0}</div>
-              <div className="exp-kpi-box__lbl">Tổng</div>
+              <div className="exp-kpi-box__lbl">Total</div>
             </div>
           </div>
 
@@ -609,7 +605,7 @@ export default function AdminOverview() {
             </div>
             <div>
               <div className="exp-kpi-box__val">{expStats.running_count ?? 0}</div>
-              <div className="exp-kpi-box__lbl">Đang chạy</div>
+              <div className="exp-kpi-box__lbl">Running</div>
             </div>
           </div>
 
@@ -619,7 +615,7 @@ export default function AdminOverview() {
             </div>
             <div>
               <div className="exp-kpi-box__val">{expStats.completed_count ?? 0}</div>
-              <div className="exp-kpi-box__lbl">Hoàn tất</div>
+              <div className="exp-kpi-box__lbl">Completed</div>
             </div>
           </div>
 
@@ -631,7 +627,7 @@ export default function AdminOverview() {
               <div className="exp-kpi-box__val" style={{ fontSize: '1rem' }}>
                 {expStats.best_r2_score != null ? `R² ${expStats.best_r2_score}` : '—'}
               </div>
-              <div className="exp-kpi-box__lbl">Tốt nhất</div>
+              <div className="exp-kpi-box__lbl">Best Score</div>
             </div>
           </div>
         </div>
@@ -649,7 +645,7 @@ export default function AdminOverview() {
               <FlaskConical size={26} />
             </div>
             <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              Chưa có thí nghiệm nào
+              No experiments recorded yet
             </h4>
           </div>
         ) : (
@@ -657,14 +653,14 @@ export default function AdminOverview() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Tên thí nghiệm</th>
-                  <th>Mô hình</th>
-                  <th>Biến mục tiêu</th>
-                  <th>Khoảng tổng hợp</th>
-                  <th>Trạng thái</th>
-                  <th>Người thực hiện</th>
-                  <th>Đánh giá (Metrics)</th>
-                  <th>Thời gian</th>
+                  <th>Experiment Name</th>
+                  <th>Model</th>
+                  <th>Target Variable</th>
+                  <th>Aggregation Window</th>
+                  <th>Status</th>
+                  <th>Created By</th>
+                  <th>Evaluation Metrics</th>
+                  <th>Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -680,14 +676,14 @@ export default function AdminOverview() {
                       <span className="badge badge--scientist">{exp.model_type}</span>
                     </td>
                     <td>{exp.target_variable}</td>
-                    <td>{exp.temporal_aggregation_sec / 60} phút</td>
+                    <td>{exp.temporal_aggregation_sec / 60} min</td>
                     <td>
                       <span className={`badge ${
                         exp.status === 'COMPLETED' ? 'badge--active' :
                         exp.status === 'RUNNING' ? 'badge--pending' : 'badge--rejected'
                       }`}>
-                        {exp.status === 'COMPLETED' ? 'Hoàn thành' :
-                         exp.status === 'RUNNING' ? 'Đang chạy' : exp.status}
+                        {exp.status === 'COMPLETED' ? 'Completed' :
+                         exp.status === 'RUNNING' ? 'Running' : exp.status}
                       </span>
                     </td>
                     <td>{exp.creator_name || '—'}</td>
@@ -697,11 +693,11 @@ export default function AdminOverview() {
                           <span>R²: <strong>{exp.metrics.r2_score}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
                         </div>
                       ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Chưa có metrics</span>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No metrics</span>
                       )}
                     </td>
                     <td style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {new Date(exp.created_at).toLocaleDateString('vi-VN')}
+                      {new Date(exp.created_at).toLocaleDateString('en-US')}
                     </td>
                   </tr>
                 ))}
@@ -711,7 +707,7 @@ export default function AdminOverview() {
         )}
       </div>
 
-      {/* 5. Ma trận Cấp quyền Dữ liệu (Dataset Access Governance Matrix) */}
+      {/* 5. Dataset Access Governance Matrix */}
       <div className="admin-card" style={{ marginBottom: 0 }}>
         <div className="admin-card__header">
           <div className="admin-card__header-left">
@@ -719,7 +715,7 @@ export default function AdminOverview() {
               <KeyRound size={18} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <h3 className="admin-card__title">Phân quyền Dữ liệu</h3>
+              <h3 className="admin-card__title">Dataset Access Permissions</h3>
               <span className="badge badge--engineer">{accessGrants.length}</span>
             </div>
           </div>
@@ -731,7 +727,7 @@ export default function AdminOverview() {
             onClick={() => setIsGrantModalOpen(true)}
           >
             <Plus size={15} />
-            <span>Cấp quyền</span>
+            <span>Grant Access</span>
           </button>
         </div>
 
@@ -748,7 +744,7 @@ export default function AdminOverview() {
               <KeyRound size={26} />
             </div>
             <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              Chưa có quyền nào được cấp
+              No access grants issued yet
             </h4>
           </div>
         ) : (
@@ -756,13 +752,13 @@ export default function AdminOverview() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Tài khoản được cấp</th>
-                  <th>Vai trò</th>
-                  <th>Bộ dữ liệu & Phiên bản</th>
-                  <th>Người cấp</th>
-                  <th>Thời hạn</th>
-                  <th>Thời gian cấp</th>
-                  <th>Thao tác</th>
+                  <th>Granted User</th>
+                  <th>Role</th>
+                  <th>Dataset & Version</th>
+                  <th>Granted By</th>
+                  <th>Expiration</th>
+                  <th>Granted Date</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -787,14 +783,14 @@ export default function AdminOverview() {
                     <td>
                       {grant.expires_at ? (
                         <span style={{ fontSize: '0.8rem', color: '#d97706', fontWeight: 600 }}>
-                          {new Date(grant.expires_at).toLocaleDateString('vi-VN')}
+                          {new Date(grant.expires_at).toLocaleDateString('en-US')}
                         </span>
                       ) : (
-                        <span className="badge badge--active">Vô thời hạn</span>
+                        <span className="badge badge--active">Unlimited</span>
                       )}
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(grant.created_at).toLocaleDateString('vi-VN')}
+                      {new Date(grant.created_at).toLocaleDateString('en-US')}
                     </td>
                     <td>
                       <button
@@ -805,7 +801,7 @@ export default function AdminOverview() {
                         onClick={() => handleRevokeGrant(grant.id)}
                       >
                         <Trash2 size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                        Thu hồi
+                        Revoke
                       </button>
                     </td>
                   </tr>
@@ -816,7 +812,7 @@ export default function AdminOverview() {
         )}
       </div>
 
-      {/* Modal Cấp quyền truy cập mới */}
+      {/* Grant Dataset Access Modal */}
       {isGrantModalOpen && (
         <div
           className="modal-backdrop"
@@ -826,7 +822,7 @@ export default function AdminOverview() {
         >
           <div className="modal-dialog">
             <div className="modal-header">
-              <h3>Cấp quyền truy cập Dataset</h3>
+              <h3>Grant Dataset Access</h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -852,7 +848,7 @@ export default function AdminOverview() {
               )}
 
               <div className="form-field">
-                <label className="form-label">Chọn người dùng nhận quyền</label>
+                <label className="form-label">Select Recipient User</label>
                 <select
                   required
                   value={grantForm.user_id}
@@ -860,7 +856,7 @@ export default function AdminOverview() {
                   className="admin-select"
                   style={{ width: '100%' }}
                 >
-                  <option value="">-- Chọn thành viên --</option>
+                  <option value="">-- Select team member --</option>
                   {candidateUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.full_name} ({u.email}) - [{u.role_id}]
@@ -870,7 +866,7 @@ export default function AdminOverview() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">Chọn phiên bản Dataset</label>
+                <label className="form-label">Select Dataset Version</label>
                 <select
                   required
                   value={grantForm.dataset_version_id}
@@ -878,7 +874,7 @@ export default function AdminOverview() {
                   className="admin-select"
                   style={{ width: '100%' }}
                 >
-                  <option value="">-- Chọn phiên bản dữ liệu --</option>
+                  <option value="">-- Select dataset version --</option>
                   {datasets.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.dataset_name} ({d.version_tag}) - [{d.approval_status}]
@@ -887,13 +883,13 @@ export default function AdminOverview() {
                 </select>
                 {datasets.length === 0 && (
                   <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
-                    * Hiện chưa có phiên bản dataset nào được tạo trong hệ thống.
+                    * No dataset versions have been created in the system yet.
                   </p>
                 )}
               </div>
 
               <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Thời hạn cấp quyền (Để trống nếu vô thời hạn)</label>
+                <label className="form-label">Expiration Date (Leave blank for unlimited access)</label>
                 <input
                   type="date"
                   value={grantForm.expires_at}
@@ -909,7 +905,7 @@ export default function AdminOverview() {
                   className="btn-secondary"
                   onClick={() => setIsGrantModalOpen(false)}
                 >
-                  Hủy
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -917,7 +913,7 @@ export default function AdminOverview() {
                   className="btn-action btn-action--primary"
                   style={{ padding: '0.55rem 1.25rem' }}
                 >
-                  {grantSubmitting ? 'Đang cấp...' : 'Xác nhận cấp quyền'}
+                  {grantSubmitting ? 'Granting...' : 'Confirm Grant'}
                 </button>
               </div>
             </form>

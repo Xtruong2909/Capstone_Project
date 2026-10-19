@@ -18,12 +18,9 @@ import {
   Eye,
   Layers,
   HardDrive,
-  MapPin,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   FileText,
-  X,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { datasetService } from '../../services/datasetService'
@@ -50,18 +47,18 @@ function formatBytes(bytes) {
 function formatStructureLabel(structure) {
   switch (structure) {
     case 'pneuma_trajectory':
-      return 'Quỹ đạo UAV pNEUMA'
+      return 'pNEUMA UAV Trajectory'
     case 'generic_csv':
-      return 'CSV Tiêu chuẩn'
+      return 'Standard CSV'
     case 'generic_parquet':
       return 'Apache Parquet'
     case 'generic_json':
       return 'JSON'
     case 'generic_xlsx':
     case 'generic_xls':
-      return 'Bảng tính Excel'
+      return 'Excel Spreadsheet'
     default:
-      return structure || 'Chưa xác định'
+      return structure || 'Unknown'
   }
 }
 
@@ -124,7 +121,7 @@ export default function EngineerWorkspace() {
       }
     } catch (err) {
       setCatalogError(
-        err.response?.data?.detail || 'Không thể tải danh sách bộ dữ liệu từ máy chủ.'
+        err.response?.data?.detail || 'Failed to load dataset catalog from the server.'
       )
     } finally {
       setIsLoadingCatalog(false)
@@ -154,8 +151,7 @@ export default function EngineerWorkspace() {
     } catch (err) {
       setPreviewData(null)
       setPreviewError(
-        err.response?.data?.detail ||
-          'Không thể đọc bản xem trước của bộ dữ liệu này.'
+        err.response?.data?.detail || 'Failed to load preview for the selected dataset.'
       )
     } finally {
       setIsPreviewLoading(false)
@@ -192,7 +188,7 @@ export default function EngineerWorkspace() {
       location_name: 'Athens Central Business District (Syntagma)',
       capture_date: '2018-10-24',
       description:
-        'Dữ liệu quỹ đạo phương tiện thu thập từ đội bay UAV pNEUMA (chuẩn hóa tọa độ lat/lon, vận tốc và gia tốc theo bước thời gian).',
+        'UAV swarm vehicle trajectory dataset from pNEUMA (normalized lat/lon coordinates, instantaneous velocity, and acceleration time-series).',
     })
     setUploadError(null)
     setUploadSuccess(null)
@@ -216,15 +212,15 @@ export default function EngineerWorkspace() {
   const handleUploadSubmit = async (e) => {
     e.preventDefault()
     if (!selectedFile) {
-      setUploadError('Vui lòng chọn file dữ liệu (.csv, .parquet, .xlsx, .xls, .json).')
+      setUploadError('Please select a dataset file (.csv, .parquet, .xlsx, .xls, .json).')
       return
     }
     if (uploadForm.name.trim().length < 3) {
-      setUploadError('Tên bộ dữ liệu phải có ít nhất 3 ký tự.')
+      setUploadError('Dataset name must be at least 3 characters long.')
       return
     }
     if (!uploadForm.source.trim() || !uploadForm.location_name.trim()) {
-      setUploadError('Vui lòng nhập đầy đủ Nguồn thu thập và Khu vực giao thông.')
+      setUploadError('Please fill in both Source and Location fields.')
       return
     }
 
@@ -257,7 +253,7 @@ export default function EngineerWorkspace() {
     } catch (err) {
       setUploadError(
         err.response?.data?.detail ||
-          'Tải bộ dữ liệu lên thất bại. Vui lòng kiểm tra định dạng hoặc tên bộ dữ liệu.'
+          'Dataset upload failed. Please check the file format or dataset name.'
       )
     } finally {
       setIsUploading(false)
@@ -288,11 +284,11 @@ export default function EngineerWorkspace() {
   const renderStatusBadge = (status) => {
     switch (status) {
       case 'APPROVED':
-        return <span className="badge badge--approved">Đã phê duyệt</span>
+        return <span className="badge badge--approved">Approved</span>
       case 'REJECTED':
-        return <span className="badge badge--rejected">Từ chối</span>
+        return <span className="badge badge--rejected">Rejected</span>
       default:
-        return <span className="badge badge--pending">Chờ phê duyệt</span>
+        return <span className="badge badge--pending">Pending</span>
     }
   }
 
@@ -320,7 +316,7 @@ export default function EngineerWorkspace() {
             style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
           >
             <LayoutDashboard size={18} />
-            <span>Danh mục Dataset</span>
+            <span>Dataset Catalog</span>
           </button>
 
           <button
@@ -330,7 +326,7 @@ export default function EngineerWorkspace() {
             style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
           >
             <Upload size={18} />
-            <span>Tải lên Dataset UAV</span>
+            <span>Upload UAV Dataset</span>
           </button>
 
           <button
@@ -340,7 +336,7 @@ export default function EngineerWorkspace() {
             style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
           >
             <Table2 size={18} />
-            <span>Kiểm tra & Xem trước</span>
+            <span>Schema & Data Preview</span>
           </button>
         </nav>
 
@@ -357,7 +353,7 @@ export default function EngineerWorkspace() {
 
           <button type="button" className="admin-logout-btn" onClick={handleLogout}>
             <LogOut size={16} />
-            <span>Đăng xuất</span>
+            <span>Sign Out</span>
           </button>
         </div>
       </aside>
@@ -366,10 +362,10 @@ export default function EngineerWorkspace() {
       <div className="admin-main">
         <header className="admin-header">
           <div className="admin-header__title">
-            <h1>Không gian Kỹ sư Dữ liệu (pNEUMA Pipeline)</h1>
+            <h1>Data Engineer Workspace (pNEUMA Pipeline)</h1>
           </div>
           <div className="admin-header__badge">
-            <span>Vai trò: Data Engineer</span>
+            <span>Role: Data Engineer</span>
           </div>
         </header>
 
@@ -378,7 +374,7 @@ export default function EngineerWorkspace() {
           <div className="admin-hero-banner">
             <div className="admin-hero-banner__top">
               <div className="admin-hero-banner__content">
-                <h2 className="admin-hero-banner__title">Quản lý & Chuẩn hóa Dữ liệu UAV</h2>
+                <h2 className="admin-hero-banner__title">UAV Trajectory Data Ingestion & Schema QA</h2>
               </div>
 
               <div className="admin-hero-banner__actions">
@@ -392,7 +388,7 @@ export default function EngineerWorkspace() {
                       isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'
                     }`}
                   />
-                  <span>{isOnline ? 'CSDL trực tuyến' : 'Mất kết nối CSDL'}</span>
+                  <span>{isOnline ? 'Database Online' : 'Database Offline'}</span>
                 </div>
 
                 <button
@@ -401,7 +397,7 @@ export default function EngineerWorkspace() {
                   onClick={() => setActiveTab('upload')}
                 >
                   <Upload size={16} />
-                  <span>Tải dataset mới</span>
+                  <span>Upload Dataset</span>
                 </button>
 
                 <button
@@ -410,7 +406,7 @@ export default function EngineerWorkspace() {
                   onClick={fetchCatalogAndHealth}
                 >
                   <RefreshCw size={15} className={isLoadingCatalog ? 'animate-spin' : ''} />
-                  <span>Làm mới</span>
+                  <span>Refresh</span>
                 </button>
               </div>
             </div>
@@ -431,7 +427,7 @@ export default function EngineerWorkspace() {
                   </div>
                   <div>
                     <div className="hero-quick-tile__value">{totalDatasetsCount}</div>
-                    <div className="hero-quick-tile__label">Tổng bộ dữ liệu</div>
+                    <div className="hero-quick-tile__label">Total Datasets</div>
                   </div>
                 </div>
                 <span className="hero-quick-tile__cta">
@@ -453,7 +449,7 @@ export default function EngineerWorkspace() {
                   </div>
                   <div>
                     <div className="hero-quick-tile__value">{pendingCount}</div>
-                    <div className="hero-quick-tile__label">Chờ phê duyệt</div>
+                    <div className="hero-quick-tile__label">Pending Review</div>
                   </div>
                 </div>
                 <span className="hero-quick-tile__cta">
@@ -475,7 +471,7 @@ export default function EngineerWorkspace() {
                   </div>
                   <div>
                     <div className="hero-quick-tile__value">{approvedCount}</div>
-                    <div className="hero-quick-tile__label">Đã phê duyệt</div>
+                    <div className="hero-quick-tile__label">Approved</div>
                   </div>
                 </div>
                 <span className="hero-quick-tile__cta">
@@ -494,7 +490,7 @@ export default function EngineerWorkspace() {
                   </div>
                   <div>
                     <div className="hero-quick-tile__value">{formatBytes(totalStorageBytes)}</div>
-                    <div className="hero-quick-tile__label">Dung lượng lưu trữ</div>
+                    <div className="hero-quick-tile__label">Storage Used</div>
                   </div>
                 </div>
                 <span className="hero-quick-tile__cta">
@@ -513,7 +509,7 @@ export default function EngineerWorkspace() {
                   <div className="stat-card__top">
                     <div className="stat-card__info">
                       <h3>{totalDatasetsCount}</h3>
-                      <p>Phiên bản đã tiếp nhận</p>
+                      <p>Ingested Versions</p>
                     </div>
                     <div className="stat-card__icon stat-card__icon--blue">
                       <Database size={22} />
@@ -526,7 +522,7 @@ export default function EngineerWorkspace() {
                   <div className="stat-card__top">
                     <div className="stat-card__info">
                       <h3>{approvalRatePct}%</h3>
-                      <p>Tỷ lệ phê duyệt</p>
+                      <p>Approval Rate</p>
                     </div>
                     <div className="stat-card__icon stat-card__icon--green">
                       <CheckCircle2 size={22} />
@@ -548,7 +544,7 @@ export default function EngineerWorkspace() {
                   <div className="stat-card__top">
                     <div className="stat-card__info">
                       <h3>{pendingCount}</h3>
-                      <p>Đang chờ Admin duyệt</p>
+                      <p>Awaiting Admin Review</p>
                     </div>
                     <div className="stat-card__icon stat-card__icon--amber">
                       <Clock size={22} />
@@ -560,7 +556,7 @@ export default function EngineerWorkspace() {
                   <Layers size={96} className="stat-card__watermark" />
                   <div className="stat-card__top">
                     <div className="stat-card__info">
-                      <h3>5 định dạng</h3>
+                      <h3>5 Formats</h3>
                       <p>CSV • Parquet • Excel • JSON</p>
                     </div>
                     <div className="stat-card__icon stat-card__icon--purple">
@@ -576,7 +572,7 @@ export default function EngineerWorkspace() {
                     <div className="admin-card__icon-box admin-card__icon-box--blue">
                       <FileSpreadsheet size={18} />
                     </div>
-                    <h3 className="admin-card__title">Danh mục Bộ dữ liệu Giao thông</h3>
+                    <h3 className="admin-card__title">Traffic Dataset Catalog</h3>
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem', alignItems: 'center' }}>
@@ -594,7 +590,7 @@ export default function EngineerWorkspace() {
                       <input
                         type="text"
                         className="admin-input"
-                        placeholder="Tìm tên, mã, khu vực..."
+                        placeholder="Search name, code, location..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         style={{ paddingLeft: '2.2rem', minWidth: '220px' }}
@@ -607,10 +603,10 @@ export default function EngineerWorkspace() {
                       onChange={(e) => setStatusFilter(e.target.value)}
                       style={{ minWidth: '160px' }}
                     >
-                      <option value="ALL">Tất cả trạng thái</option>
-                      <option value="PENDING">Chờ phê duyệt</option>
-                      <option value="APPROVED">Đã phê duyệt</option>
-                      <option value="REJECTED">Từ chối</option>
+                      <option value="ALL">All Statuses</option>
+                      <option value="PENDING">Pending Review</option>
+                      <option value="APPROVED">Approved</option>
+                      <option value="REJECTED">Rejected</option>
                     </select>
 
                     <button
@@ -619,7 +615,7 @@ export default function EngineerWorkspace() {
                       onClick={() => setActiveTab('upload')}
                     >
                       <Upload size={15} />
-                      <span>Tải lên</span>
+                      <span>Upload</span>
                     </button>
                   </div>
                 </div>
@@ -631,7 +627,7 @@ export default function EngineerWorkspace() {
                       className="animate-spin"
                       style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
                     />
-                    <p>Đang tải danh sách bộ dữ liệu...</p>
+                    <p>Loading dataset catalog...</p>
                   </div>
                 ) : catalogError ? (
                   <div className="empty-state">
@@ -651,7 +647,7 @@ export default function EngineerWorkspace() {
                       <Upload size={26} />
                     </div>
                     <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
-                      Chưa có bộ dữ liệu nào phù hợp
+                      No matching datasets found
                     </h4>
                     <button
                       type="button"
@@ -660,7 +656,7 @@ export default function EngineerWorkspace() {
                       onClick={() => setActiveTab('upload')}
                     >
                       <Upload size={15} />
-                      <span>Tải dataset đầu tiên lên</span>
+                      <span>Upload First Dataset</span>
                     </button>
                   </div>
                 ) : (
@@ -668,13 +664,13 @@ export default function EngineerWorkspace() {
                     <table className="admin-table">
                       <thead>
                         <tr>
-                          <th>Bộ dữ liệu & File gốc</th>
-                          <th>Nguồn & Khu vực</th>
-                          <th>Phiên bản</th>
-                          <th>Định dạng & Dung lượng</th>
-                          <th>Ngày tải lên</th>
-                          <th>Trạng thái</th>
-                          <th>Thao tác</th>
+                          <th>Dataset & Original File</th>
+                          <th>Source & Location</th>
+                          <th>Version</th>
+                          <th>Format & Size</th>
+                          <th>Uploaded At</th>
+                          <th>Status</th>
+                          <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -692,7 +688,7 @@ export default function EngineerWorkspace() {
                               </div>
                               <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
                                 {item.source}
-                                {item.capture_date ? ` • Ghi hình: ${item.capture_date}` : ''}
+                                {item.capture_date ? ` • Captured: ${item.capture_date}` : ''}
                               </div>
                             </td>
                             <td>
@@ -719,7 +715,7 @@ export default function EngineerWorkspace() {
                               </span>
                             </td>
                             <td style={{ fontSize: '0.82rem', color: '#475569' }}>
-                              {new Date(item.created_at).toLocaleString('vi-VN')}
+                              {new Date(item.created_at).toLocaleString('en-US')}
                             </td>
                             <td>{renderStatusBadge(item.approval_status)}</td>
                             <td>
@@ -730,7 +726,7 @@ export default function EngineerWorkspace() {
                                 onClick={() => handleOpenPreviewForDataset(item.dataset_id)}
                               >
                                 <Eye size={14} />
-                                <span>Xem trước</span>
+                                <span>Preview</span>
                               </button>
                             </td>
                           </tr>
@@ -751,7 +747,7 @@ export default function EngineerWorkspace() {
                   <div className="admin-card__icon-box admin-card__icon-box--blue">
                     <Upload size={18} />
                   </div>
-                  <h3 className="admin-card__title">Tải lên Bộ dữ liệu Quỹ đạo Giao thông</h3>
+                  <h3 className="admin-card__title">Upload Traffic Trajectory Dataset</h3>
                 </div>
 
                 <button
@@ -766,7 +762,7 @@ export default function EngineerWorkspace() {
                   onClick={handleGenerateSamplePneumaFile}
                 >
                   <Sparkles size={15} />
-                  <span>Tạo dữ liệu mẫu pNEUMA (.csv)</span>
+                  <span>Generate Sample pNEUMA (.csv)</span>
                 </button>
               </div>
 
@@ -811,11 +807,11 @@ export default function EngineerWorkspace() {
                     <CheckCircle2 size={22} color="#16a34a" />
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Đã tải lên thành công: {uploadSuccess.name} ({uploadSuccess.version_tag})
+                        Successfully uploaded: {uploadSuccess.name} ({uploadSuccess.version_tag})
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#15803d' }}>
-                        Mã: <code>{uploadSuccess.code}</code> • Định dạng: {uploadSuccess.file_format} • Dung lượng:{' '}
-                        {formatBytes(uploadSuccess.file_size_bytes)} • Trạng thái: {uploadSuccess.approval_status}
+                        Code: <code>{uploadSuccess.code}</code> • Format: {uploadSuccess.file_format} • Size:{' '}
+                        {formatBytes(uploadSuccess.file_size_bytes)} • Status: {uploadSuccess.approval_status}
                       </div>
                     </div>
                   </div>
@@ -826,7 +822,7 @@ export default function EngineerWorkspace() {
                     onClick={() => handleOpenPreviewForDataset(uploadSuccess.dataset_id)}
                   >
                     <Eye size={15} />
-                    <span>Kiểm tra Schema & Xem trước ngay</span>
+                    <span>Inspect Schema & Preview Now</span>
                   </button>
                 </div>
               )}
@@ -876,16 +872,16 @@ export default function EngineerWorkspace() {
                         {selectedFile.name}
                       </div>
                       <div style={{ fontSize: '0.84rem', color: '#2563eb', marginTop: '0.25rem' }}>
-                        Dung lượng: {formatBytes(selectedFile.size)} • Nhấn để đổi file khác
+                        Size: {formatBytes(selectedFile.size)} • Click to choose another file
                       </div>
                     </div>
                   ) : (
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.98rem', color: '#0f172a' }}>
-                        Nhấn để chọn file dữ liệu hoặc dùng nút &ldquo;Tạo dữ liệu mẫu pNEUMA&rdquo;
+                        Click to select a dataset file or use &ldquo;Generate Sample pNEUMA (.csv)&rdquo;
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.25rem' }}>
-                        Định dạng hỗ trợ: CSV, Parquet, Excel (.xls, .xlsx), JSON
+                        Supported formats: CSV, Parquet, Excel (.xls, .xlsx), JSON
                       </div>
                     </div>
                   )}
@@ -901,40 +897,40 @@ export default function EngineerWorkspace() {
                   }}
                 >
                   <div className="form-field">
-                    <label className="form-label">Tên bộ dữ liệu (3–128 ký tự) *</label>
+                    <label className="form-label">Dataset Name (3–128 characters) *</label>
                     <input
                       type="text"
                       className="admin-input"
                       required
                       minLength={3}
                       maxLength={128}
-                      placeholder="VD: pNEUMA Athens Morning Peak v1"
+                      placeholder="e.g. pNEUMA Athens Morning Peak v1"
                       value={uploadForm.name}
                       onChange={(e) => setUploadForm({ ...uploadForm, name: e.target.value })}
                     />
                   </div>
 
                   <div className="form-field">
-                    <label className="form-label">Nguồn thu thập (Source) *</label>
+                    <label className="form-label">Collection Source *</label>
                     <input
                       type="text"
                       className="admin-input"
                       required
                       maxLength={255}
-                      placeholder="VD: pNEUMA Drone Swarm - EPFL"
+                      placeholder="e.g. pNEUMA Drone Swarm - EPFL"
                       value={uploadForm.source}
                       onChange={(e) => setUploadForm({ ...uploadForm, source: e.target.value })}
                     />
                   </div>
 
                   <div className="form-field">
-                    <label className="form-label">Khu vực giao thông (Location) *</label>
+                    <label className="form-label">Traffic Corridor / Location *</label>
                     <input
                       type="text"
                       className="admin-input"
                       required
                       maxLength={255}
-                      placeholder="VD: Athens Central Business District"
+                      placeholder="e.g. Athens Central Business District"
                       value={uploadForm.location_name}
                       onChange={(e) =>
                         setUploadForm({ ...uploadForm, location_name: e.target.value })
@@ -943,7 +939,7 @@ export default function EngineerWorkspace() {
                   </div>
 
                   <div className="form-field">
-                    <label className="form-label">Ngày ghi hình UAV (Capture Date)</label>
+                    <label className="form-label">UAV Capture Date</label>
                     <input
                       type="date"
                       className="admin-input"
@@ -956,11 +952,11 @@ export default function EngineerWorkspace() {
                 </div>
 
                 <div className="form-field" style={{ marginBottom: '1.25rem' }}>
-                  <label className="form-label">Mô tả kỹ thuật (Tùy chọn)</label>
+                  <label className="form-label">Technical Description (Optional)</label>
                   <textarea
                     className="admin-input"
                     rows={3}
-                    placeholder="Ghi chú về tần suất lấy mẫu, số lượng drone, điều kiện giao thông..."
+                    placeholder="Notes on sampling frequency, drone swarm configuration, traffic conditions..."
                     value={uploadForm.description}
                     onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
                     style={{ resize: 'vertical' }}
@@ -979,7 +975,7 @@ export default function EngineerWorkspace() {
                         marginBottom: '0.35rem',
                       }}
                     >
-                      <span>Đang tải file và khởi tạo phiên bản v1.0...</span>
+                      <span>Uploading file and initializing version v1.0...</span>
                       <span>{uploadProgress}%</span>
                     </div>
                     <div className="stat-card__mini-bar">
@@ -1000,7 +996,7 @@ export default function EngineerWorkspace() {
                     className="btn-secondary"
                     onClick={() => setActiveTab('catalog')}
                   >
-                    Quay lại danh mục
+                    Back to Catalog
                   </button>
                   <button
                     type="submit"
@@ -1009,7 +1005,7 @@ export default function EngineerWorkspace() {
                     style={{ padding: '0.65rem 1.4rem', fontSize: '0.9rem' }}
                   >
                     <Upload size={16} />
-                    <span>{isUploading ? 'Đang tải lên...' : 'Tải lên & Trình phê duyệt'}</span>
+                    <span>{isUploading ? 'Uploading...' : 'Upload & Submit for Approval'}</span>
                   </button>
                 </div>
               </form>
@@ -1025,7 +1021,7 @@ export default function EngineerWorkspace() {
                     <Table2 size={18} />
                   </div>
                   <h3 className="admin-card__title">
-                    Kiểm tra Schema & Chuẩn hóa Quỹ đạo pNEUMA
+                    Schema Inspector & pNEUMA Trajectory Normalization
                   </h3>
                 </div>
 
@@ -1040,7 +1036,7 @@ export default function EngineerWorkspace() {
                     }}
                     style={{ minWidth: '250px', fontWeight: 600 }}
                   >
-                    <option value="">-- Chọn bộ dữ liệu để xem trước --</option>
+                    <option value="">-- Select a dataset to preview --</option>
                     {datasets.map((d) => (
                       <option key={d.dataset_id} value={d.dataset_id}>
                         {d.name} ({d.file_format} • {d.version_tag})
@@ -1075,7 +1071,7 @@ export default function EngineerWorkspace() {
                         color: previewRepresentation === 'normalized' ? '#ffffff' : '#475569',
                       }}
                     >
-                      Chuẩn hóa pNEUMA (normalized)
+                      pNEUMA Normalized
                     </button>
                     <button
                       type="button"
@@ -1094,7 +1090,7 @@ export default function EngineerWorkspace() {
                         color: previewRepresentation === 'raw' ? '#ffffff' : '#475569',
                       }}
                     >
-                      Dữ liệu gốc (raw)
+                      Raw Records
                     </button>
                   </div>
 
@@ -1107,10 +1103,10 @@ export default function EngineerWorkspace() {
                       setPreviewPage(1)
                     }}
                   >
-                    <option value={10}>10 dòng / trang</option>
-                    <option value={20}>20 dòng / trang</option>
-                    <option value={50}>50 dòng / trang</option>
-                    <option value={100}>100 dòng / trang</option>
+                    <option value={10}>10 rows / page</option>
+                    <option value={20}>20 rows / page</option>
+                    <option value={50}>50 rows / page</option>
+                    <option value={100}>100 rows / page</option>
                   </select>
                 </div>
               </div>
@@ -1128,7 +1124,7 @@ export default function EngineerWorkspace() {
                     <Table2 size={26} />
                   </div>
                   <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.96rem', fontWeight: 700, color: '#0f172a' }}>
-                    Chọn một bộ dữ liệu ở thanh trên để kiểm tra Schema và xem trước các dòng bản ghi
+                    Select a dataset from the toolbar above to inspect its schema and preview rows
                   </h4>
                 </div>
               ) : isPreviewLoading ? (
@@ -1138,7 +1134,7 @@ export default function EngineerWorkspace() {
                     className="animate-spin"
                     style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
                   />
-                  <p>Đang đọc và phân tích cấu trúc dữ liệu...</p>
+                  <p>Reading and analyzing dataset structure...</p>
                 </div>
               ) : previewError ? (
                 <div className="empty-state">
@@ -1150,28 +1146,28 @@ export default function EngineerWorkspace() {
                   {/* Metadata & Detected Structure KPI Ribbon */}
                   <div className="exp-kpi-ribbon" style={{ marginBottom: '1.15rem' }}>
                     <div className="exp-kpi-box">
-                      <span className="exp-kpi-box__label">Cấu trúc phát hiện</span>
+                      <span className="exp-kpi-box__label">Detected Structure</span>
                       <div className="exp-kpi-box__val" style={{ fontSize: '1rem', color: '#1d4ed8' }}>
                         {formatStructureLabel(previewData.detected_structure)}
                       </div>
                     </div>
 
                     <div className="exp-kpi-box">
-                      <span className="exp-kpi-box__label">File gốc & Dung lượng</span>
+                      <span className="exp-kpi-box__label">Original File & Size</span>
                       <div className="exp-kpi-box__val" style={{ fontSize: '0.95rem' }}>
                         {previewData.original_filename} ({formatBytes(previewData.file_size)})
                       </div>
                     </div>
 
                     <div className="exp-kpi-box">
-                      <span className="exp-kpi-box__label">Số cột Schema</span>
+                      <span className="exp-kpi-box__label">Schema Columns</span>
                       <div className="exp-kpi-box__val" style={{ color: '#7c3aed' }}>
-                        {previewData.columns?.length || 0} cột ({previewData.representation})
+                        {previewData.columns?.length || 0} columns ({previewData.representation})
                       </div>
                     </div>
 
                     <div className="exp-kpi-box">
-                      <span className="exp-kpi-box__label">Tổng số dòng bản ghi</span>
+                      <span className="exp-kpi-box__label">Total Records</span>
                       <div className="exp-kpi-box__val" style={{ color: '#059669' }}>
                         {previewData.pagination?.total_rows != null
                           ? previewData.pagination.total_rows.toLocaleString()
@@ -1195,7 +1191,7 @@ export default function EngineerWorkspace() {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, marginBottom: '0.25rem' }}>
                         <AlertTriangle size={16} color="#d97706" />
-                        <span>Cảnh báo kiểm tra cấu trúc ({previewData.warnings.length})</span>
+                        <span>Structure Validation Warnings ({previewData.warnings.length})</span>
                       </div>
                       <ul style={{ margin: 0, paddingLeft: '1.4rem' }}>
                         {previewData.warnings.map((w, idx) => (
@@ -1217,7 +1213,7 @@ export default function EngineerWorkspace() {
                         marginBottom: '0.5rem',
                       }}
                     >
-                      Lược đồ các cột ({previewData.columns?.length || 0} trường dữ liệu)
+                      Column Schema ({previewData.columns?.length || 0} fields)
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
                       {previewData.columns?.map((col) => (
@@ -1334,10 +1330,10 @@ export default function EngineerWorkspace() {
                     }}
                   >
                     <div style={{ fontSize: '0.84rem', color: '#475569', fontWeight: 600 }}>
-                      Trang {previewData.pagination?.page || 1} • Hiển thị{' '}
-                      {previewData.pagination?.returned_rows || 0} bản ghi
+                      Page {previewData.pagination?.page || 1} • Showing{' '}
+                      {previewData.pagination?.returned_rows || 0} rows
                       {previewData.pagination?.total_rows != null &&
-                        ` / Tổng ${previewData.pagination.total_rows.toLocaleString()} bản ghi`}
+                        ` / Total ${previewData.pagination.total_rows.toLocaleString()} rows`}
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1349,7 +1345,7 @@ export default function EngineerWorkspace() {
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                       >
                         <ChevronLeft size={15} />
-                        <span>Trang trước</span>
+                        <span>Previous</span>
                       </button>
 
                       <button
@@ -1359,7 +1355,7 @@ export default function EngineerWorkspace() {
                         onClick={() => setPreviewPage((p) => p + 1)}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                       >
-                        <span>Trang tiếp</span>
+                        <span>Next</span>
                         <ChevronRight size={15} />
                       </button>
                     </div>

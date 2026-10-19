@@ -42,7 +42,7 @@ export default function AdminLayout() {
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <LayoutDashboard size={18} />
-            <span>Tổng quan hệ thống</span>
+            <span>System Overview</span>
           </NavLink>
 
           <NavLink
@@ -50,7 +50,7 @@ export default function AdminLayout() {
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Users size={18} />
-            <span>Quản lý người dùng</span>
+            <span>User Management</span>
           </NavLink>
 
           <NavLink
@@ -58,7 +58,7 @@ export default function AdminLayout() {
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <CheckCircle size={18} />
-            <span>Phê duyệt Dataset</span>
+            <span>Dataset Approvals</span>
           </NavLink>
 
           <NavLink
@@ -66,7 +66,7 @@ export default function AdminLayout() {
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <ScrollText size={18} />
-            <span>Nhật ký hoạt động</span>
+            <span>Audit Logs</span>
           </NavLink>
         </nav>
 
@@ -83,7 +83,7 @@ export default function AdminLayout() {
 
           <button type="button" className="admin-logout-btn" onClick={handleLogout}>
             <LogOut size={16} />
-            <span>Đăng xuất</span>
+            <span>Sign Out</span>
           </button>
         </div>
       </aside>
@@ -92,10 +92,10 @@ export default function AdminLayout() {
       <div className="admin-main">
         <header className="admin-header">
           <div className="admin-header__title">
-            <h1>Bảng điều khiển Quản trị viên</h1>
+            <h1>Administrator Dashboard</h1>
           </div>
           <div className="admin-header__badge">
-            <span>Vai trò: Administrator</span>
+            <span>Role: Administrator</span>
           </div>
         </header>
 
