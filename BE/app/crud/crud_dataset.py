@@ -19,6 +19,18 @@ def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, 
     return result
 
 
+def list_datasets(db: Session, skip: int = 0, limit: int = 50) -> list[tuple[Dataset, DatasetVersion]]:
+    """List datasets paired with their uploaded versions ordered by newest first."""
+    return (
+        db.query(Dataset, DatasetVersion)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
 def create_dataset_version(
     db: Session,
     *,

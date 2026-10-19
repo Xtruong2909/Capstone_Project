@@ -12,6 +12,9 @@ import AdminUsersPage from './features/admin/pages/AdminUsersPage'
 import AdminDatasetsPage from './features/admin/pages/AdminDatasetsPage'
 import AdminAuditLogsPage from './features/admin/pages/AdminAuditLogsPage'
 
+// Data Engineer workspace
+import EngineerWorkspace from './features/engineer/EngineerWorkspace'
+
 // Other role workspaces
 import RoleDashboardPage from './features/roles/RoleDashboardPage'
 
@@ -37,16 +40,7 @@ export default function App() {
 
       {/* Data Engineer Workspace */}
       <Route element={<ProtectedRoute allowedRoles={['data_engineer']} />}>
-        <Route
-          path="/engineer"
-          element={
-            <RoleDashboardPage
-              roleTitle="Data Engineer Workspace"
-              roleCode="data_engineer"
-              description="Không gian dành cho Kỹ sư dữ liệu: Tiếp nhận, kiểm tra schema, làm sạch và tạo phiên bản dữ liệu quỹ đạo UAV pNEUMA trước khi trình Administrator phê duyệt."
-            />
-          }
-        />
+        <Route path="/engineer" element={<EngineerWorkspace />} />
       </Route>
 
       {/* Data Scientist Workspace */}

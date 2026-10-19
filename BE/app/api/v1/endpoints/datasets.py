@@ -16,6 +16,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_data_engineer
+from app.crud import crud_dataset
 from app.database.database import get_db
 from app.models.user import User
 from app.schemas.dataset import (
@@ -38,6 +39,40 @@ from app.services.dataset_service import (
 )
 
 router = APIRouter()
+
+
+@router.get(
+    "",
+    response_model=list[DatasetUploadResponse],
+    summary="Danh sách bộ dữ liệu đã tải lên",
+)
+def list_uploaded_datasets(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> list[DatasetUploadResponse]:
+    """Lấy danh sách các bộ dữ liệu và phiên bản đã tải lên hệ thống."""
+    rows = crud_dataset.list_datasets(db, skip=skip, limit=limit)
+    return [
+        DatasetUploadResponse(
+            dataset_id=dataset.id,
+            version_id=version.id,
+            name=dataset.name,
+            code=dataset.code,
+            source=dataset.source,
+            description=dataset.description,
+            capture_date=dataset.capture_date,
+            location_name=dataset.location_name,
+            version_tag=version.version_tag,
+            file_format=version.file_format,
+            original_filename=version.original_filename or "",
+            file_size_bytes=version.file_size_bytes or 0,
+            approval_status=version.approval_status,
+            created_at=version.created_at,
+        )
+        for dataset, version in rows
+    ]
 
 
 @router.get(
