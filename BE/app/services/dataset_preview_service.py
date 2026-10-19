@@ -896,12 +896,17 @@ def get_dataset_preview(
     db: Session,
     *,
     dataset_id: UUID,
+    dataset_version_id: UUID | None = None,
     page: int,
     page_size: int,
     representation: str = "normalized",
 ) -> DatasetPreviewResponse:
-    """Read a paginated preview from the latest uploaded dataset file."""
-    dataset_version = crud_dataset.get_dataset_latest_version(db, dataset_id)
+    """Read a paginated preview from a specific or latest uploaded dataset file."""
+    dataset_version = (
+        crud_dataset.get_dataset_version(db, dataset_id, dataset_version_id)
+        if dataset_version_id is not None
+        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    )
     if dataset_version is None:
         raise DatasetPreviewNotFoundError("Không tìm thấy dataset hoặc phiên bản đã upload")
     dataset, version = dataset_version
@@ -935,6 +940,7 @@ def get_dataset_preview(
 
     return DatasetPreviewResponse(
         dataset_id=dataset.id,
+        dataset_version_id=version.id,
         dataset_name=dataset.name,
         original_filename=version.original_filename or path.name,
         file_format=version.file_format.lower(),

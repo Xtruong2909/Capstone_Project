@@ -2,8 +2,17 @@ import uuid
 from datetime import UTC, datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    BigInteger,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.database.database import Base
@@ -47,6 +56,42 @@ class DatasetVersion(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     dataset = relationship("Dataset", back_populates="versions")
     approver = relationship("User", foreign_keys=[approved_by])
+
+
+class DatasetColumnMapping(Base):
+    __tablename__ = "dataset_column_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "dataset_id",
+            "dataset_version_id",
+            name="uq_dataset_column_mapping_version",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dataset_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dataset_version_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    mappings = Column(JSONB, nullable=False)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    dataset = relationship("Dataset")
+    dataset_version = relationship("DatasetVersion")
+    updater = relationship("User", foreign_keys=[updated_by])
 
 
 class DatasetAccessGrant(Base):

@@ -17,7 +17,10 @@ DROP TABLE IF EXISTS experiments CASCADE;
 DROP TABLE IF EXISTS traffic_time_series CASCADE;
 DROP TABLE IF EXISTS dataset_access_grants CASCADE;
 DROP TABLE IF EXISTS data_cleaning_histories CASCADE;
+DROP TABLE IF EXISTS data_quality_issues CASCADE;
+DROP TABLE IF EXISTS data_quality_checks CASCADE;
 DROP TABLE IF EXISTS data_quality_reports CASCADE;
+DROP TABLE IF EXISTS dataset_column_mappings CASCADE;
 DROP TABLE IF EXISTS dataset_versions CASCADE;
 DROP TABLE IF EXISTS datasets CASCADE;
 DROP TABLE IF EXISTS audit_logs CASCADE;
@@ -99,6 +102,56 @@ CREATE TABLE dataset_versions (
     CONSTRAINT uq_dataset_version UNIQUE(dataset_id, version_tag)
 );
 CREATE INDEX idx_dataset_versions_status ON dataset_versions(approval_status);
+
+CREATE TABLE dataset_column_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    mappings JSONB NOT NULL,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_dataset_column_mapping_version
+        UNIQUE(dataset_id, dataset_version_id)
+);
+
+CREATE TABLE data_quality_checks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    started_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+    progress_percent INTEGER NOT NULL DEFAULT 0
+        CHECK (progress_percent BETWEEN 0 AND 100),
+    processed_rows BIGINT NOT NULL DEFAULT 0,
+    total_rows BIGINT,
+    report JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+CREATE INDEX ix_data_quality_checks_dataset_id ON data_quality_checks(dataset_id);
+CREATE INDEX ix_data_quality_checks_dataset_version_id
+    ON data_quality_checks(dataset_version_id);
+CREATE INDEX ix_data_quality_checks_status ON data_quality_checks(status);
+CREATE UNIQUE INDEX uq_data_quality_active_version
+    ON data_quality_checks(dataset_version_id)
+    WHERE status IN ('queued', 'running');
+
+CREATE TABLE data_quality_issues (
+    id BIGSERIAL PRIMARY KEY,
+    check_id UUID NOT NULL REFERENCES data_quality_checks(id) ON DELETE CASCADE,
+    row_number BIGINT,
+    issue_type VARCHAR(32) NOT NULL,
+    column_name VARCHAR(512),
+    message VARCHAR(512) NOT NULL,
+    observed_value VARCHAR(256)
+);
+CREATE INDEX ix_data_quality_issues_check_id ON data_quality_issues(check_id);
+CREATE INDEX ix_data_quality_issues_issue_type ON data_quality_issues(issue_type);
+CREATE INDEX ix_data_quality_issue_check_row
+    ON data_quality_issues(check_id, row_number);
 
 CREATE TABLE data_quality_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

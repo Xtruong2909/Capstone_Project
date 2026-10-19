@@ -3,8 +3,13 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetVersion
+from app.models.dataset import Dataset, DatasetColumnMapping, DatasetVersion
 from app.schemas.dataset import DatasetUploadMetadata
+
+
+def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
+    """Get a dataset by its unique catalog name."""
+    return db.query(Dataset).filter(Dataset.name == name).first()
 
 
 def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, DatasetVersion] | None:
@@ -17,6 +22,77 @@ def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, 
         .first()
     )
     return result
+
+
+def get_dataset_version(
+    db: Session,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+) -> tuple[Dataset, DatasetVersion] | None:
+    """Get a specific version belonging to a dataset."""
+    return (
+        db.query(Dataset, DatasetVersion)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .filter(
+            Dataset.id == dataset_id,
+            DatasetVersion.id == dataset_version_id,
+        )
+        .first()
+    )
+
+
+def get_dataset_column_mapping(
+    db: Session,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+) -> DatasetColumnMapping | None:
+    return (
+        db.query(DatasetColumnMapping)
+        .filter(
+            DatasetColumnMapping.dataset_id == dataset_id,
+            DatasetColumnMapping.dataset_version_id == dataset_version_id,
+        )
+        .first()
+    )
+
+
+def save_dataset_column_mapping(
+    db: Session,
+    *,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+    mappings: list[dict[str, str | None]],
+    user_id: UUID,
+) -> DatasetColumnMapping:
+    saved_mapping = get_dataset_column_mapping(db, dataset_id, dataset_version_id)
+    if saved_mapping is None:
+        saved_mapping = DatasetColumnMapping(
+            dataset_id=dataset_id,
+            dataset_version_id=dataset_version_id,
+            mappings=mappings,
+            updated_by=user_id,
+        )
+        db.add(saved_mapping)
+    else:
+        saved_mapping.dataset_version_id = dataset_version_id
+        saved_mapping.mappings = mappings
+        saved_mapping.updated_by = user_id
+
+    db.add(
+        AuditLog(
+            user_id=user_id,
+            action="CONFIRM_DATASET_COLUMN_MAPPING",
+            resource_type="DATASET",
+            resource_id=str(dataset_id),
+            details={
+                "dataset_version_id": str(dataset_version_id),
+                "mapping_count": len(mappings),
+            },
+        )
+    )
+    db.commit()
+    db.refresh(saved_mapping)
+    return saved_mapping
 
 
 def create_dataset_version(
