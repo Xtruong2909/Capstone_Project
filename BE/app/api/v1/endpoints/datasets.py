@@ -23,6 +23,10 @@ from app.schemas.dataset import (
     DatasetUploadMetadata,
     DatasetUploadResponse,
 )
+from app.services.dataset_mapping_service import (
+    DatasetMappingNotFoundError,
+    apply_saved_column_mappings,
+)
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
     DatasetPreviewNotFoundError,
@@ -54,12 +58,17 @@ def preview_dataset(
 ) -> DatasetPreviewResponse:
     """Read metadata and a paginated sample from the latest dataset version."""
     try:
-        return get_dataset_preview(
+        preview = get_dataset_preview(
             db,
             dataset_id=dataset_id,
             page=page,
             page_size=page_size,
             representation=representation,
+        )
+        return apply_saved_column_mappings(
+            db,
+            dataset_id=dataset_id,
+            preview=preview,
         )
     except DatasetPreviewNotFoundError as exc:
         raise HTTPException(
@@ -74,6 +83,11 @@ def preview_dataset(
     except DatasetPreviewReadError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except DatasetMappingNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
 

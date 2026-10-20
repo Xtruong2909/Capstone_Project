@@ -1,12 +1,21 @@
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetAccessGrant, DatasetVersion
+from app.models.data_quality import DataQualityCheck, DataQualityIssue
+from app.models.dataset import (
+    Dataset,
+    DatasetAccessGrant,
+    DatasetColumnMapping,
+    DatasetVersion,
+)
 from app.models.experiment import EvaluationMetric, Experiment
 from app.models.user import Role, User
 
 __all__ = [
     "AuditLog",
+    "DataQualityCheck",
+    "DataQualityIssue",
     "Dataset",
     "DatasetAccessGrant",
+    "DatasetColumnMapping",
     "DatasetVersion",
     "EvaluationMetric",
     "Experiment",

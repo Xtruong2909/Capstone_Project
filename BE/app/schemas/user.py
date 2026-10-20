@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -54,10 +54,13 @@ class MessageResponse(BaseModel):
     message: str
     reset_token: str | None = None
 
-class VerifyOtpProfileRequest(BaseModel):
-    otp: str = Field(min_length=6, max_length=6)
-
-
 class ChangePasswordProfileRequest(BaseModel):
-    reset_token: str
+    current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=6, max_length=128)
+    confirm_new_password: str = Field(min_length=6, max_length=128)
+
+    @model_validator(mode="after")
+    def passwords_must_match(self) -> "ChangePasswordProfileRequest":
+        if self.new_password != self.confirm_new_password:
+            raise ValueError("Mật khẩu mới và xác nhận mật khẩu không khớp")
+        return self

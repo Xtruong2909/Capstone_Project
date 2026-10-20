@@ -20,12 +20,6 @@ def generate_otp_for_email(email: str) -> str:
         "reset_token": None,
     }
 
-    # Trong môi trường phát triển (Dev/Local), in ra terminal để bạn test trực tiếp
-    print("\n" + "=" * 50)
-    print(f"🔑 [OTP SERVICE] Email: {email} | Mã OTP xác nhận: {otp}")
-    print(f"⏳ Hết hạn lúc: {expires_at.strftime('%H:%M:%S UTC')}")
-    print("=" * 50 + "\n")
-
     return otp
 
 
