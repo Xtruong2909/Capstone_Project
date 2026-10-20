@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -92,6 +93,27 @@ class DatasetColumnMapping(Base):
     dataset = relationship("Dataset")
     dataset_version = relationship("DatasetVersion")
     updater = relationship("User", foreign_keys=[updated_by])
+
+
+class DataCleaningHistory(Base):
+    __tablename__ = "data_cleaning_histories"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    dataset_version_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    step_order = Column(Integer, nullable=False, default=1)
+    cleaning_operation = Column(String(64), nullable=False)
+    parameters = Column(JSONB, nullable=True)
+    records_before = Column(BigInteger, nullable=False, default=0)
+    records_after = Column(BigInteger, nullable=False, default=0)
+    executed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    dataset_version = relationship("DatasetVersion")
+    executor = relationship("User", foreign_keys=[executed_by])
 
 
 class DatasetAccessGrant(Base):

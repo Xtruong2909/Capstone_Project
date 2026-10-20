@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-
+from app.models.dataset import DataCleaningHistory  # Import model đã có sẵn trong init_db
 from app.models.audit import AuditLog
 from app.models.dataset import Dataset, DatasetColumnMapping, DatasetVersion
 from app.schemas.dataset import DatasetUploadMetadata
@@ -156,3 +156,60 @@ def create_dataset_version(
     db.refresh(dataset)
     db.refresh(version)
     return dataset, version
+
+def create_normalized_version(
+    db: Session,
+    *,
+    dataset_id: UUID,
+    new_version_id: UUID,
+    version_tag: str,
+    file_format: str,
+    file_path: str,
+    file_size_bytes: int,
+    total_records: int,
+    records_before: int,
+    user_id: UUID,
+    cleaning_parameters: dict,
+) -> tuple[DatasetVersion, DataCleaningHistory]:
+    # 1. Tạo DatasetVersion mới (ở trạng thái PENDING chờ Admin duyệt)
+    new_version = DatasetVersion(
+        id=new_version_id,
+        dataset_id=dataset_id,
+        version_tag=version_tag,
+        file_format=file_format,
+        data_file_path=file_path,
+        csv_file_path=file_path if file_format == "CSV" else None,
+        parquet_file_path=file_path if file_format == "PARQUET" else None,
+        file_size_bytes=file_size_bytes,
+        total_records=total_records,
+        approval_status="PENDING",
+    )
+    db.add(new_version)
+    # 2. Ghi nhận lịch sử làm sạch vào bảng data_cleaning_histories
+    history = DataCleaningHistory(
+        dataset_version_id=new_version_id,
+        step_order=1,
+        cleaning_operation="PNEUMA_UNPIVOT_AND_NORMALIZE",
+        parameters=cleaning_parameters,
+        records_before=records_before,
+        records_after=total_records,
+        executed_by=user_id,
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(new_version)
+    db.refresh(history)
+    return new_version, history
+
+
+def get_cleaning_history_by_version(
+    db: Session,
+    version_id: UUID,
+) -> DataCleaningHistory | None:
+    """Lấy bản ghi lịch sử làm sạch/chuẩn hóa của phiên bản dataset."""
+    return (
+        db.query(DataCleaningHistory)
+        .filter(DataCleaningHistory.dataset_version_id == version_id)
+        .order_by(DataCleaningHistory.created_at.desc())
+        .first()
+    )

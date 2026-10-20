@@ -1,0 +1,93 @@
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+from app.schemas.dataset_mapping import DatasetColumnMappingInput
+
+
+# =====================================================================
+# BƯỚC 4: CHUẨN HÓA CẤU TRÚC (NORMALIZE STRUCTURE)
+# =====================================================================
+
+class DatasetNormalizeRequest(BaseModel):
+    source_version_id: UUID | None = Field(
+        default=None,
+        description="ID phiên bản dataset gốc cần chuẩn hóa (mặc định lấy v1.0 ban đầu)",
+    )
+    mappings: list[DatasetColumnMappingInput] | None = Field(
+        default=None,
+        description="Danh sách ánh xạ cột (nếu đã cấu hình ở Bước 2 thì để trống)",
+    )
+
+
+class DatasetNormalizeResult(BaseModel):
+    dataset_id: UUID
+    source_version_id: UUID
+    staging_id: UUID
+    status: str = Field(default="normalized")
+    records_before: int = Field(description="Số xe ban đầu trong file gốc")
+    records_after: int = Field(description="Số điểm quỹ đạo sau khi bung dòng (unpivot)")
+    source_columns: list[str]
+    normalized_columns: list[str]
+    message: str = Field(
+        default="Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất phiên bản mới (Export)."
+    )
+
+
+# =====================================================================
+# BƯỚC 5: XUẤT PHIÊN BẢN MỚI (EXPORT NORMALIZED DATASET)
+# =====================================================================
+
+class DatasetExportRequest(BaseModel):
+    staging_id: UUID | None = Field(
+        default=None,
+        description="ID phiên làm việc từ Bước 4 (nếu để trống, hệ thống tự lấy bản chuẩn hóa gần nhất)",
+    )
+    new_version_tag: str | None = Field(
+        default=None,
+        description="Tag phiên bản mới (mặc định tự tăng: v1.0-clean, v1.1...)",
+    )
+    export_format: Literal["PARQUET", "CSV"] = Field(
+        default="PARQUET",
+        description="Định dạng xuất: Khuyên dùng PARQUET để tối ưu dung lượng",
+    )
+    quality_check_id: UUID | None = Field(
+        default=None,
+        description="ID lần kiểm tra chất lượng ở Bước 3 (nếu có để gắn vào báo cáo)",
+    )
+
+
+class DatasetExportResult(BaseModel):
+    dataset_id: UUID
+    version_id: UUID
+    version_tag: str
+    file_format: str
+    file_size_bytes: int
+    total_records: int
+    cleaning_history_id: int
+    message: str = Field(
+        default="Đã xuất và tạo phiên bản dataset mới thành công."
+    )
+
+
+# =====================================================================
+# BƯỚC 6: BÁO CÁO XỬ LÝ TỔNG HỢP (PROCESSING REPORT)
+# =====================================================================
+
+class ProcessingReportResponse(BaseModel):
+    dataset_id: UUID
+    dataset_name: str
+    dataset_code: str
+    version_id: UUID
+    version_tag: str
+    file_format: str
+    file_size_bytes: int
+    file_size_mb: float
+    records_before: int
+    records_after: int
+    cleaning_operation: str
+    applied_mappings: dict
+    quality_check_id: UUID | None
+    created_at: datetime
