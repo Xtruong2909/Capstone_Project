@@ -12,8 +12,12 @@ import AdminUsersPage from './features/admin/pages/AdminUsersPage'
 import AdminDatasetsPage from './features/admin/pages/AdminDatasetsPage'
 import AdminAuditLogsPage from './features/admin/pages/AdminAuditLogsPage'
 
-// Data Engineer workspace
-import EngineerWorkspace from './features/engineer/EngineerWorkspace'
+// Data Engineer features
+import EngineerLayout from './features/engineer/EngineerLayout'
+import EngineerOverviewPage from './features/engineer/pages/EngineerOverviewPage'
+import EngineerCatalogPage from './features/engineer/pages/EngineerCatalogPage'
+import EngineerUploadPage from './features/engineer/pages/EngineerUploadPage'
+import EngineerPreviewPage from './features/engineer/pages/EngineerPreviewPage'
 
 // Other role workspaces
 import RoleDashboardPage from './features/roles/RoleDashboardPage'
@@ -38,9 +42,14 @@ export default function App() {
         </Route>
       </Route>
 
-      {/* Data Engineer Workspace */}
+      {/* Data Engineer Workspace (Protected: only 'data_engineer' role) */}
       <Route element={<ProtectedRoute allowedRoles={['data_engineer']} />}>
-        <Route path="/engineer" element={<EngineerWorkspace />} />
+        <Route path="/engineer" element={<EngineerLayout />}>
+          <Route index element={<EngineerOverviewPage />} />
+          <Route path="datasets" element={<EngineerCatalogPage />} />
+          <Route path="upload" element={<EngineerUploadPage />} />
+          <Route path="preview" element={<EngineerPreviewPage />} />
+        </Route>
       </Route>
 
       {/* Data Scientist Workspace */}
