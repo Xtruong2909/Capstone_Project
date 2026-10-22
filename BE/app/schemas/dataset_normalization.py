@@ -91,3 +91,61 @@ class ProcessingReportResponse(BaseModel):
     applied_mappings: dict
     quality_check_id: UUID | None
     created_at: datetime
+
+
+class DatasetVersionSubmitRequest(BaseModel):
+    note: str | None = Field(
+        default=None,
+        description="Ghi chú gửi cho admin xem xét phiên bản dataset",
+    )
+
+
+class DatasetVersionSubmitResponse(BaseModel):
+    dataset_id: UUID
+    version_id: UUID
+    version_tag: str
+    approval_status: str
+    submitted_by: UUID
+    submitted_at: datetime
+    message: str
+
+
+class DatasetVersionResubmitRequest(BaseModel):
+    note: str | None = Field(
+        default=None,
+        description="Ghi chú khi data engineer gửi lại phiên bản sau khi sửa theo phản hồi từ admin",
+    )
+
+
+class DatasetVersionResubmitResponse(BaseModel):
+    dataset_id: UUID
+    version_id: UUID
+    version_tag: str
+    approval_status: str
+    submitted_by: UUID
+    submitted_at: datetime
+    message: str
+
+
+class DatasetVersionListItem(BaseModel):
+    dataset_id: UUID
+    version_id: UUID
+    version_tag: str
+    approval_status: str
+    submitted_by: UUID | None = None
+    submitted_at: datetime | None = None
+    approved_by: UUID | None = None
+    approval_note: str | None = None
+    created_at: datetime
+
+
+class DatasetVersionStatusResponse(BaseModel):
+    dataset_id: UUID
+    version_id: UUID
+    version_tag: str
+    approval_status: str
+    submitted_by: UUID | None = None
+    submitted_at: datetime | None = None
+    approved_by: UUID | None = None
+    approval_note: str | None = None
+    message: str | None = None

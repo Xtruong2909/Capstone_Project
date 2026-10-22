@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
+from app.models.audit import AuditLog
+from app.models.data_quality import DataQualityCheck
+from app.models.dataset import DataCleaningHistory, DatasetVersion
 from app.models.user import User
 from app.schemas.dataset import (
     DatasetPreviewResponse,
@@ -28,6 +31,12 @@ from app.schemas.dataset_normalization import (
     DatasetExportResult,
     DatasetNormalizeRequest,
     DatasetNormalizeResult,
+    DatasetVersionListItem,
+    DatasetVersionResubmitRequest,
+    DatasetVersionResubmitResponse,
+    DatasetVersionStatusResponse,
+    DatasetVersionSubmitRequest,
+    DatasetVersionSubmitResponse,
     ProcessingReportResponse,
 )
 from app.services.dataset_mapping_service import (
@@ -58,7 +67,7 @@ router = APIRouter()
 
 @router.get(
     "/{dataset_id}/preview",
-    summary="Xem trước dữ liệu dataset",
+    summary="[Bước 1.2] Xem trước dữ liệu dataset đã upload (raw hoặc normalized)",
 )
 def preview_dataset(
     dataset_id: UUID,
@@ -108,7 +117,7 @@ def preview_dataset(
     "/upload",
     response_model=DatasetUploadResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Tải dataset giao thông lên",
+    summary="[Bước 1.1] Tải dataset giao thông lên",
 )
 def upload_dataset(
     request: Request,
@@ -260,4 +269,304 @@ def get_processing_report(
         db=db,
         dataset_id=dataset_id,
         version_id=version_id,
+    )
+
+@router.get(
+    "/versions",
+    response_model=list[DatasetVersionListItem],
+    summary="Danh sách các phiên bản dataset trên toàn hệ thống, có thể lọc theo trạng thái",
+)
+def list_all_dataset_versions(
+    status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED"] | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> list[DatasetVersionListItem]:
+    """Return all dataset versions across the whole system, optionally filtered by approval status."""
+    query = db.query(DatasetVersion)
+    if status is not None:
+        query = query.filter(DatasetVersion.approval_status == status)
+
+    versions = query.order_by(DatasetVersion.created_at.desc()).all()
+    return [
+        DatasetVersionListItem(
+            dataset_id=version.dataset_id,
+            version_id=version.id,
+            version_tag=version.version_tag,
+            approval_status=version.approval_status,
+            submitted_by=version.submitted_by,
+            submitted_at=version.submitted_at,
+            approved_by=version.approved_by,
+            approval_note=version.approval_note,
+            created_at=version.created_at,
+        )
+        for version in versions
+    ]
+
+
+@router.get(
+    "/{dataset_id}/versions",
+    response_model=list[DatasetVersionListItem],
+    summary="Danh sách các versions của dataset_id lọc theo trạng thái phê duyệt",
+)
+def list_dataset_versions(
+    dataset_id: UUID,
+    status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED"] | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> list[DatasetVersionListItem]:
+    """Return all versions for a dataset, optionally filtered by approval status."""
+    query = db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset_id)
+    if status is not None:
+        query = query.filter(DatasetVersion.approval_status == status)
+
+    versions = query.order_by(DatasetVersion.created_at.desc()).all()
+    return [
+        DatasetVersionListItem(
+            dataset_id=version.dataset_id,
+            version_id=version.id,
+            version_tag=version.version_tag,
+            approval_status=version.approval_status,
+            submitted_by=version.submitted_by,
+            submitted_at=version.submitted_at,
+            approved_by=version.approved_by,
+            approval_note=version.approval_note,
+            created_at=version.created_at,
+        )
+        for version in versions
+    ]
+
+
+@router.get(
+    "/{dataset_id}/versions/{version_id}/status",
+    response_model=DatasetVersionStatusResponse,
+    summary="Xem trạng thái và phản hồi phê duyệt của phiên bản dataset",
+)
+def get_dataset_version_status(
+    dataset_id: UUID,
+    version_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> DatasetVersionStatusResponse:
+    """Returns the current review status, submit metadata, and rejection note for a dataset version."""
+    version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.id == version_id,
+            DatasetVersion.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset hoặc phiên bản không thuộc dataset đã cho.",
+        )
+
+    message = None
+    if version.approval_status == "REJECTED":
+        message = "Phiên bản dataset đã bị từ chối bởi admin. Vui lòng xem ghi chú phản hồi để sửa chữa."
+    elif version.approval_status == "APPROVED":
+        message = "Phiên bản dataset đã được admin phê duyệt."
+    elif version.approval_status == "SUBMITTED":
+        message = "Phiên bản dataset đã được gửi cho admin để xét duyệt."
+
+    return DatasetVersionStatusResponse(
+        dataset_id=dataset_id,
+        version_id=version.id,
+        version_tag=version.version_tag,
+        approval_status=version.approval_status,
+        submitted_by=version.submitted_by,
+        submitted_at=version.submitted_at,
+        approved_by=version.approved_by,
+        approval_note=version.approval_note,
+        message=message,
+    )
+
+
+@router.post(
+    "/{dataset_id}/versions/{version_id}/submit",
+    response_model=DatasetVersionSubmitResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Gửi phiên bản dataset cho admin phê duyệt sau khi xem báo cáo",
+)
+def submit_dataset_version_for_admin(
+    dataset_id: UUID,
+    version_id: UUID,
+    payload: DatasetVersionSubmitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> DatasetVersionSubmitResponse:
+    """After reviewing the aggregate report, a data engineer submits the version to admin for approval."""
+    version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.id == version_id,
+            DatasetVersion.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset hoặc phiên bản không thuộc dataset đã cho.",
+        )
+
+    if version.approval_status in {"APPROVED", "REJECTED"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Phiên bản dataset đã có kết quả phê duyệt và không thể gửi lại theo luồng này.",
+        )
+
+    quality_check = None
+    history = (
+        db.query(DataCleaningHistory)
+        .filter(DataCleaningHistory.dataset_version_id == version_id)
+        .order_by(DataCleaningHistory.created_at.desc())
+        .first()
+    )
+    if history and history.parameters:
+        report_quality_check_id = history.parameters.get("quality_check_id")
+        if report_quality_check_id:
+            quality_check = (
+                db.query(DataQualityCheck)
+                .filter(
+                    DataQualityCheck.id == UUID(str(report_quality_check_id)),
+                    DataQualityCheck.dataset_id == dataset_id,
+                    DataQualityCheck.status == "completed",
+                )
+                .first()
+            )
+
+    if quality_check is None:
+        quality_check = (
+            db.query(DataQualityCheck)
+            .filter(
+                DataQualityCheck.dataset_version_id == version_id,
+                DataQualityCheck.dataset_id == dataset_id,
+                DataQualityCheck.status == "completed",
+            )
+            .order_by(DataQualityCheck.completed_at.desc().nullslast())
+            .first()
+        )
+
+    if quality_check is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bạn phải chạy và hoàn thành Data Quality Check trước khi gửi phiên bản cho admin.",
+        )
+
+    has_export_history = (
+        db.query(DataCleaningHistory)
+        .filter(DataCleaningHistory.dataset_version_id == version_id)
+        .first()
+    )
+    if has_export_history is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Phiên bản dataset chưa được export/chuẩn hóa thành phiên bản mới nên không thể submit cho admin.",
+        )
+
+    submitted_at = datetime.now(UTC)
+    version.approval_status = "SUBMITTED"
+    version.submitted_by = current_user.id
+    version.submitted_at = submitted_at
+    version.approved_by = None
+    version.approval_note = payload.note or "Đã gửi cho admin phê duyệt"
+    db.commit()
+    db.refresh(version)
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="SUBMIT_DATASET_FOR_REVIEW",
+            resource_type="DATASET_VERSION",
+            resource_id=str(version.id),
+            details={
+                "dataset_id": str(dataset_id),
+                "version_id": str(version_id),
+                "status": version.approval_status,
+                "note": payload.note,
+            },
+        )
+    )
+    db.commit()
+
+    return DatasetVersionSubmitResponse(
+        dataset_id=dataset_id,
+        version_id=version.id,
+        version_tag=version.version_tag,
+        approval_status=version.approval_status,
+        submitted_by=current_user.id,
+        submitted_at=submitted_at,
+        message="Phiên bản dataset đã được gửi đến admin để phê duyệt.",
+    )
+
+
+@router.post(
+    "/{dataset_id}/versions/{version_id}/resubmit",
+    response_model=DatasetVersionResubmitResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Data Engineer gửi lại phiên bản sau khi admin từ chối",
+)
+def resubmit_dataset_version_for_admin(
+    dataset_id: UUID,
+    version_id: UUID,
+    payload: DatasetVersionResubmitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> DatasetVersionResubmitResponse:
+    """Allow a data engineer to resubmit a rejected dataset version after fixing the issue."""
+    version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.id == version_id,
+            DatasetVersion.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset hoặc phiên bản không thuộc dataset đã cho.",
+        )
+
+    if version.approval_status != "REJECTED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Chỉ phiên bản đã bị từ chối mới có thể gửi lại để admin xem xét.",
+        )
+
+    submitted_at = datetime.now(UTC)
+    version.approval_status = "SUBMITTED"
+    version.submitted_by = current_user.id
+    version.submitted_at = submitted_at
+    version.approved_by = None
+    version.approval_note = payload.note or "Đã sửa theo phản hồi của admin và gửi lại để xem xét."
+    db.commit()
+    db.refresh(version)
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="RESUBMIT_DATASET_FOR_REVIEW",
+            resource_type="DATASET_VERSION",
+            resource_id=str(version.id),
+            details={
+                "dataset_id": str(dataset_id),
+                "version_id": str(version_id),
+                "status": version.approval_status,
+                "note": payload.note,
+            },
+        )
+    )
+    db.commit()
+
+    return DatasetVersionResubmitResponse(
+        dataset_id=dataset_id,
+        version_id=version.id,
+        version_tag=version.version_tag,
+        approval_status=version.approval_status,
+        submitted_by=current_user.id,
+        submitted_at=submitted_at,
+        message="Phiên bản dataset đã được gửi lại cho admin để xét duyệt sau khi sửa theo phản hồi.",
     )

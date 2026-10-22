@@ -32,7 +32,7 @@ router = APIRouter()
     "/{dataset_id}/quality-checks",
     response_model=DataQualityCheckStarted,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Bắt đầu kiểm tra chất lượng dataset",
+    summary="[Bước 3.1] Bắt đầu kiểm tra chất lượng dataset",
 )
 def start_quality_check(
     dataset_id: UUID,
@@ -59,7 +59,7 @@ def start_quality_check(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}",
     response_model=DataQualityCheckStatus,
-    summary="Xem trạng thái tác vụ kiểm tra",
+    summary="[Bước 3.2] Xem trạng thái tác vụ kiểm tra",
 )
 def read_quality_check_status(
     dataset_id: UUID,
@@ -76,7 +76,7 @@ def read_quality_check_status(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}/report",
     response_model=DataQualityReport,
-    summary="Lấy báo cáo Data Quality Check",
+    summary="[Bước 3.3] Lấy báo cáo Data Quality Check",
 )
 def read_quality_check_report(
     dataset_id: UUID,
@@ -95,7 +95,7 @@ def read_quality_check_report(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}/issues",
     response_model=DataQualityIssuesPage,
-    summary="Lấy lỗi kiểm tra có phân trang",
+    summary="[Bước 3.4] Lấy lỗi kiểm tra có phân trang",
 )
 def read_quality_check_issues(
     dataset_id: UUID,

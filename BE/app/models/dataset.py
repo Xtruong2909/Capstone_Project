@@ -52,10 +52,13 @@ class DatasetVersion(Base):
     file_size_bytes = Column(BigInteger, nullable=False, default=0)
     total_records = Column(BigInteger, nullable=False, default=0)
     approval_status = Column(String(32), nullable=False, default="PENDING")
+    submitted_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approval_note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     dataset = relationship("Dataset", back_populates="versions")
+    submitter = relationship("User", foreign_keys=[submitted_by])
     approver = relationship("User", foreign_keys=[approved_by])
 
 

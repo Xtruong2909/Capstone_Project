@@ -211,7 +211,12 @@ def review_dataset(
         ip_address=client_ip,
     )
 
-    return {"message": f"Đã cập nhật trạng thái phiên bản thành {action.status}", "id": str(ver.id)}
+    return {
+        "message": f"Đã cập nhật trạng thái phiên bản thành {action.status}",
+        "id": str(ver.id),
+        "status": ver.approval_status,
+        "note": ver.approval_note,
+    }
 
 
 @router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
