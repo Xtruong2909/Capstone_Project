@@ -40,7 +40,6 @@ def root():
 
 
 @app.get("/health/db", tags=["Health"], summary="Check Database Connection")
-@app.get(f"{API_V1_STR}/health/db", tags=["Health"], summary="Check Database Connection (API v1)")
 def check_database(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))

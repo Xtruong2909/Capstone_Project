@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import DATASET_UPLOAD_DIR, MAX_DATASET_UPLOAD_BYTES
 from app.crud import crud_dataset
-from app.models.dataset import DatasetVersion
+from app.models.dataset import DataCleaningHistory, DatasetVersion
 from app.schemas.dataset import (
     DatasetPreviewColumn,
     DatasetPreviewPagination,
@@ -896,12 +896,17 @@ def get_dataset_preview(
     db: Session,
     *,
     dataset_id: UUID,
+    dataset_version_id: UUID | None = None,
     page: int,
     page_size: int,
     representation: str = "normalized",
 ) -> DatasetPreviewResponse:
-    """Read a paginated preview from the latest uploaded dataset file."""
-    dataset_version = crud_dataset.get_dataset_latest_version(db, dataset_id)
+    """Read a paginated preview from a specific or latest uploaded dataset file."""
+    dataset_version = (
+        crud_dataset.get_dataset_version(db, dataset_id, dataset_version_id)
+        if dataset_version_id is not None
+        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    )
     if dataset_version is None:
         raise DatasetPreviewNotFoundError("Không tìm thấy dataset hoặc phiên bản đã upload")
     dataset, version = dataset_version
@@ -933,16 +938,35 @@ def get_dataset_preview(
         )
         raise DatasetPreviewReadError("Không đọc hoặc phân tích được file dataset") from exc
 
+    has_normalization_history = (
+        db.query(DataCleaningHistory)
+        .filter(DataCleaningHistory.dataset_version_id == version.id)
+        .first()
+        is not None
+    )
+    warnings = preview.warnings
+    actual_representation = preview.representation
+    response_status = "uploaded"
+    if representation == "normalized" and has_normalization_history:
+        actual_representation = "normalized"
+        response_status = "normalized"
+        warnings = [
+            warning
+            for warning in warnings
+            if "Chưa có quy tắc chuẩn hóa" not in warning
+        ]
+
     return DatasetPreviewResponse(
         dataset_id=dataset.id,
+        dataset_version_id=version.id,
         dataset_name=dataset.name,
         original_filename=version.original_filename or path.name,
         file_format=version.file_format.lower(),
         file_size=version.file_size_bytes,
-        status="uploaded",
+        status=response_status,
         detected_structure=preview.detected_structure,
-        representation=preview.representation,
-        warnings=preview.warnings,
+        representation=actual_representation,
+        warnings=warnings,
         columns=preview.columns,
         rows=preview.rows,
         pagination=DatasetPreviewPagination(

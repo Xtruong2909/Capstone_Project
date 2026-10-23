@@ -15,7 +15,15 @@ def get_admin_stats(db: Session) -> dict:
     total_users = db.query(User).count()
     total_roles = db.query(Role).count()
     total_datasets = db.query(Dataset).count()
-    pending_approvals = db.query(DatasetVersion).filter(DatasetVersion.approval_status == "PENDING").count()
+    pending_approvals = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.approval_status == "SUBMITTED",
+            DatasetVersion.submitted_by.is_not(None),
+            DatasetVersion.submitted_at.is_not(None),
+        )
+        .count()
+    )
     total_audit_logs = db.query(AuditLog).count()
 
     return {
@@ -118,7 +126,12 @@ def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 5
     versions = (
         db.query(DatasetVersion, Dataset.name.label("dataset_name"))
         .join(Dataset, DatasetVersion.dataset_id == Dataset.id)
-        .order_by(DatasetVersion.created_at.desc())
+        .filter(
+            DatasetVersion.approval_status == "SUBMITTED",
+            DatasetVersion.submitted_by.is_not(None),
+            DatasetVersion.submitted_at.is_not(None),
+        )
+        .order_by(DatasetVersion.submitted_at.desc().nullslast(), DatasetVersion.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()

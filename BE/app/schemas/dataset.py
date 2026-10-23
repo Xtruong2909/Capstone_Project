@@ -20,6 +20,7 @@ class DatasetPreviewPagination(BaseModel):
 
 class DatasetPreviewResponse(BaseModel):
     dataset_id: UUID
+    dataset_version_id: UUID | None = None
     dataset_name: str
     original_filename: str
     file_format: str
