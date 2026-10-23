@@ -1,10 +1,15 @@
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-
+from app.models.dataset import DataCleaningHistory  # Import model đã có sẵn trong init_db
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetVersion
+from app.models.dataset import Dataset, DatasetColumnMapping, DatasetVersion
 from app.schemas.dataset import DatasetUploadMetadata
+
+
+def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
+    """Get a dataset by its unique catalog name."""
+    return db.query(Dataset).filter(Dataset.name == name).first()
 
 
 def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, DatasetVersion] | None:
@@ -17,6 +22,77 @@ def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, 
         .first()
     )
     return result
+
+
+def get_dataset_version(
+    db: Session,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+) -> tuple[Dataset, DatasetVersion] | None:
+    """Get a specific version belonging to a dataset."""
+    return (
+        db.query(Dataset, DatasetVersion)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .filter(
+            Dataset.id == dataset_id,
+            DatasetVersion.id == dataset_version_id,
+        )
+        .first()
+    )
+
+
+def get_dataset_column_mapping(
+    db: Session,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+) -> DatasetColumnMapping | None:
+    return (
+        db.query(DatasetColumnMapping)
+        .filter(
+            DatasetColumnMapping.dataset_id == dataset_id,
+            DatasetColumnMapping.dataset_version_id == dataset_version_id,
+        )
+        .first()
+    )
+
+
+def save_dataset_column_mapping(
+    db: Session,
+    *,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+    mappings: list[dict[str, str | None]],
+    user_id: UUID,
+) -> DatasetColumnMapping:
+    saved_mapping = get_dataset_column_mapping(db, dataset_id, dataset_version_id)
+    if saved_mapping is None:
+        saved_mapping = DatasetColumnMapping(
+            dataset_id=dataset_id,
+            dataset_version_id=dataset_version_id,
+            mappings=mappings,
+            updated_by=user_id,
+        )
+        db.add(saved_mapping)
+    else:
+        saved_mapping.dataset_version_id = dataset_version_id
+        saved_mapping.mappings = mappings
+        saved_mapping.updated_by = user_id
+
+    db.add(
+        AuditLog(
+            user_id=user_id,
+            action="CONFIRM_DATASET_COLUMN_MAPPING",
+            resource_type="DATASET",
+            resource_id=str(dataset_id),
+            details={
+                "dataset_version_id": str(dataset_version_id),
+                "mapping_count": len(mappings),
+            },
+        )
+    )
+    db.commit()
+    db.refresh(saved_mapping)
+    return saved_mapping
 
 
 def create_dataset_version(
@@ -80,3 +156,60 @@ def create_dataset_version(
     db.refresh(dataset)
     db.refresh(version)
     return dataset, version
+
+def create_normalized_version(
+    db: Session,
+    *,
+    dataset_id: UUID,
+    new_version_id: UUID,
+    version_tag: str,
+    file_format: str,
+    file_path: str,
+    file_size_bytes: int,
+    total_records: int,
+    records_before: int,
+    user_id: UUID,
+    cleaning_parameters: dict,
+) -> tuple[DatasetVersion, DataCleaningHistory]:
+    # 1. Tạo DatasetVersion mới (ở trạng thái PENDING chờ Admin duyệt)
+    new_version = DatasetVersion(
+        id=new_version_id,
+        dataset_id=dataset_id,
+        version_tag=version_tag,
+        file_format=file_format,
+        data_file_path=file_path,
+        csv_file_path=file_path if file_format == "CSV" else None,
+        parquet_file_path=file_path if file_format == "PARQUET" else None,
+        file_size_bytes=file_size_bytes,
+        total_records=total_records,
+        approval_status="PENDING",
+    )
+    db.add(new_version)
+    # 2. Ghi nhận lịch sử làm sạch vào bảng data_cleaning_histories
+    history = DataCleaningHistory(
+        dataset_version_id=new_version_id,
+        step_order=1,
+        cleaning_operation="PNEUMA_UNPIVOT_AND_NORMALIZE",
+        parameters=cleaning_parameters,
+        records_before=records_before,
+        records_after=total_records,
+        executed_by=user_id,
+    )
+    db.add(history)
+    db.commit()
+    db.refresh(new_version)
+    db.refresh(history)
+    return new_version, history
+
+
+def get_cleaning_history_by_version(
+    db: Session,
+    version_id: UUID,
+) -> DataCleaningHistory | None:
+    """Lấy bản ghi lịch sử làm sạch/chuẩn hóa của phiên bản dataset."""
+    return (
+        db.query(DataCleaningHistory)
+        .filter(DataCleaningHistory.dataset_version_id == version_id)
+        .order_by(DataCleaningHistory.created_at.desc())
+        .first()
+    )

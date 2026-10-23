@@ -55,6 +55,10 @@ def create_dataset_upload(
         raise UnsupportedDatasetFormatError(
             "Định dạng không được hỗ trợ. Chấp nhận CSV, JSON, XLS, XLSX và Parquet."
         )
+    if crud_dataset.get_dataset_by_name(db, metadata.name):
+        raise DatasetConflictError(
+            f"Tên dataset '{metadata.name}' đã tồn tại. Vui lòng chọn tên khác."
+        )
 
     dataset_id = uuid4()
     version_id = uuid4()
@@ -95,8 +99,23 @@ def create_dataset_upload(
             )
         except IntegrityError as exc:
             db.rollback()
+            constraint_name = getattr(
+                getattr(exc.orig, "diag", None),
+                "constraint_name",
+                None,
+            )
+            if constraint_name == "datasets_name_key":
+                message = (
+                    f"Tên dataset '{metadata.name}' đã tồn tại. "
+                    "Vui lòng chọn tên khác."
+                )
+            else:
+                message = (
+                    "Không thể tạo dataset do xung đột dữ liệu. "
+                    "Vui lòng kiểm tra lại thông tin và thử lại."
+                )
             raise DatasetConflictError(
-                "Mã dataset, tên dataset hoặc version đã tồn tại"
+                message
             ) from exc
     except Exception:
         absolute_path.unlink(missing_ok=True)
