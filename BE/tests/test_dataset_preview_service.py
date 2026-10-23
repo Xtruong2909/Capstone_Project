@@ -1,5 +1,12 @@
 from pathlib import Path
+from types import SimpleNamespace
+from uuid import uuid4
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from app.models.dataset import DataCleaningHistory
+from app.services import dataset_preview_service
 from app.services.dataset_preview_service import _read_csv
 
 PNEUMA_COLUMNS = [
@@ -103,3 +110,69 @@ def test_tab_csv_and_duplicate_header_are_reported_without_losing_cells(
         {"id": 3, "id_2": None, "label": "bus"},
     ]
     assert any("tên cột trùng" in warning for warning in preview.warnings)
+
+
+def test_exported_normalized_parquet_preview_does_not_warn_about_missing_rule(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    dataset_id = uuid4()
+    version_id = uuid4()
+    parquet_path = tmp_path / "normalized.parquet"
+    pq.write_table(
+        pa.table(
+            {
+                "track_id": [1],
+                "latitude": [37.5],
+                "longitude": [127.0],
+                "speed": [10.0],
+            }
+        ),
+        parquet_path,
+    )
+    version = SimpleNamespace(
+        id=version_id,
+        file_format="PARQUET",
+        original_filename="normalized.parquet",
+        file_size_bytes=parquet_path.stat().st_size,
+    )
+    dataset = SimpleNamespace(id=dataset_id, name="Traffic")
+
+    class FakeQuery:
+        def filter(self, *args: object) -> "FakeQuery":
+            return self
+
+        def first(self) -> object:
+            return SimpleNamespace(id=1)
+
+    class FakeDb:
+        def query(self, model: object) -> FakeQuery:
+            assert model is DataCleaningHistory
+            return FakeQuery()
+
+    monkeypatch.setattr(
+        dataset_preview_service.crud_dataset,
+        "get_dataset_version",
+        lambda db, requested_dataset_id, requested_version_id: (dataset, version),
+    )
+    monkeypatch.setattr(
+        dataset_preview_service,
+        "_resolve_file_path",
+        lambda requested_version: parquet_path,
+    )
+
+    preview = dataset_preview_service.get_dataset_preview(
+        FakeDb(),
+        dataset_id=dataset_id,
+        dataset_version_id=version_id,
+        page=1,
+        page_size=20,
+        representation="normalized",
+    )
+
+    assert preview.status == "normalized"
+    assert preview.representation == "normalized"
+    assert not any("Chưa có quy tắc chuẩn hóa" in warning for warning in preview.warnings)
+    assert preview.rows == [
+        {"track_id": 1, "latitude": 37.5, "longitude": 127.0, "speed": 10.0}
+    ]

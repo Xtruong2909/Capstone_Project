@@ -63,6 +63,36 @@ different name before uploading.
 Existing databases must apply `migrations/20261015_add_dataset_upload_file_metadata.sql`
 before using this endpoint. New databases initialized from `init_db.sql` include the columns.
 
+### Normalize and validate a dataset
+
+`POST /api/v1/datasets/{dataset_id}/normalize?page=1&page_size=20` runs Step 4.1. It applies the
+saved column mappings, creates a normalized staging file, and returns a paginated preview.
+The request body is not needed.
+
+`POST /api/v1/datasets/{dataset_id}/normalize/validate` runs Step 4.2 against the latest
+normalized staging file for that dataset. It returns a completed summary with row counts and
+counts for missing values, duplicate records, out-of-range coordinates, and negative speeds.
+`invalid_rows` counts distinct rows with at least one issue; issue counts can overlap. Latitude
+and longitude are checked against WGS84 bounds. This validation does not modify the staging file.
+
+Example response:
+
+```json
+{
+  "dataset_id": "3cfdf4c5-d7bf-4958-9a14-0cb6bcb02a11",
+  "validation_status": "completed",
+  "total_rows": 2165658,
+  "valid_rows": 2165558,
+  "invalid_rows": 100,
+  "validation_results": {
+    "missing_values": 40,
+    "duplicate_records": 30,
+    "invalid_coordinates": 20,
+    "negative_speed": 10
+  }
+}
+```
+
 ### Dataset preview
 
 `GET /api/v1/datasets/{dataset_id}/preview?page=1&page_size=20&representation=normalized`
@@ -150,6 +180,11 @@ issues; issue values are clipped and API issue details are paginated.
 | `GET` | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/report` | Read the completed aggregate report |
 | `GET` | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/issues?page=1&page_size=50` | Read paginated issue details; optional `issue_type` filter |
 
+Admins can review a specific version's file contents with
+`GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview?page=1&page_size=20&representation=normalized`.
+It returns the same paginated preview shape as the Data Engineer preview endpoint and applies that
+version's saved column mappings. The route is restricted to administrators.
+
 Start a scan in Swagger UI. The response is `202 Accepted`:
 
 ```json
@@ -210,3 +245,8 @@ retries should dispatch these persisted job IDs through a dedicated worker queue
 For an existing database, apply `migrations/20261019_add_data_quality_checks.sql`. New databases
 initialized from `init_db.sql` create the run and issue tables. The scan does not alter, remove,
 or write back to the uploaded dataset file.
+
+Submitting an exported version to admin does not require a separate
+`POST /api/v1/datasets/{dataset_id}/quality-checks` run. The version must still have export /
+normalization history before it can be submitted. The normalized staging validation endpoint
+(`/api/v1/datasets/{dataset_id}/normalize/validate`) can be used separately to inspect the output.

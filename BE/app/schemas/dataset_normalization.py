@@ -4,23 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.dataset_mapping import DatasetColumnMappingInput
-
+from app.schemas.dataset import DatasetPreviewResponse
 
 # =====================================================================
 # BƯỚC 4: CHUẨN HÓA CẤU TRÚC (NORMALIZE STRUCTURE)
 # =====================================================================
-
-class DatasetNormalizeRequest(BaseModel):
-    source_version_id: UUID | None = Field(
-        default=None,
-        description="ID phiên bản dataset gốc cần chuẩn hóa (mặc định lấy v1.0 ban đầu)",
-    )
-    mappings: list[DatasetColumnMappingInput] | None = Field(
-        default=None,
-        description="Danh sách ánh xạ cột (nếu đã cấu hình ở Bước 2 thì để trống)",
-    )
-
 
 class DatasetNormalizeResult(BaseModel):
     dataset_id: UUID
@@ -31,9 +19,26 @@ class DatasetNormalizeResult(BaseModel):
     records_after: int = Field(description="Số điểm quỹ đạo sau khi bung dòng (unpivot)")
     source_columns: list[str]
     normalized_columns: list[str]
+    preview: DatasetPreviewResponse
     message: str = Field(
         default="Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất phiên bản mới (Export)."
     )
+
+
+class NormalizedDataValidationCounts(BaseModel):
+    missing_values: int = Field(ge=0)
+    duplicate_records: int = Field(ge=0)
+    invalid_coordinates: int = Field(ge=0)
+    negative_speed: int = Field(ge=0)
+
+
+class NormalizedDataValidationResponse(BaseModel):
+    dataset_id: UUID
+    validation_status: Literal["completed"]
+    total_rows: int = Field(ge=0)
+    valid_rows: int = Field(ge=0)
+    invalid_rows: int = Field(ge=0)
+    validation_results: NormalizedDataValidationCounts
 
 
 # =====================================================================

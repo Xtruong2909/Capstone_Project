@@ -17,10 +17,14 @@ from app.core.config import DATASET_UPLOAD_DIR
 from app.crud import crud_dataset
 from app.models.dataset import DatasetVersion
 from app.models.user import User
+from app.schemas.dataset import (
+    DatasetPreviewColumn,
+    DatasetPreviewPagination,
+    DatasetPreviewResponse,
+)
 from app.schemas.dataset_normalization import (
     DatasetExportRequest,
     DatasetExportResult,
-    DatasetNormalizeRequest,
     DatasetNormalizeResult,
     ProcessingReportResponse,
 )
@@ -181,67 +185,43 @@ def normalize_dataset_structure_service(
     db: Session,
     *,
     dataset_id: UUID,
-    payload: DatasetNormalizeRequest,
     user: User,
+    page: int = 1,
+    page_size: int = 20,
 ) -> DatasetNormalizeResult:
     # 1. Tìm dataset và version nguồn
-    if payload.source_version_id:
-        version_info = crud_dataset.get_dataset_version(db, dataset_id, payload.source_version_id)
-        if not version_info:
+    source_version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.dataset_id == dataset_id,
+            ~DatasetVersion.version_tag.ilike("%clean%"),
+            ~DatasetVersion.version_tag.ilike("%normalized%"),
+        )
+        .order_by(DatasetVersion.created_at.asc())
+        .first()
+    )
+    if not source_version:
+        dataset_info = crud_dataset.get_dataset_latest_version(db, dataset_id)
+        if not dataset_info:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy phiên bản nguồn đã chỉ định.",
+                detail="Không tìm thấy dataset với mã định danh đã cho.",
             )
-        _dataset, source_version = version_info
-    else:
-        source_version = (
-            db.query(DatasetVersion)
-            .filter(
-                DatasetVersion.dataset_id == dataset_id,
-                ~DatasetVersion.version_tag.ilike("%clean%"),
-                ~DatasetVersion.version_tag.ilike("%normalized%"),
-            )
-            .order_by(DatasetVersion.created_at.asc())
-            .first()
-        )
-        if not source_version:
-            dataset_info = crud_dataset.get_dataset_latest_version(db, dataset_id)
-            if not dataset_info:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Không tìm thấy dataset với mã định danh đã cho.",
-                )
-            _dataset, source_version = dataset_info
+        _dataset, source_version = dataset_info
 
     source_file_path = _resolve_file_path(source_version)
 
     # 2. Lấy hoặc lưu cấu hình Mapping
     rename_map: dict[str, str] = {}
-    if payload.mappings:
-        mapping_dicts = [
-            {"source_column": m.source_column, "target_column": m.target_column}
-            for m in payload.mappings
-        ]
-        crud_dataset.save_dataset_column_mapping(
-            db,
-            dataset_id=dataset_id,
-            dataset_version_id=source_version.id,
-            mappings=mapping_dicts,
-            user_id=user.id,
-        )
-        for m in payload.mappings:
-            if m.source_column and m.target_column:
-                rename_map[m.source_column.strip().lower()] = m.target_column.strip()
-    else:
-        mapping_record = crud_dataset.get_dataset_column_mapping(
-            db, dataset_id, source_version.id
-        )
-        if mapping_record and mapping_record.mappings:
-            for item in mapping_record.mappings:
-                src = str(item.get("source_column", "")).strip().lower()
-                tgt = str(item.get("target_column", "")).strip()
-                if src and tgt:
-                    rename_map[src] = tgt
+    mapping_record = crud_dataset.get_dataset_column_mapping(
+        db, dataset_id, source_version.id
+    )
+    if mapping_record and mapping_record.mappings:
+        for item in mapping_record.mappings:
+            src = str(item.get("source_column", "")).strip().lower()
+            tgt = str(item.get("target_column", "")).strip()
+            if src and tgt:
+                rename_map[src] = tgt
 
     # 3. Chuẩn bị file staging tạm dạng Parquet (để tối ưu RAM và tốc độ)
     staging_id = uuid.uuid4()
@@ -359,6 +339,37 @@ def normalize_dataset_structure_service(
             if parquet_writer:
                 parquet_writer.close()
 
+        parquet_file = pq.ParquetFile(staging_file_path)
+        preview_offset = (page - 1) * page_size
+        preview_rows: list[dict[str, Any]] = []
+        for batch_index, preview_batch in enumerate(
+            parquet_file.iter_batches(batch_size=page_size)
+        ):
+            batch_start = batch_index * page_size
+            batch_end = batch_start + preview_batch.num_rows
+            if batch_end <= preview_offset:
+                continue
+            start_in_batch = max(preview_offset - batch_start, 0)
+            preview_rows = preview_batch.slice(start_in_batch).to_pylist()
+            break
+        preview_columns = [
+            DatasetPreviewColumn(
+                name=field.name,
+                type=(
+                    "integer"
+                    if pa.types.is_integer(field.type)
+                    else "float"
+                    if pa.types.is_floating(field.type)
+                    else "boolean"
+                    if pa.types.is_boolean(field.type)
+                    else "string"
+                    if pa.types.is_string(field.type) or pa.types.is_large_string(field.type)
+                    else str(field.type)
+                ),
+            )
+            for field in parquet_file.schema_arrow
+        ]
+
     except Exception as exc:
         if staging_file_path.exists():
             staging_file_path.unlink(missing_ok=True)
@@ -394,7 +405,31 @@ def normalize_dataset_structure_service(
         records_after=records_after,
         source_columns=source_columns,
         normalized_columns=normalized_columns,
-        message="Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất phiên bản mới (Export).",
+        preview=DatasetPreviewResponse(
+            dataset_id=dataset_id,
+            dataset_version_id=source_version.id,
+            dataset_name=source_version.dataset.name,
+            original_filename=source_version.original_filename or source_file_path.name,
+            file_format="PARQUET",
+            file_size=staging_file_path.stat().st_size,
+            status="normalized",
+            detected_structure="pneuma" if is_pneuma else "tabular",
+            representation="normalized",
+            warnings=[],
+            columns=preview_columns,
+            rows=preview_rows,
+            pagination=DatasetPreviewPagination(
+                page=page,
+                page_size=page_size,
+                returned_rows=len(preview_rows),
+                has_more=page * page_size < records_after,
+                total_rows=records_after,
+            ),
+        ),
+        message=(
+            "Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất phiên bản mới "
+            "(Export)."
+        ),
     )
 
 

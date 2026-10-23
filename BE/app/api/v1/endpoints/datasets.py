@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.audit import AuditLog
-from app.models.data_quality import DataQualityCheck
 from app.models.dataset import DataCleaningHistory, DatasetVersion
 from app.models.user import User
 from app.schemas.dataset import (
@@ -29,7 +28,6 @@ from app.schemas.dataset import (
 from app.schemas.dataset_normalization import (
     DatasetExportRequest,
     DatasetExportResult,
-    DatasetNormalizeRequest,
     DatasetNormalizeResult,
     DatasetVersionListItem,
     DatasetVersionResubmitRequest,
@@ -37,6 +35,7 @@ from app.schemas.dataset_normalization import (
     DatasetVersionStatusResponse,
     DatasetVersionSubmitRequest,
     DatasetVersionSubmitResponse,
+    NormalizedDataValidationResponse,
     ProcessingReportResponse,
 )
 from app.services.dataset_mapping_service import (
@@ -60,6 +59,9 @@ from app.services.dataset_service import (
     EmptyDatasetFileError,
     UnsupportedDatasetFormatError,
     create_dataset_upload,
+)
+from app.services.normalized_data_validation_service import (
+    validate_normalized_dataset_service,
 )
 
 router = APIRouter()
@@ -200,24 +202,40 @@ def upload_dataset(
     "/{dataset_id}/normalize",
     response_model=DatasetNormalizeResult,
     status_code=status.HTTP_200_OK,
-    summary="[Bước 4] Chuẩn hóa cấu trúc và bung dòng dữ liệu",
+    summary="[Bước 4.1] Chuẩn hóa bằng mapping đã lưu và bung dòng dữ liệu",
 )
 def normalize_dataset_structure(
     dataset_id: UUID,
-    payload: DatasetNormalizeRequest,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_data_engineer),
 ) -> DatasetNormalizeResult:
     """
-    Bước 4: Áp dụng column mapping và bung dòng (unpivot) quỹ đạo pNEUMA.
-    Dữ liệu chuẩn hóa được đưa vào vùng đệm Staging, sẵn sàng để xuất phiên bản mới.
+    Bước 4: Dùng mapping đã lưu ở Bước 2, bung dòng (unpivot) quỹ đạo pNEUMA,
+    và trả về bản xem trước dữ liệu đã chuẩn hóa.
     """
     return normalize_dataset_structure_service(
         db=db,
         dataset_id=dataset_id,
-        payload=payload,
         user=current_user,
+        page=page,
+        page_size=page_size,
     )
+
+
+@router.post(
+    "/{dataset_id}/normalize/validate",
+    response_model=NormalizedDataValidationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="[Bước 4.2] Kiểm tra dữ liệu đã chuẩn hóa",
+)
+def validate_normalized_dataset(
+    dataset_id: UUID,
+    current_user: User = Depends(require_data_engineer),
+) -> NormalizedDataValidationResponse:
+    """Check the latest normalized staging output for common data-quality issues."""
+    return validate_normalized_dataset_service(dataset_id=dataset_id)
 
 
 # =====================================================================
@@ -387,7 +405,7 @@ def get_dataset_version_status(
     "/{dataset_id}/versions/{version_id}/submit",
     response_model=DatasetVersionSubmitResponse,
     status_code=status.HTTP_200_OK,
-    summary="Gửi phiên bản dataset cho admin phê duyệt sau khi xem báo cáo",
+    summary="Gửi phiên bản dataset đã export cho admin phê duyệt",
 )
 def submit_dataset_version_for_admin(
     dataset_id: UUID,
@@ -396,7 +414,7 @@ def submit_dataset_version_for_admin(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_data_engineer),
 ) -> DatasetVersionSubmitResponse:
-    """After reviewing the aggregate report, a data engineer submits the version to admin for approval."""
+    """Submit an exported dataset version to an admin for approval."""
     version = (
         db.query(DatasetVersion)
         .filter(
@@ -415,44 +433,6 @@ def submit_dataset_version_for_admin(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Phiên bản dataset đã có kết quả phê duyệt và không thể gửi lại theo luồng này.",
-        )
-
-    quality_check = None
-    history = (
-        db.query(DataCleaningHistory)
-        .filter(DataCleaningHistory.dataset_version_id == version_id)
-        .order_by(DataCleaningHistory.created_at.desc())
-        .first()
-    )
-    if history and history.parameters:
-        report_quality_check_id = history.parameters.get("quality_check_id")
-        if report_quality_check_id:
-            quality_check = (
-                db.query(DataQualityCheck)
-                .filter(
-                    DataQualityCheck.id == UUID(str(report_quality_check_id)),
-                    DataQualityCheck.dataset_id == dataset_id,
-                    DataQualityCheck.status == "completed",
-                )
-                .first()
-            )
-
-    if quality_check is None:
-        quality_check = (
-            db.query(DataQualityCheck)
-            .filter(
-                DataQualityCheck.dataset_version_id == version_id,
-                DataQualityCheck.dataset_id == dataset_id,
-                DataQualityCheck.status == "completed",
-            )
-            .order_by(DataQualityCheck.completed_at.desc().nullslast())
-            .first()
-        )
-
-    if quality_check is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Bạn phải chạy và hoàn thành Data Quality Check trước khi gửi phiên bản cho admin.",
         )
 
     has_export_history = (
