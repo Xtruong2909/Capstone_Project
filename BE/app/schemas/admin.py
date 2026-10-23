@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import IntEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -80,8 +81,19 @@ class DatasetApprovalResponse(BaseModel):
 
 
 class DatasetApprovalAction(BaseModel):
-    status: str  # APPROVED | REJECTED
-    note: str | None = None
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "APPROVED",
+                "note": "Đạt tiêu chuẩn chất lượng",
+            }
+        }
+    )
+
+    status: Literal["APPROVED", "REJECTED"] = Field(
+        description="Chọn APPROVED để phê duyệt hoặc REJECTED để từ chối."
+    )
+    note: str | None = Field(default=None, description="Ghi chú xử lý (không bắt buộc).")
 
 
 class ExperimentMetricsSummary(BaseModel):

@@ -227,9 +227,13 @@ def preview_dataset_version_for_admin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-@router.post("/datasets/{version_id}/review", summary="Phê duyệt hoặc từ chối phiên bản dataset")
+@router.post(
+    "/datasets/{dataset_id}/versions/{id}/review",
+    summary="Phê duyệt hoặc từ chối phiên bản dataset",
+)
 def review_dataset(
-    version_id: UUID,
+    dataset_id: UUID,
+    id: UUID,
     action: DatasetApprovalAction,
     request: Request,
     db: Session = Depends(get_db),
@@ -242,9 +246,20 @@ def review_dataset(
             detail="Trạng thái phê duyệt không hợp lệ (APPROVED hoặc REJECTED)",
         )
 
+    dataset_version = (
+        db.query(DatasetVersion)
+        .filter(DatasetVersion.id == id, DatasetVersion.dataset_id == dataset_id)
+        .first()
+    )
+    if not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset trong dataset này",
+        )
+
     ver = crud_admin.approve_or_reject_dataset_version(
         db,
-        version_id=version_id,
+        version_id=id,
         status=action.status,
         note=action.note,
         admin_id=admin.id,
@@ -273,6 +288,31 @@ def review_dataset(
         "status": ver.approval_status,
         "note": ver.approval_note,
     }
+
+
+@router.post("/datasets/{version_id}/review", include_in_schema=False)
+def review_dataset_legacy(
+    version_id: UUID,
+    action: DatasetApprovalAction,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    dataset_version = db.query(DatasetVersion).filter(DatasetVersion.id == version_id).first()
+    if not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset",
+        )
+
+    return review_dataset(
+        dataset_id=dataset_version.dataset_id,
+        id=version_id,
+        action=action,
+        request=request,
+        db=db,
+        admin=admin,
+    )
 
 
 @router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")

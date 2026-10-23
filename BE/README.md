@@ -54,7 +54,7 @@ Required form fields:
 | `capture_date` | Optional collection date (`YYYY-MM-DD`) |
 
 Dataset code is generated automatically and the initial version is set to `v1.0`.
-Uploads are limited to 1 GiB by default; configure
+Uploads are limited to 2 GiB by default; configure
 `MAX_DATASET_UPLOAD_BYTES` to change the limit and `DATASET_UPLOAD_DIR` to change storage.
 Docker Compose persists uploaded files in the `dataset_uploads` volume.
 Dataset names must be unique. Reusing an existing name returns `409 Conflict`; choose a
