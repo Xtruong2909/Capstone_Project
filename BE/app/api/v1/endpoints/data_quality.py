@@ -8,6 +8,7 @@ from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.user import User
 from app.schemas.data_quality import (
+    DataQualityCheckRequest,
     DataQualityCheckStarted,
     DataQualityCheckStatus,
     DataQualityIssuesPage,
@@ -39,6 +40,7 @@ def start_quality_check(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_data_engineer),
+    payload: DataQualityCheckRequest | None = None,
 ) -> DataQualityCheckStarted:
     try:
         started, _ = start_data_quality_check(
@@ -52,7 +54,11 @@ def start_quality_check(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DataQualitySchemaError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    background_tasks.add_task(run_data_quality_check, started.check_id)
+    background_tasks.add_task(
+        run_data_quality_check,
+        started.check_id,
+        outlier_rules=payload.outlier_rules if payload else None,
+    )
     return started
 
 
