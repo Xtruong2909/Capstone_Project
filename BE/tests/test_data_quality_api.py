@@ -1,8 +1,14 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+from fastapi import BackgroundTasks
+from pydantic import ValidationError
+
+from app.api.v1.endpoints import data_quality as quality_api
 from app.api.v1.endpoints import datasets
 from app.api.v1.endpoints.data_quality import router
+from app.schemas.data_quality import DataQualityCheckRequest, DataQualityOutlierRule
 from app.schemas.dataset_normalization import DatasetVersionSubmitRequest
 
 
@@ -133,3 +139,61 @@ def test_admin_can_preview_a_specific_dataset_version() -> None:
     assert parameters["page"]["schema"]["default"] == 1
     assert parameters["page_size"]["schema"]["default"] == 20
     assert parameters["representation"]["schema"]["default"] == "normalized"
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_quality_check_passes_optional_rules_to_existing_worker(
+    monkeypatch: pytest.MonkeyPatch, configured: bool,
+) -> None:
+    started = SimpleNamespace(id=uuid4(), check_id=uuid4())
+    monkeypatch.setattr(quality_api, "start_data_quality_check", lambda *args, **kwargs: (started, None))
+    tasks = BackgroundTasks()
+    payload = DataQualityCheckRequest(outlier_rules=[DataQualityOutlierRule(
+        field="speed", max_value=10, unit="km/h", basis="Synthetic test only",
+    )]) if configured else None
+
+    response = quality_api.start_quality_check(
+        dataset_id=uuid4(), background_tasks=tasks, db=object(),
+        current_user=SimpleNamespace(id=uuid4()), payload=payload,
+    )
+
+    assert response is started
+    assert len(tasks.tasks) == 1
+    assert tasks.tasks[0].func is quality_api.run_data_quality_check
+    assert tasks.tasks[0].args == (started.check_id,)
+    assert tasks.tasks[0].kwargs["outlier_rules"] == (payload.outlier_rules if payload else None)
+
+
+@pytest.mark.parametrize("changes", [
+    {"max_value": None}, {"min_value": 11}, {"max_value": float("inf")},
+    {"max_value": float("-inf")}, {"max_value": float("nan")},
+    {"max_value": True}, {"field": "latitude"}, {"unit": "m/s^2"},
+    {"basis": " "}, {"max_value": -1}, {"min_value": -1}, {"unknown": 10},
+])
+def test_outlier_configuration_rejects_invalid_bounds_units_and_basis(changes: dict) -> None:
+    rule = {"field": "speed", "max_value": 10, "unit": "km/h", "basis": "Synthetic test"}
+    rule.update(changes)
+    with pytest.raises(ValidationError):
+        DataQualityCheckRequest.model_validate({"outlier_rules": [rule]})
+
+
+def test_outlier_configuration_rejects_duplicate_fields_and_missing_basis() -> None:
+    rule = {"field": "speed", "max_value": 10, "unit": "km/h", "basis": "Synthetic test"}
+    with pytest.raises(ValidationError):
+        DataQualityCheckRequest.model_validate({"outlier_rules": [rule, rule]})
+    rule.pop("basis")
+    with pytest.raises(ValidationError):
+        DataQualityCheckRequest.model_validate({"outlier_rules": [rule]})
+
+
+def test_outlier_request_is_optional_in_existing_api_contract() -> None:
+    from app.main import app
+
+    spec = app.openapi()
+    request = spec["paths"]["/api/v1/datasets/{dataset_id}/quality-checks"]["post"]["requestBody"]
+    assert not request.get("required", False)
+    assert "outlier_rules" in spec["components"]["schemas"]["DataQualityCheckRequest"]["properties"]
+    assert spec["components"]["schemas"]["DataQualityCheckRequest"]["examples"] == [
+        {"outlier_rules": []}
+    ]
+    assert "severity" in spec["components"]["schemas"]["DataQualityIssueItem"]["properties"]
