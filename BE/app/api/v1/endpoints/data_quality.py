@@ -8,6 +8,7 @@ from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.user import User
 from app.schemas.data_quality import (
+    DataQualityCheckRequest,
     DataQualityCheckStarted,
     DataQualityCheckStatus,
     DataQualityIssuesPage,
@@ -32,13 +33,14 @@ router = APIRouter()
     "/{dataset_id}/quality-checks",
     response_model=DataQualityCheckStarted,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Bắt đầu kiểm tra chất lượng dataset",
+    summary="[Bước 3.1] Bắt đầu kiểm tra chất lượng dataset",
 )
 def start_quality_check(
     dataset_id: UUID,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_data_engineer),
+    payload: DataQualityCheckRequest | None = None,
 ) -> DataQualityCheckStarted:
     try:
         started, _ = start_data_quality_check(
@@ -52,14 +54,18 @@ def start_quality_check(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except DataQualitySchemaError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    background_tasks.add_task(run_data_quality_check, started.check_id)
+    background_tasks.add_task(
+        run_data_quality_check,
+        started.check_id,
+        outlier_rules=payload.outlier_rules if payload else None,
+    )
     return started
 
 
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}",
     response_model=DataQualityCheckStatus,
-    summary="Xem trạng thái tác vụ kiểm tra",
+    summary="[Bước 3.2] Xem trạng thái tác vụ kiểm tra",
 )
 def read_quality_check_status(
     dataset_id: UUID,
@@ -76,7 +82,7 @@ def read_quality_check_status(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}/report",
     response_model=DataQualityReport,
-    summary="Lấy báo cáo Data Quality Check",
+    summary="[Bước 3.3] Lấy báo cáo Data Quality Check",
 )
 def read_quality_check_report(
     dataset_id: UUID,
@@ -95,7 +101,7 @@ def read_quality_check_report(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}/issues",
     response_model=DataQualityIssuesPage,
-    summary="Lấy lỗi kiểm tra có phân trang",
+    summary="[Bước 3.4] Lấy lỗi kiểm tra có phân trang",
 )
 def read_quality_check_issues(
     dataset_id: UUID,

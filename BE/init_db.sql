@@ -96,6 +96,8 @@ CREATE TABLE dataset_versions (
     file_size_bytes BIGINT NOT NULL DEFAULT 0,
     total_records BIGINT NOT NULL DEFAULT 0,
     approval_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    submitted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    submitted_at TIMESTAMPTZ,
     approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
     approval_note TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

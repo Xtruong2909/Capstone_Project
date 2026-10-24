@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from itertools import chain, islice
 from pathlib import Path
+from time import monotonic
 from typing import Any
 from uuid import UUID
 
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import crud_data_quality, crud_dataset
 from app.database.database import SessionLocal
-from app.models.data_quality import DataQualityCheck, DataQualityIssue
+from app.models.data_quality import DataQualityCheck
 from app.models.dataset import DatasetColumnMapping, DatasetVersion
 from app.models.user import User
 from app.schemas.data_quality import (
@@ -34,6 +35,7 @@ from app.schemas.data_quality import (
     DataQualityIssueCount,
     DataQualityIssueItem,
     DataQualityIssuesPage,
+    DataQualityOutlierRule,
     DataQualityReport,
 )
 from app.services.dataset_preview_service import (
@@ -48,7 +50,10 @@ MAX_COLUMNS = 512
 SAMPLE_ROWS = 1000
 DB_BATCH_SIZE = 1000
 PROGRESS_BATCH_SIZE = 5000
+PROGRESS_INTERVAL_SECONDS = 2.0
+PROGRESS_POINT_BATCH_SIZE = 1024
 NULL_TOKENS = {"", "null", "none", "nan"}
+OUTLIER_FIELDS = {"speed", "avg_speed", "lon_acc", "lat_acc"}
 ALIASES = {
     "track_id": {"track_id", "vehicle_id", "trackid", "vehicleid"},
     "timestamp": {"timestamp", "time", "timestamp_ms"},
@@ -264,6 +269,7 @@ def get_data_quality_issues(
             DataQualityIssueItem(
                 row_number=issue.row_number,
                 issue_type=issue.issue_type,
+                severity="warning" if issue.issue_type == "outlier" else "error",
                 column_name=issue.column_name,
                 message=issue.message,
                 observed_value=issue.observed_value,
@@ -660,32 +666,13 @@ def _semantic_sources(
     return result
 
 
-def _add_report_issue(
-    db: Session,
-    check_id: UUID,
-    *,
-    row_number: int | None,
-    issue_type: str,
-    column_name: str | None,
-    message: str,
-    observed_value: Any = None,
-) -> None:
-    issue = DataQualityIssue(
-        check_id=check_id,
-        row_number=row_number,
-        issue_type=issue_type,
-        column_name=column_name,
-        message=message[:512],
-        observed_value=None if observed_value is None else _string_value(observed_value),
-    )
-    db.add(issue)
-
-
 def _run_check(
     check_id: UUID,
     path: Path,
     version: DatasetVersion,
     mappings: dict[str, str],
+    *,
+    outlier_rules: list[DataQualityOutlierRule] | None = None,
 ) -> None:
     db = SessionLocal()
     temp_dir = tempfile.TemporaryDirectory(prefix="traffic-quality-")
@@ -706,20 +693,26 @@ def _run_check(
 
         error_totals: Counter[str] = Counter()
         column_errors: Counter[str] = Counter()
+        warning_totals: Counter[str] = Counter()
+        column_warnings: Counter[str] = Counter()
+        rules_by_field = {rule.field: rule for rule in outlier_rules or []}
         missing_by_column: Counter[str] = Counter()
         total_values_by_column: Counter[str] = Counter()
         missing_required: list[str] = []
         schema_invalid = False
         total_rows = 0
         processed = 0
-        pending_issues = 0
+        pending_issues: list[dict[str, Any]] = []
+        row_issue_types: set[str] = set()
+        row_has_error = False
+        last_progress_at = monotonic()
 
         with _open_records(path, version.file_format) as (
             headers,
             header_issues,
             structure,
             records,
-            _known_total,
+            known_total,
         ):
             is_pneuma = structure == "pneuma_wide_trajectory"
             schema_invalid = bool(header_issues)
@@ -730,7 +723,9 @@ def _run_check(
                 if logical_sources[required] is None
             ]
             schema_invalid = schema_invalid or bool(missing_required)
-            sample = list(islice(records, SAMPLE_ROWS))
+            # pNEUMA has a fixed numeric schema. Sampling 1,000 entire trajectories
+            # delays all validation and can retain millions of point values in RAM.
+            sample = [] if is_pneuma else list(islice(records, SAMPLE_ROWS))
             sample_values = [values for _, values, parse_error in sample if parse_error is None]
             expected_types = _infer_column_types(
                 headers,
@@ -739,6 +734,30 @@ def _run_check(
                 is_pneuma,
             )
 
+            def flush_issues() -> None:
+                crud_data_quality.insert_issues(db, pending_issues)
+                pending_issues.clear()
+
+            def publish_progress(*, force: bool = False) -> None:
+                nonlocal last_progress_at
+                now = monotonic()
+                if not force and now - last_progress_at < PROGRESS_INTERVAL_SECONDS:
+                    return
+                flush_issues()
+                current_check = db.query(DataQualityCheck).filter(
+                    DataQualityCheck.id == check_id
+                ).one()
+                current_check.processed_rows = processed
+                current_check.total_rows = known_total
+                current_check.progress_percent = (
+                    max(1, min(95, processed * 95 // known_total))
+                    if known_total
+                    else min(95, 5 + processed // PROGRESS_BATCH_SIZE)
+                )
+                db.commit()
+                disk_state.commit()
+                last_progress_at = now
+
             def add_issue(
                 row_number: int | None,
                 issue_type: str,
@@ -746,34 +765,75 @@ def _run_check(
                 message: str,
                 observed_value: Any = None,
             ) -> None:
-                nonlocal pending_issues
-                _add_report_issue(
-                    db,
-                    check_id,
-                    row_number=row_number,
-                    issue_type=issue_type,
-                    column_name=column_name,
-                    message=message,
-                    observed_value=observed_value,
-                )
-                error_totals[issue_type] += 1
+                nonlocal row_has_error
+                pending_issues.append({
+                    "check_id": check_id,
+                    "row_number": row_number,
+                    "issue_type": issue_type,
+                    "column_name": column_name,
+                    "message": message[:512],
+                    "observed_value": (
+                        None if observed_value is None else _string_value(observed_value)
+                    ),
+                })
+                is_warning = issue_type == "outlier"
+                totals = warning_totals if is_warning else error_totals
+                columns = column_warnings if is_warning else column_errors
+                totals[issue_type] += 1
                 if column_name:
-                    column_errors[column_name] += 1
+                    columns[column_name] += 1
                 if row_number is not None:
-                    disk_state.execute(
-                        "INSERT OR IGNORE INTO affected_rows(row_number) VALUES (?)",
-                        (row_number,),
-                    )
-                    disk_state.execute(
-                        "INSERT OR IGNORE INTO issue_affected_rows "
-                        "(issue_type, row_number) VALUES (?, ?)",
-                        (issue_type, row_number),
-                    )
-                pending_issues += 1
-                if pending_issues >= DB_BATCH_SIZE:
+                    if not is_warning and not row_has_error:
+                        disk_state.execute(
+                            "INSERT OR IGNORE INTO affected_rows(row_number) VALUES (?)",
+                            (row_number,),
+                        )
+                        row_has_error = True
+                    if issue_type not in row_issue_types:
+                        disk_state.execute(
+                            "INSERT OR IGNORE INTO issue_affected_rows "
+                            "(issue_type, row_number) VALUES (?, ?)",
+                            (issue_type, row_number),
+                        )
+                        row_issue_types.add(issue_type)
+                if len(pending_issues) >= DB_BATCH_SIZE:
+                    flush_issues()
                     db.commit()
                     disk_state.commit()
-                    pending_issues = 0
+
+            def check_outlier(
+                row_number: int,
+                column_name: str,
+                field_name: str,
+                value: Any,
+                *,
+                number: float | None = None,
+            ) -> None:
+                rule = rules_by_field.get(field_name)
+                if rule is None or _is_missing(value) or isinstance(value, bool):
+                    return
+                if number is None:
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError, OverflowError):
+                        return
+                if not math.isfinite(number):
+                    return
+                # Negative speeds remain errors, not duplicate outlier warnings.
+                if field_name in {"speed", "avg_speed"} and number < 0:
+                    return
+                if (
+                    rule.min_value is not None and number < rule.min_value
+                    or rule.max_value is not None and number > rule.max_value
+                ):
+                    add_issue(
+                        row_number,
+                        "outlier",
+                        column_name,
+                        f"{field_name} ngoài ngưỡng cấu hình "
+                        f"[{rule.min_value}, {rule.max_value}] {rule.unit}",
+                        value,
+                    )
 
             for header_issue in header_issues:
                 add_issue(None, "invalid_format", None, header_issue)
@@ -791,7 +851,8 @@ def _run_check(
             all_records = chain(sample, records)
             for row_number, raw_values, parse_error in all_records:
                 total_rows += 1
-                processed += 1
+                row_issue_types.clear()
+                row_has_error = False
                 if parse_error is not None:
                     add_issue(
                         row_number,
@@ -801,6 +862,8 @@ def _run_check(
                         parse_error,
                     )
                     if not raw_values:
+                        processed += 1
+                        publish_progress(force=processed % PROGRESS_BATCH_SIZE == 0)
                         continue
 
                 values = list(raw_values)
@@ -886,8 +949,22 @@ def _run_check(
                                     "Giá trị không khớp kiểu dữ liệu pNEUMA",
                                     value,
                                 )
+                            elif field_name == "avg_speed" and number < 0:
+                                add_issue(
+                                    row_number,
+                                    "negative_speed",
+                                    field_name,
+                                    "Tốc độ phải >= 0",
+                                    value,
+                                )
+                            if valid_number and field_name in rules_by_field:
+                                check_outlier(
+                                    row_number, field_name, field_name, value, number=number
+                                )
                     point_start = 4
                     for point_index in range(point_count):
+                        if point_index and point_index % PROGRESS_POINT_BATCH_SIZE == 0:
+                            publish_progress()
                         start = point_start + point_index * len(PNEUMA_POINT_FIELDS)
                         point_values = values[start : start + len(PNEUMA_POINT_FIELDS)]
                         if len(point_values) < len(PNEUMA_POINT_FIELDS):
@@ -936,6 +1013,14 @@ def _run_check(
                                     "Giá trị không phải số hữu hạn",
                                     value,
                                 )
+                            elif field_name == "speed" and number < 0:
+                                add_issue(
+                                    row_number,
+                                    "negative_speed",
+                                    field_name,
+                                    "Tốc độ phải >= 0",
+                                    value,
+                                )
                             elif field_name == "time" and number < 0:
                                 add_issue(
                                     row_number,
@@ -954,6 +1039,10 @@ def _run_check(
                                         f"Giá trị nằm ngoài miền [-{limit}, {limit}]",
                                         value,
                                     )
+                            if valid_number and field_name in rules_by_field:
+                                check_outlier(
+                                    row_number, field_name, field_name, value, number=number
+                                )
                 else:
                     row = {
                         header: values[index] if index < len(values) else None
@@ -1017,19 +1106,31 @@ def _run_check(
                                 value,
                             )
 
-                if processed % PROGRESS_BATCH_SIZE == 0:
-                    db.flush()
-                    check = db.query(DataQualityCheck).filter(
-                        DataQualityCheck.id == check_id
-                    ).one()
-                    check.processed_rows = processed
-                    check.progress_percent = min(
-                        95,
-                        5 + processed // PROGRESS_BATCH_SIZE,
-                    )
-                    db.commit()
-                    disk_state.commit()
+                        # Preserve source column names and validate finiteness before sign.
+                        if (
+                            {header.lower(), logical_name} & {"speed", "avg_speed"}
+                            and _value_matches_type(value, "number")
+                            and float(value) < 0
+                        ):
+                            add_issue(
+                                row_number,
+                                "negative_speed",
+                                header,
+                                "Tốc độ phải >= 0",
+                                value,
+                            )
 
+                        # Mapping takes precedence; retain canonical source names as fallback.
+                        outlier_field = (
+                            logical_name if logical_name in OUTLIER_FIELDS else header.lower()
+                        )
+                        if outlier_field in rules_by_field:
+                            check_outlier(row_number, header, outlier_field, value)
+
+                processed += 1
+                publish_progress(force=processed % PROGRESS_BATCH_SIZE == 0)
+
+            flush_issues()
         db.commit()
         disk_state.commit()
         affected_total = disk_state.execute(
@@ -1049,6 +1150,11 @@ def _run_check(
             )
         if schema_invalid:
             affected_total = max(affected_total, total_rows)
+
+        warning_rows = disk_state.execute(
+            "SELECT COUNT(DISTINCT row_number) FROM issue_affected_rows "
+            "WHERE issue_type = 'outlier'"
+        ).fetchone()[0]
 
         column_summary = [
             DataQualityColumnCount(
@@ -1073,6 +1179,16 @@ def _run_check(
             "valid_rows": max(0, total_rows - affected_total),
             "invalid_rows": min(total_rows, affected_total),
             "total_errors": sum(error_totals.values()),
+            "total_warnings": sum(warning_totals.values()),
+            "warning_rows": warning_rows,
+            "warnings_by_type": {
+                "outlier": {
+                    "total_warnings": warning_totals["outlier"],
+                    "affected_rows": warning_rows,
+                }
+            } if warning_totals else {},
+            "warnings_by_column": dict(column_warnings),
+            "outlier_rules": [rule.model_dump() for rule in outlier_rules or []],
             "errors_by_type": {
                 issue_type: count.model_dump()
                 for issue_type, count in errors_by_type.items()
@@ -1116,7 +1232,11 @@ def _run_check(
         db.close()
 
 
-def run_data_quality_check(check_id: UUID) -> None:
+def run_data_quality_check(
+    check_id: UUID,
+    *,
+    outlier_rules: list[DataQualityOutlierRule] | None = None,
+) -> None:
     db = SessionLocal()
     try:
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
@@ -1132,7 +1252,7 @@ def run_data_quality_check(check_id: UUID) -> None:
         _, version = result
         path = _version_path(version)
         mappings = _get_mappings(db, check.dataset_id, check.dataset_version_id)
-        _run_check(check_id, path, version, mappings)
+        _run_check(check_id, path, version, mappings, outlier_rules=outlier_rules)
     except Exception:
         logger.exception("Could not start data quality worker", extra={"check_id": str(check_id)})
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()

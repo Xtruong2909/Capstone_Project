@@ -26,7 +26,7 @@ router = APIRouter()
 @router.get(
     "/{dataset_id}/columns",
     response_model=DatasetColumnsResponse,
-    summary="Lấy danh sách cột của dataset",
+    summary="[Bước 2.1] Lấy danh sách cột của dataset",
 )
 def list_dataset_columns(
     dataset_id: UUID,
@@ -50,7 +50,7 @@ def list_dataset_columns(
 @router.patch(
     "/{dataset_id}/column-mappings",
     response_model=DatasetColumnMappingsResponse,
-    summary="Tạo hoặc cập nhật ánh xạ tên cột",
+    summary="[Bước 2.2] Tạo hoặc cập nhật ánh xạ tên cột",
 )
 def update_dataset_column_mappings(
     dataset_id: UUID,
@@ -85,7 +85,7 @@ def update_dataset_column_mappings(
 @router.get(
     "/{dataset_id}/column-mappings",
     response_model=DatasetColumnMappingsResponse,
-    summary="Lấy ánh xạ cột đã lưu",
+    summary="[Bước 2.3] Lấy ánh xạ cột đã lưu",
 )
 def read_dataset_column_mappings(
     dataset_id: UUID,

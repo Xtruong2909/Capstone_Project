@@ -1,8 +1,9 @@
 import secrets
 import smtplib
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_admin
@@ -22,7 +23,18 @@ from app.schemas.admin import (
     UserCreate,
     UserStatusUpdate,
 )
+from app.schemas.dataset import DatasetPreviewResponse
 from app.schemas.user import UserResponse
+from app.services.dataset_mapping_service import (
+    DatasetMappingNotFoundError,
+    apply_saved_column_mappings,
+)
+from app.services.dataset_preview_service import (
+    DatasetPreviewFormatError,
+    DatasetPreviewNotFoundError,
+    DatasetPreviewReadError,
+    get_dataset_preview,
+)
 from app.services.email_service import EmailConfigurationError, send_initial_credentials
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -171,9 +183,57 @@ def list_datasets_for_approval(
     return [DatasetApprovalResponse(**d) for d in datasets]
 
 
-@router.post("/datasets/{version_id}/review", summary="Phê duyệt hoặc từ chối phiên bản dataset")
+@router.get(
+    "/datasets/{dataset_id}/versions/{id}/preview",
+    response_model=DatasetPreviewResponse,
+    summary="Admin xem trước nội dung phiên bản dataset",
+)
+def preview_dataset_version_for_admin(
+    dataset_id: UUID,
+    id: UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+) -> DatasetPreviewResponse:
+    """Read a paginated preview of a specific dataset version for admin review."""
+    try:
+        preview = get_dataset_preview(
+            db,
+            dataset_id=dataset_id,
+            dataset_version_id=id,
+            page=page,
+            page_size=page_size,
+            representation=representation,
+        )
+        return apply_saved_column_mappings(
+            db,
+            dataset_id=dataset_id,
+            preview=preview,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetPreviewFormatError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(exc),
+        ) from exc
+    except DatasetPreviewReadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except DatasetMappingNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/datasets/{dataset_id}/versions/{id}/review",
+    summary="Phê duyệt hoặc từ chối phiên bản dataset",
+)
 def review_dataset(
-    version_id: UUID,
+    dataset_id: UUID,
+    id: UUID,
     action: DatasetApprovalAction,
     request: Request,
     db: Session = Depends(get_db),
@@ -186,9 +246,20 @@ def review_dataset(
             detail="Trạng thái phê duyệt không hợp lệ (APPROVED hoặc REJECTED)",
         )
 
+    dataset_version = (
+        db.query(DatasetVersion)
+        .filter(DatasetVersion.id == id, DatasetVersion.dataset_id == dataset_id)
+        .first()
+    )
+    if not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset trong dataset này",
+        )
+
     ver = crud_admin.approve_or_reject_dataset_version(
         db,
-        version_id=version_id,
+        version_id=id,
         status=action.status,
         note=action.note,
         admin_id=admin.id,
@@ -211,7 +282,37 @@ def review_dataset(
         ip_address=client_ip,
     )
 
-    return {"message": f"Đã cập nhật trạng thái phiên bản thành {action.status}", "id": str(ver.id)}
+    return {
+        "message": f"Đã cập nhật trạng thái phiên bản thành {action.status}",
+        "id": str(ver.id),
+        "status": ver.approval_status,
+        "note": ver.approval_note,
+    }
+
+
+@router.post("/datasets/{version_id}/review", include_in_schema=False)
+def review_dataset_legacy(
+    version_id: UUID,
+    action: DatasetApprovalAction,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    dataset_version = db.query(DatasetVersion).filter(DatasetVersion.id == version_id).first()
+    if not dataset_version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy phiên bản dataset",
+        )
+
+    return review_dataset(
+        dataset_id=dataset_version.dataset_id,
+        id=version_id,
+        action=action,
+        request=request,
+        db=db,
+        admin=admin,
+    )
 
 
 @router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
