@@ -54,7 +54,7 @@ Required form fields:
 | `capture_date` | Optional collection date (`YYYY-MM-DD`) |
 
 Dataset code is generated automatically and the initial version is set to `v1.0`.
-Uploads are limited to 1 GiB by default; configure
+Uploads are limited to 2 GiB by default; configure
 `MAX_DATASET_UPLOAD_BYTES` to change the limit and `DATASET_UPLOAD_DIR` to change storage.
 Docker Compose persists uploaded files in the `dataset_uploads` volume.
 Dataset names must be unique. Reusing an existing name returns `409 Conflict`; choose a
@@ -173,6 +173,18 @@ disk-backed temporary SQLite index tracks full-row duplicates and affected row n
 sets are not held in application memory. The database stores the run state, report, and individual
 issues; issue values are clipped and API issue details are paginated.
 
+pNEUMA's fixed schema is validated directly without preloading a sample of whole trajectories.
+Issue details are inserted in bounded batches of 1,000 through the CRUD layer, and each affected
+row/type is indexed only once per source row. All individual findings are retained, including
+multiple findings in the same trajectory; batching does not truncate the report or issue list.
+
+Progress is persisted approximately every two seconds of validation, or every 5,000 completed
+source rows, whichever occurs first. Long pNEUMA rows also check the timer every 1,024 points.
+`processed_rows` counts completed source rows, not trajectory points. For formats with known row
+counts, progress uses that total; otherwise the percentage is an estimate until completion.
+Blocking file/database I/O can delay an update. Swagger does not poll automatically: execute the
+status GET again to see the latest persisted progress.
+
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
 | `POST` | `/api/v1/datasets/{dataset_id}/quality-checks` | Queue a scan for the latest dataset version |
@@ -227,13 +239,102 @@ Poll the status route until `status` is `completed` or `failed`. Then fetch the 
 }
 ```
 
-`total_errors` counts individual findings, while `invalid_rows` counts distinct data rows with at
-least one finding; therefore a row with multiple errors contributes once to `invalid_rows`.
+`total_errors` counts individual errors, while `invalid_rows` counts distinct data rows with at
+least one error; therefore a row with multiple errors contributes once to `invalid_rows`.
+Outlier warnings are counted separately and do not invalidate a row.
 Required trajectory fields are detected using source names and saved column mappings. Supported
 aliases include `track_id`/`vehicle_id` and `timestamp`/`time`/`timestamp_ms`. pNEUMA's exact wide
 trajectory header is recognized and checked as one source row per vehicle track, including each
 repeated point group; relative `time` values are checked as finite, non-negative seconds, and no
 reshape or data cleanup is performed. Latitude/longitude fields are checked against WGS84 bounds.
+
+#### Rule-based outlier warnings
+
+The same `POST /api/v1/datasets/{dataset_id}/quality-checks` accepts an **optional** JSON body
+with an `outlier_rules` array. Omitting the body, sending `{}`, or sending `{"outlier_rules": []}`
+keeps outlier detection disabled. There are **no default production thresholds**: the operator
+must supply bounds supported by the dataset, a research reference, or an approved domain rule.
+The service validates configuration syntax, not the scientific validity of the supplied basis.
+Swagger's request example is `{"outlier_rules": []}` so executing the example does not accidentally
+flag every positive speed against a generated `[0, 0]` range.
+
+##### Cách dùng `outlier_rules: []` trong Swagger
+
+Nếu chưa có ngưỡng outlier được xác định và có cơ sở, giữ nguyên body sau rồi bấm **Execute**:
+
+```json
+{
+  "outlier_rules": []
+}
+```
+
+Danh sách trống nghĩa là **không chạy Outlier Detection trong lần kiểm tra này**, không phải
+tắt toàn bộ Data Quality Validation. Các kiểm tra sau vẫn chạy:
+
+- **Missing Value:** phát hiện giá trị thiếu.
+- **Duplicate:** phát hiện bản ghi trùng hoàn toàn.
+- **Timestamp Validation:** kiểm tra định dạng và miền giá trị thời gian.
+- **Coordinate Validation:** kiểm tra tọa độ hợp lệ.
+- **Negative Speed Validation:** phát hiện `speed < 0` và `avg_speed < 0`.
+- **Format/Schema Validation:** kiểm tra cấu trúc và kiểu dữ liệu theo logic hiện có.
+
+Muốn phát hiện tốc độ quá cao hoặc gia tốc bất thường, thêm rule cho trường cần kiểm tra vào
+`outlier_rules`, kèm ngưỡng, đơn vị và `basis` (cơ sở lựa chọn ngưỡng) như bảng bên dưới.
+Cấu hình áp dụng cho lần kiểm tra được tạo bởi request đó. Không dùng nguyên mẫu
+`min_value: 0, max_value: 0` để kiểm tra tốc độ: khoảng `[0, 0]` sẽ cảnh báo mọi tốc độ dương.
+
+Outlier được ghi là **warning**, không tự tăng `invalid_rows`. Hệ thống chỉ ghi nhận và báo cáo,
+không tự sửa hoặc xóa dữ liệu gốc. Khi `outlier_rules` trống, các trường thống kê warning bằng
+0 hoặc rỗng; điều này có nghĩa là chưa chạy kiểm tra outlier, không chứng minh dữ liệu không có outlier.
+
+Each rule has the following fields:
+
+| Field | Requirement |
+| --- | --- |
+| `field` | One of `speed`, `avg_speed`, `lon_acc`, `lat_acc`; at most one rule per field |
+| `min_value` | Optional finite numeric lower bound |
+| `max_value` | Optional finite numeric upper bound |
+| `unit` | `km/h` for speed fields; `m/s^2` for acceleration fields |
+| `basis` | Required non-empty explanation/reference supporting these bounds (up to 1000 characters) |
+
+At least one bound is required; if both are supplied, `min_value <= max_value`. Bounds are
+inclusive: only a value strictly below the minimum or above the maximum is an outlier. Speed
+bounds must be non-negative. Acceleration bounds can be signed and asymmetric. Malformed rules,
+duplicate fields, non-finite bounds, or incompatible units return HTTP 422 before a job is queued.
+
+The [official pNEUMA data documentation](https://open-traffic.epfl.ch/index.php/downloads/)
+confirms that original `speed` and `avg_speed` are in **km/h**, while `lon_acc` and `lat_acc` are
+in **m/s²**. The existing structural normalization preserves these values and units. For other
+tabular/normalized inputs, the caller must verify that the values use the units declared in the
+rules. This check neither infers units from numeric magnitudes nor converts or changes data.
+The source confirms units, not universal outlier thresholds.
+
+Rules apply to canonical source names (case-insensitive) and saved mappings to these four fields.
+An explicitly mapped supported field takes precedence over the source name. Unconfigured fields
+are skipped. pNEUMA checks the track's `avg_speed` once and each point's `speed`, `lon_acc`, and
+`lat_acc`; normalized files are checked per stored record using the existing format readers.
+Missing, non-numeric, boolean, and non-finite values are not outlier warnings. Existing validation
+still handles invalid values. Negative speeds remain `negative_speed` **errors**, without an
+additional outlier warning; negative acceleration is permitted unless outside the configured range.
+
+The completed `/report` includes:
+
+- `outlier_rules`: exact configured bounds, units, and basis for this run; an empty array means
+  outlier detection was disabled.
+- `total_warnings` and `warning_rows`: individual warnings and distinct rows containing warnings.
+- `warnings_by_type.outlier`: `total_warnings` and `affected_rows`, present when warnings exist.
+- `warnings_by_column`: counts keyed by the original column name.
+
+Warnings do not contribute to `errors_by_type`, `errors_by_column`, `total_errors`, or `invalid_rows`.
+A row with warnings only remains in `valid_rows`; a row with an actual error still counts once in
+`invalid_rows`. Multiple outlier points in one pNEUMA trajectory count as separate warnings but
+one warning row. Warning and error row counts can overlap.
+
+The existing paginated `/issues` includes both severities. Outliers have `issue_type: "outlier"`
+and `severity: "warning"`; existing issue types have `severity: "error"`. Each issue retains its
+source row number, source column name, observed value, and a message describing the bounds and
+unit. Severity is derived from the stored issue type, so existing issue rows require no database
+migration. Older reports remain readable with empty/zero warning fields. No source file is edited.
 
 `409 Conflict` means the latest version already has a queued/running quality scan. A report is
 available only after completion (`409` while queued/running; `409` if the check failed, with the
