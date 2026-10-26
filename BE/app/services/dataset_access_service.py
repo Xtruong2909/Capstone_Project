@@ -70,6 +70,12 @@ def grant_access(
         raise HTTPException(422, "Only Data Scientist and Business User can receive access")
     if repo.get_grant(db, dataset_id, user_id):
         raise HTTPException(409, "Dataset access already exists")
+    if not repo.has_approved_version(db, dataset_id):
+        raise HTTPException(
+            409,
+            "Dataset phải có ít nhất một phiên bản được Admin phê duyệt (APPROVED) "
+            "trước khi cấp quyền cho Data Scientist hoặc Business User",
+        )
     try:
         grant = repo.add_grant(db, dataset_id, user_id, admin.id)
         db.commit()
@@ -130,8 +136,8 @@ def list_accessible(
 def list_approved_datasets(
     db: Session, user: User, search: str | None, skip: int, limit: int
 ) -> list[ApprovedDatasetResponse]:
-    if user.role_id not in ("admin", *repo.ACCESS_ROLES):
-        raise HTTPException(403, "Dataset consumer role required")
+    if user.role_id not in repo.ACCESS_ROLES:
+        raise HTTPException(403, "Data Scientist or Business User role required")
 
     return [
         ApprovedDatasetResponse(

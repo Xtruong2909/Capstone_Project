@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_admin
 from app.database.database import get_db
 from app.models.user import User
+from app.schemas.dataset import DatasetPreviewResponse
 from app.schemas.dataset_access import (
     AccessibleDataset,
     ApprovedDatasetResponse,
@@ -14,9 +16,11 @@ from app.schemas.dataset_access import (
     EligibleDatasetUser,
 )
 from app.services import dataset_access_service as service
+from app.services.dataset_consumer_service import preview_approved_dataset
 
 admin_router = APIRouter(dependencies=[Depends(require_admin)])
 router = APIRouter()
+approved_router = APIRouter()
 
 
 @admin_router.get(
@@ -43,6 +47,7 @@ def eligible_users(
     response_model=DatasetAccessResponse,
     status_code=201,
     summary="Cấp quyền truy cập dataset cho người dùng",
+    responses={409: {"description": "Dataset chưa có phiên bản APPROVED hoặc quyền đã tồn tại"}},
 )
 def grant_access(
     dataset_id: UUID,
@@ -52,7 +57,9 @@ def grant_access(
 ) -> DatasetAccessResponse:
     """Admin cấp quyền toàn dataset cho Data Scientist hoặc Business User.
 
-    Ghi nhận người cấp và thời gian cấp quyền. Trả về lỗi 409 nếu quyền đã tồn tại.
+    Dataset phải có ít nhất một phiên bản APPROVED trước khi cấp quyền.
+    Trả về 409 nếu chưa được duyệt hoặc quyền đã tồn tại.
+    Ghi nhận người cấp và thời gian cấp quyền.
     Quyền truy cập dataset không thay thế quyền thực hiện từng chức năng theo vai trò.
     """
     return service.grant_access(db, dataset_id, payload.user_id, admin)
@@ -117,10 +124,10 @@ def accessible_datasets(
     return service.list_accessible(db, current_user, search, skip, limit)
 
 
-@router.get(
+@approved_router.get(
     "/approved",
     response_model=list[ApprovedDatasetResponse],
-    summary="Danh sách dataset đã được admin phê duyệt và hiển thị cho người dùng được phép xem",
+    summary="Danh sách dataset đã duyệt dành cho Data Scientist và Business User",
 )
 def approved_datasets(
     search: str | None = Query(None, max_length=255),
@@ -129,9 +136,38 @@ def approved_datasets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[ApprovedDatasetResponse]:
-    """Only return datasets whose latest approved version is visible to the current user.
+    """Chỉ Data Scientist và Business User được gọi API này.
 
-    Admin can see all approved datasets. Data Scientist / Business User only see approved
-    datasets they have been granted access to.
+    Trả về các phiên bản APPROVED của dataset đã được Admin cấp quyền.
+    Admin và Data Engineer nhận lỗi 403.
     """
     return service.list_approved_datasets(db, current_user, search, skip, limit)
+
+
+@approved_router.get(
+    "/{dataset_id}/versions/{version_id}/preview",
+    response_model=DatasetPreviewResponse,
+    summary="DS/BU xem trước dữ liệu phiên bản dataset đã duyệt",
+    responses={
+        403: {"description": "Sai vai trò, chưa có quyền hoặc phiên bản chưa duyệt"},
+        404: {"description": "Không tìm thấy dataset, phiên bản hoặc file"},
+        415: {"description": "Định dạng không được hỗ trợ"},
+    },
+)
+def preview_consumer_dataset(
+    dataset_id: UUID,
+    version_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DatasetPreviewResponse:
+    """Lấy dataset_id và version_id từ GET /datasets/approved.
+
+    Chỉ DS/BU có grant được xem đúng phiên bản APPROVED đã chọn.
+    Trả metadata, columns, rows và pagination; không chỉnh sửa file.
+    """
+    return preview_approved_dataset(
+        db, current_user, dataset_id, version_id, page, page_size, representation
+    )

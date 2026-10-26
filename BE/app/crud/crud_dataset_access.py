@@ -23,6 +23,19 @@ def get_dataset(db: Session, dataset_id: UUID) -> Dataset | None:
     return db.get(Dataset, dataset_id)
 
 
+def has_approved_version(db: Session, dataset_id: UUID) -> bool:
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    DatasetVersion.dataset_id == dataset_id,
+                    DatasetVersion.approval_status == "APPROVED",
+                )
+            )
+        )
+    )
+
+
 def get_version(db: Session, version_id: UUID) -> DatasetVersion | None:
     return db.get(DatasetVersion, version_id)
 
@@ -106,15 +119,7 @@ def approved_datasets(
         .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
         .where(DatasetVersion.approval_status == "APPROVED")
     )
-    if user.role_id != "admin":
-        query = query.where(
-            exists(
-                select(DatasetAccessGrant.id).where(
-                    DatasetAccessGrant.dataset_id == Dataset.id,
-                    DatasetAccessGrant.user_id == user.id,
-                )
-            )
-        )
+    query = query.where(access_filter(user.id))
     if search:
         query = query.where(
             or_(Dataset.name.ilike(f"%{search}%"), Dataset.code.ilike(f"%{search}%"))

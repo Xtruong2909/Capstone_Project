@@ -196,8 +196,13 @@ Example grant request:
 ```
 
 For approved datasets, the system returns only entries where `DatasetVersion.approval_status == "APPROVED"` and the
-current user has an access grant. Admins can see all approved datasets; Data Scientists and Business Users only see
-approved datasets that were explicitly granted to them.
+current user has an access grant. This endpoint is grouped separately in Swagger under
+**Data Scientist / Business User** and is restricted to these two roles. Admins and Data Engineers
+receive `403 Forbidden`; missing or invalid bearer tokens receive `401 Unauthorized`.
+The URL remains `GET /api/v1/datasets/approved`. It accepts optional `search` (name/code),
+`skip=0`, and `limit=50` (1–100), with no request body. No matching entries returns `[]`.
+Each entry represents an approved version; a dataset with multiple approved versions can appear
+more than once. The `/datasets/accessible` endpoint keeps its existing permissions.
 
 ### Data Quality Check
 
@@ -518,6 +523,12 @@ Response `200`:
 
 Chỉ admin. Không nhận role hoặc ID người cấp từ client.
 
+**Phê duyệt trước, cấp quyền sau:** dataset phải có ít nhất một phiên bản có
+`approval_status = APPROVED` mới được cấp quyền cho Data Scientist hoặc Business User.
+Không có phiên bản, hoặc chỉ có `PENDING`, `SUBMITTED`, `REJECTED`: trả `409 Conflict`
+và không tạo quyền. Một phiên bản đã duyệt vẫn đủ điều kiện dù có phiên bản mới đang chờ duyệt.
+Quy tắc này áp dụng khi tạo quyền mới; không tự xóa hay thay đổi quyền đã cấp trước đó.
+
 ```http
 POST /api/v1/admin/datasets/11111111-1111-4111-8111-111111111111/access
 Content-Type: application/json
@@ -666,3 +677,24 @@ Lint toàn repo còn các lỗi có sẵn ở [crud_dataset.py](app/crud/crud_da
 Chưa thấy HTTP API riêng cho Dataset Detail, Download, Analysis, Traffic Aggregation, Traffic Visualization, Heatmap, Forecasting hay Model Training. Có schema SQL liên quan traffic/forecast và model experiment, nhưng không có router nghiệp vụ tương ứng để tích hợp. Không tạo API giả hoặc viết lại những tính năng này.
 
 Vì vậy test Business User không được training hiện xác minh dependency dành cho training, không phải một API training đang tồn tại. Khi triển khai các router mới, phải sử dụng dependency phù hợp và phân giải mọi ID file/version/experiment về dataset gốc trước khi trả dữ liệu. Quyền dataset-wide áp dụng cho toàn bộ phiên bản hiện tại và tương lai của dataset đó; không tự bổ sung bộ lọc approval ngoài nghiệp vụ đã có.
+
+
+### DS/BU xem trước dữ liệu đã duyệt
+
+Trong nhóm Swagger **Data Scientist / Business User**:
+
+1. Đăng nhập DS/BU và Authorize bằng access token.
+2. Gọi `GET /api/v1/datasets/approved`, lấy `dataset_id` và `version_id`.
+3. Gọi `GET /api/v1/datasets/{dataset_id}/versions/{version_id}/preview?page=1&page_size=20`.
+
+Không có body. `page >= 1`, `page_size` từ 1–100 (mặc định 20).
+`representation` nhận `normalized` (mặc định) hoặc `raw`.
+Response gồm metadata, `dataset_version_id`, `columns`, `rows`, `warnings` và
+`pagination` (page, page_size, returned_rows, has_more, total_rows).
+Áp dụng mapping của đúng phiên bản đã chọn, không tự lấy bản mới nhất.
+
+Chỉ DS/BU có grant dataset và phiên bản được chọn là `APPROVED` mới được xem.
+Admin/DE, chưa có quyền hoặc phiên bản chưa duyệt: `403`. Thiếu/sai token: `401`.
+Dataset/version không tồn tại, sai dataset cha hoặc thiếu file: `404`.
+Định dạng không hỗ trợ: `415`; tham số sai hoặc lỗi đọc dữ liệu: `422`.
+API chỉ đọc, không sửa file và không trả đường dẫn lưu trữ server.

@@ -20,6 +20,11 @@ api_router.include_router(
 api_router.include_router(
     dataset_access.router, prefix="/datasets", tags=["Quản lý quyền truy cập Dataset"]
 )
+api_router.include_router(
+    dataset_access.approved_router,
+    prefix="/datasets",
+    tags=["Data Scientist / Business User"],
+)
 api_router.include_router(datasets.router, prefix="/datasets", tags=["Data Engineer"])
 api_router.include_router(
     dataset_mapping.router,

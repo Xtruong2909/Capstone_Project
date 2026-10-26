@@ -49,6 +49,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     users = {u.id: u for u in (admin, scientist, business, engineer)}
     grants = {}
     db = Mock()
+    monkeypatch.setattr(repo, "has_approved_version", lambda db, ds: True)
     monkeypatch.setattr(repo, "get_dataset", lambda db, key: datasets.get(key))
     monkeypatch.setattr(repo, "get_user", lambda db, key: users.get(key))
     monkeypatch.setattr(repo, "get_grant", lambda db, ds, uid: grants.get((ds, uid)))
@@ -95,6 +96,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     app = FastAPI()
     app.include_router(dataset_access.admin_router, prefix="/admin/datasets")
     app.include_router(dataset_access.router, prefix="/datasets")
+    app.include_router(dataset_access.approved_router, prefix="/datasets")
     app.dependency_overrides[get_db] = lambda: db
     state = SimpleNamespace(
         app=app,
@@ -260,45 +262,50 @@ def test_accessible_only_current_user_and_empty_default(state: SimpleNamespace, 
     assert status == 200 and [d["id"] for d in body] == [str(state.datasets[0])]
 
 
-def test_approved_datasets_returns_only_admin_approved_entries(
-    state: SimpleNamespace,
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("role", ["scientist", "business"])
+def test_approved_datasets_allowed_roles(
+    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
 ) -> None:
-    target = state.business
-    state.current = target
-    dataset = state.datasets[0]
-    service.grant_access(state.db, dataset, target.id, state.admin)
-
-    approved = [
-        {
-            "dataset_id": str(dataset),
-            "dataset_name": "Dataset 0",
-            "dataset_code": "DS0",
-            "source": "UAV",
-            "location_name": "Test",
-            "version_id": str(uuid4()),
-            "version_tag": "v1.0",
-            "approval_status": "APPROVED",
-            "approved_by": str(state.admin.id),
-        }
-    ]
-    monkeypatch.setattr(
-        repo,
-        "approved_datasets",
-        lambda db, user, search, skip, limit: approved[skip : skip + limit],
+    state.current = getattr(state, role)
+    dataset = repo.get_dataset(state.db, state.datasets[0])
+    version = SimpleNamespace(
+        id=uuid4(), version_tag="v1.0", approval_status="APPROVED",
+        approved_by=state.admin.id,
     )
-
-    status, body = request(state.app, "GET", "/datasets/approved")
+    query = Mock(return_value=[(dataset, version)])
+    monkeypatch.setattr(repo, "approved_datasets", query)
+    status, body = request(state.app, "GET", "/datasets/approved?search=Traffic&skip=1&limit=2")
     assert status == 200
-    assert len(body) == 1
-    assert body[0]["approval_status"] == "APPROVED"
-    assert body[0]["dataset_id"] == str(dataset)
-    state.current = state.admin
-    assert len(request(state.app, "GET", "/datasets/accessible")[1]) == 2
+    assert body[0]["dataset_id"] == str(dataset.id)
+    assert body[0]["version_id"] == str(version.id)
+    query.assert_called_once_with(state.db, state.current, "Traffic", 1, 2)
+    query.return_value = []
+    assert request(state.app, "GET", "/datasets/approved")[1] == []
+
+
+@pytest.mark.parametrize("role", ["admin", "engineer"])
+def test_approved_datasets_rejects_other_roles(
+    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    state.current = getattr(state, role)
+    query = Mock()
+    monkeypatch.setattr(repo, "approved_datasets", query)
+    assert request(state.app, "GET", "/datasets/approved")[0] == 403
+    query.assert_not_called()
+
+
+def test_approved_datasets_has_separate_swagger_group() -> None:
+    from app.main import app
+
+    operation = app.openapi()["paths"]["/api/v1/datasets/approved"]["get"]
+    assert operation["tags"] == ["Data Scientist / Business User"]
+
 
 
 def test_unauthenticated_and_invalid_token(state: SimpleNamespace) -> None:
     state.app.dependency_overrides.pop(get_current_user)
+    assert request(state.app, "GET", "/datasets/approved")[0] == 401
+    assert request(state.app, "GET", "/datasets/approved", token="invalid-token")[0] == 401
     assert request(state.app, "GET", "/datasets/accessible")[0] == 401
     assert request(state.app, "GET", "/datasets/accessible", token="invalid-token")[0] == 401
     assert request(state.app, "GET", f"/admin/datasets/{state.datasets[0]}/access")[0] == 401
@@ -451,7 +458,8 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
                 "created_by CHAR(32), created_at DATETIME)"
             )
         )
-        connection.execute(text("CREATE TABLE dataset_versions (id CHAR(32) PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE dataset_versions (id CHAR(32) PRIMARY KEY, "
+                 "dataset_id CHAR(32), approval_status TEXT)"))
     Role.__table__.create(engine)
     User.__table__.create(engine)
     DatasetAccessGrant.__table__.create(engine)
@@ -485,6 +493,32 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
         db.commit()
         scientist = db.get(User, user_id)
         admin = db.get(User, admin_id)
+        assert not repo.has_approved_version(db, ds1)
+        for approval_status in ("PENDING", "SUBMITTED", "REJECTED"):
+            db.execute(
+                text("INSERT INTO dataset_versions (id, dataset_id, approval_status) "
+                     "VALUES (:id, :ds, :status)"),
+                {"id": uuid4().hex, "ds": ds1.hex, "status": approval_status},
+            )
+            assert not repo.has_approved_version(db, ds1)
+        # Approval on another dataset must not authorize ds1.
+        db.execute(
+            text("INSERT INTO dataset_versions (id, dataset_id, approval_status) "
+                 "VALUES (:id, :ds, 'APPROVED')"),
+            {"id": uuid4().hex, "ds": ds2.hex},
+        )
+        assert not repo.has_approved_version(db, ds1)
+        with pytest.raises(HTTPException) as exc:
+            service.grant_access(db, ds1, user_id, admin)
+        assert exc.value.status_code == 409
+        assert repo.get_grant(db, ds1, user_id) is None
+        db.execute(
+            text("INSERT INTO dataset_versions (id, dataset_id, approval_status) "
+                 "VALUES (:id, :ds, 'APPROVED')"),
+            {"id": uuid4().hex, "ds": ds1.hex},
+        )
+        db.commit()
+        assert repo.has_approved_version(db, ds1)
         service.grant_access(db, ds1, user_id, admin)
         service.grant_access(db, ds2, other_id, admin)
         assert [d.id for d in repo.accessible_datasets(db, scientist, None, 0, 50)] == [ds1]
@@ -500,3 +534,107 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
         assert repo.accessible_datasets(db, scientist, None, 0, 50) == []
         assert repo.get_grant(db, ds2, other_id) is not None
     engine.dispose()
+
+
+@pytest.mark.parametrize("role", ["scientist", "business"])
+def test_grant_requires_approval_before_writing(
+    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    target = getattr(state, role)
+    check = Mock(return_value=False)
+    monkeypatch.setattr(repo, "has_approved_version", check)
+    path = f"/admin/datasets/{state.datasets[0]}/access"
+    status, body = request(state.app, "POST", path, {"user_id": str(target.id)})
+    assert status == 409
+    assert "APPROVED" in body["detail"]
+    check.assert_called_once_with(state.db, state.datasets[0])
+    assert not state.grants
+    state.db.commit.assert_not_called()
+    # Once approved, the same request succeeds.
+    check.return_value = True
+    assert request(state.app, "POST", path, {"user_id": str(target.id)})[0] == 201
+
+
+@pytest.mark.parametrize("role", ["scientist", "business", "admin", "engineer"])
+@pytest.mark.parametrize("approval", ["APPROVED", "PENDING", "SUBMITTED", "REJECTED"])
+def test_consumer_preview_guards_and_response(
+    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str, approval: str
+) -> None:
+    from app.schemas.dataset import DatasetPreviewResponse
+    from app.services import dataset_consumer_service as consumer
+
+    ds = state.datasets[0]
+    version_id = uuid4()
+    target = getattr(state, role)
+    if role in ("scientist", "business"):
+        service.grant_access(state.db, ds, target.id, state.admin)
+    state.current = target
+    version = SimpleNamespace(id=version_id, dataset_id=ds, approval_status=approval)
+    monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
+    preview = DatasetPreviewResponse(
+        dataset_id=ds, dataset_version_id=version_id, dataset_name="Traffic",
+        original_filename="traffic.csv", file_format="csv", file_size=20,
+        status="uploaded", columns=[{"name": "speed", "type": "number"}],
+        rows=[{"speed": 30}],
+        pagination={"page": 2, "page_size": 1, "returned_rows": 1,
+                    "has_more": False, "total_rows": 2},
+    )
+    read = Mock(return_value=preview)
+    mapping = Mock(return_value=preview)
+    monkeypatch.setattr(consumer, "get_dataset_preview", read)
+    monkeypatch.setattr(consumer, "apply_saved_column_mappings", mapping)
+    path = f"/datasets/{ds}/versions/{version_id}/preview"
+    status, body = request(state.app, "GET", path + "?page=2&page_size=1&representation=raw")
+    if role in ("scientist", "business") and approval == "APPROVED":
+        assert status == 200
+        assert body["rows"] == [{"speed": 30}]
+        assert body["dataset_version_id"] == str(version_id)
+        read.assert_called_once_with(
+            state.db, dataset_id=ds, dataset_version_id=version_id,
+            page=2, page_size=1, representation="raw",
+        )
+        mapping.assert_called_once_with(state.db, dataset_id=ds, preview=preview)
+        service.revoke_access(state.db, ds, target.id, state.admin)
+        read.reset_mock()
+        assert request(state.app, "GET", path)[0] == 403
+        read.assert_not_called()
+    else:
+        assert status == 403
+        read.assert_not_called()
+        mapping.assert_not_called()
+
+
+@pytest.mark.parametrize("case,expected", [("missing", 404), ("wrong_parent", 404),
+                                          ("no_grant", 403), ("anonymous", 401)])
+def test_consumer_preview_invalid_access(
+    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, case: str, expected: int
+) -> None:
+    from app.services import dataset_consumer_service as consumer
+
+    ds = state.datasets[0]
+    state.current = state.scientist
+    if case != "no_grant":
+        service.grant_access(state.db, ds, state.scientist.id, state.admin)
+    version = None if case == "missing" else SimpleNamespace(
+        dataset_id=state.datasets[1], approval_status="APPROVED"
+    )
+    monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
+    read = Mock()
+    monkeypatch.setattr(consumer, "get_dataset_preview", read)
+    if case == "anonymous":
+        state.app.dependency_overrides.pop(get_current_user)
+    assert request(state.app, "GET", f"/datasets/{ds}/versions/{uuid4()}/preview")[0] == expected
+    read.assert_not_called()
+
+
+@pytest.mark.parametrize("query", ["page=0", "page_size=101", "representation=bad"])
+def test_consumer_preview_validates_parameters(state: SimpleNamespace, query: str) -> None:
+    path = f"/datasets/{state.datasets[0]}/versions/{uuid4()}/preview?{query}"
+    assert request(state.app, "GET", path)[0] == 422
+
+
+def test_consumer_preview_swagger_group() -> None:
+    from app.main import app
+
+    path = "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview"
+    assert app.openapi()["paths"][path]["get"]["tags"] == ["Data Scientist / Business User"]
