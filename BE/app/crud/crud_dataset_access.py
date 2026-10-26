@@ -96,3 +96,32 @@ def accessible_datasets(
     return list(
         db.scalars(query.order_by(Dataset.created_at.desc(), Dataset.id).offset(skip).limit(limit))
     )
+
+
+def approved_datasets(
+    db: Session, user: User, search: str | None, skip: int, limit: int
+) -> list[tuple[Dataset, DatasetVersion]]:
+    query = (
+        select(Dataset, DatasetVersion)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .where(DatasetVersion.approval_status == "APPROVED")
+    )
+    if user.role_id != "admin":
+        query = query.where(
+            exists(
+                select(DatasetAccessGrant.id).where(
+                    DatasetAccessGrant.dataset_id == Dataset.id,
+                    DatasetAccessGrant.user_id == user.id,
+                )
+            )
+        )
+    if search:
+        query = query.where(
+            or_(Dataset.name.ilike(f"%{search}%"), Dataset.code.ilike(f"%{search}%"))
+        )
+    rows = db.execute(
+        query.order_by(Dataset.created_at.desc(), DatasetVersion.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(rows)

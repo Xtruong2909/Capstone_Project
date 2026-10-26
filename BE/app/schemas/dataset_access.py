@@ -38,3 +38,16 @@ class AccessibleDataset(BaseModel):
     capture_date: date | None
     location_name: str
     created_at: datetime
+
+
+class ApprovedDatasetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    dataset_id: UUID
+    dataset_name: str
+    dataset_code: str
+    source: str
+    location_name: str
+    version_id: UUID
+    version_tag: str
+    approval_status: str
+    approved_by: UUID | None

@@ -258,6 +258,41 @@ def test_accessible_only_current_user_and_empty_default(state: SimpleNamespace, 
     service.grant_access(state.db, state.datasets[0], target.id, state.admin)
     status, body = request(state.app, "GET", f"/datasets/accessible?user_id={state.admin.id}")
     assert status == 200 and [d["id"] for d in body] == [str(state.datasets[0])]
+
+
+def test_approved_datasets_returns_only_admin_approved_entries(
+    state: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = state.business
+    state.current = target
+    dataset = state.datasets[0]
+    service.grant_access(state.db, dataset, target.id, state.admin)
+
+    approved = [
+        {
+            "dataset_id": str(dataset),
+            "dataset_name": "Dataset 0",
+            "dataset_code": "DS0",
+            "source": "UAV",
+            "location_name": "Test",
+            "version_id": str(uuid4()),
+            "version_tag": "v1.0",
+            "approval_status": "APPROVED",
+            "approved_by": str(state.admin.id),
+        }
+    ]
+    monkeypatch.setattr(
+        repo,
+        "approved_datasets",
+        lambda db, user, search, skip, limit: approved[skip : skip + limit],
+    )
+
+    status, body = request(state.app, "GET", "/datasets/approved")
+    assert status == 200
+    assert len(body) == 1
+    assert body[0]["approval_status"] == "APPROVED"
+    assert body[0]["dataset_id"] == str(dataset)
     state.current = state.admin
     assert len(request(state.app, "GET", "/datasets/accessible")[1]) == 2
 

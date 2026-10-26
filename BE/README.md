@@ -5,6 +5,7 @@ FastAPI backend service for Urban Traffic Pattern Analysis and Short-Term Conges
 For complete project documentation, architecture diagrams, and quick-start instructions, please refer to the [Root README](../README.md).
 
 ## Local Development
+
 ```powershell
 # Start PostGIS Database
 docker compose up -d
@@ -12,6 +13,7 @@ docker compose up -d
 # Run FastAPI Development Server
 uv run uvicorn app.main:app --reload --port 8000
 ```
+
 API Documentation: `http://localhost:8000/docs`
 
 ## Outgoing email
@@ -44,14 +46,14 @@ for a user with the `data_engineer` role. Supported file extensions are `.csv`, 
 
 Required form fields:
 
-| Field | Meaning |
-| --- | --- |
-| `file` | Dataset file |
-| `name` | Dataset name (3-128 characters) |
-| `source` | Dataset source |
-| `location_name` | Traffic capture location |
-| `description` | Optional description |
-| `capture_date` | Optional collection date (`YYYY-MM-DD`) |
+| Field           | Meaning                                 |
+| --------------- | --------------------------------------- |
+| `file`          | Dataset file                            |
+| `name`          | Dataset name (3-128 characters)         |
+| `source`        | Dataset source                          |
+| `location_name` | Traffic capture location                |
+| `description`   | Optional description                    |
+| `capture_date`  | Optional collection date (`YYYY-MM-DD`) |
 
 Dataset code is generated automatically and the initial version is set to `v1.0`.
 Uploads are limited to 2 GiB by default; configure
@@ -113,11 +115,11 @@ Admins and Data Scientists/Business Users with a dataset access grant; PATCH rem
 to Data Engineers. They configure display/consumer
 column names for the latest uploaded version; they do not transform or overwrite the source file.
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/v1/datasets/{dataset_id}/columns` | List source headers, inferred types, and saved target names |
-| `PATCH` | `/api/v1/datasets/{dataset_id}/column-mappings` | Create, update, or remove custom column-name mappings |
-| `GET` | `/api/v1/datasets/{dataset_id}/column-mappings` | Retrieve saved mappings for the latest version |
+| Method  | Endpoint                                        | Purpose                                                     |
+| ------- | ----------------------------------------------- | ----------------------------------------------------------- |
+| `GET`   | `/api/v1/datasets/{dataset_id}/columns`         | List source headers, inferred types, and saved target names |
+| `PATCH` | `/api/v1/datasets/{dataset_id}/column-mappings` | Create, update, or remove custom column-name mappings       |
+| `GET`   | `/api/v1/datasets/{dataset_id}/column-mappings` | Retrieve saved mappings for the latest version              |
 
 Mappings are arbitrary display names rather than fixed model fields. The request uses a `mappings`
 array of `{ "source_column": "...", "target_column": "..." }` items. Source names must exist in
@@ -167,6 +169,36 @@ In Swagger UI at `http://localhost:8000/docs`, authorize with a Data Engineer be
 `GET /api/v1/datasets/{dataset_id}/columns`, then send the PATCH body and verify it with
 `GET /api/v1/datasets/{dataset_id}/column-mappings` or the dataset preview endpoint.
 
+### Dataset access management
+
+Admin-managed dataset access is enforced at the dataset level. A user may view or use a dataset only
+when the admin has created a `dataset_access_grants` row for the pair `(dataset_id, user_id)`, and the
+user role is one of `data_scientist` or `business_user`.
+
+| Method   | Endpoint                                               | Purpose                                                          |
+| -------- | ------------------------------------------------------ | ---------------------------------------------------------------- |
+| `GET`    | `/api/v1/admin/datasets/{dataset_id}/eligible-users`   | List users eligible for grant, with `has_access` status          |
+| `POST`   | `/api/v1/admin/datasets/{dataset_id}/access`           | Grant access to a single user for that dataset                   |
+| `GET`    | `/api/v1/admin/datasets/{dataset_id}/access`           | List users already granted access to the dataset                 |
+| `DELETE` | `/api/v1/admin/datasets/{dataset_id}/access/{user_id}` | Revoke access                                                    |
+| `GET`    | `/api/v1/datasets/accessible`                          | List datasets visible to the current authenticated user          |
+| `GET`    | `/api/v1/datasets/approved`                            | List approved datasets visible to Data Scientist / Business User |
+
+The key rule is that dataset access is not global; it is scoped by dataset. This is why the admin APIs require
+`dataset_id` in the path and then accept a single `user_id` in the request body when granting access.
+
+Example grant request:
+
+```json
+{
+  "user_id": "6d1d3a3a-1234-4321-9876-abcdef123456"
+}
+```
+
+For approved datasets, the system returns only entries where `DatasetVersion.approval_status == "APPROVED"` and the
+current user has an access grant. Admins can see all approved datasets; Data Scientists and Business Users only see
+approved datasets that were explicitly granted to them.
+
 ### Data Quality Check
 
 Authenticated Data Engineers can run a complete quality scan on the latest uploaded dataset
@@ -188,12 +220,12 @@ counts, progress uses that total; otherwise the percentage is an estimate until 
 Blocking file/database I/O can delay an update. Swagger does not poll automatically: execute the
 status GET again to see the latest persisted progress.
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/datasets/{dataset_id}/quality-checks` | Queue a scan for the latest dataset version |
-| `GET` | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}` | Poll status and progress |
-| `GET` | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/report` | Read the completed aggregate report |
-| `GET` | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/issues?page=1&page_size=50` | Read paginated issue details; optional `issue_type` filter |
+| Method | Endpoint                                                                             | Purpose                                                    |
+| ------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| `POST` | `/api/v1/datasets/{dataset_id}/quality-checks`                                       | Queue a scan for the latest dataset version                |
+| `GET`  | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}`                            | Poll status and progress                                   |
+| `GET`  | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/report`                     | Read the completed aggregate report                        |
+| `GET`  | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/issues?page=1&page_size=50` | Read paginated issue details; optional `issue_type` filter |
 
 Admins can review a specific version's file contents with
 `GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview?page=1&page_size=20&representation=normalized`.
@@ -292,13 +324,13 @@ không tự sửa hoặc xóa dữ liệu gốc. Khi `outlier_rules` trống, c�
 
 Each rule has the following fields:
 
-| Field | Requirement |
-| --- | --- |
-| `field` | One of `speed`, `avg_speed`, `lon_acc`, `lat_acc`; at most one rule per field |
-| `min_value` | Optional finite numeric lower bound |
-| `max_value` | Optional finite numeric upper bound |
-| `unit` | `km/h` for speed fields; `m/s^2` for acceleration fields |
-| `basis` | Required non-empty explanation/reference supporting these bounds (up to 1000 characters) |
+| Field       | Requirement                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| `field`     | One of `speed`, `avg_speed`, `lon_acc`, `lat_acc`; at most one rule per field            |
+| `min_value` | Optional finite numeric lower bound                                                      |
+| `max_value` | Optional finite numeric upper bound                                                      |
+| `unit`      | `km/h` for speed fields; `m/s^2` for acceleration fields                                 |
+| `basis`     | Required non-empty explanation/reference supporting these bounds (up to 1000 characters) |
 
 At least one bound is required; if both are supplied, `min_value <= max_value`. Bounds are
 inclusive: only a value strictly below the minimum or above the maximum is an outlier. Speed
@@ -386,16 +418,16 @@ Theo yêu cầu mới, đã bỏ hai cột `dataset_version_id` và `expires_at`
 
 ### 2. File tạo mới
 
-| File | Trách nhiệm |
-| --- | --- |
-| [app/schemas/dataset_access.py](app/schemas/dataset_access.py) | Validate UUID, từ chối field dư, DTO không có mật khẩu |
-| [app/crud/crud_dataset_access.py](app/crud/crud_dataset_access.py) | Truy vấn và thay đổi bản ghi; lọc dataset bằng EXISTS trước phân trang |
-| [app/services/dataset_access_service.py](app/services/dataset_access_service.py) | Cấp/thu hồi, validation nghiệp vụ, transaction và xử lý xung đột |
-| [app/core/dataset_access.py](app/core/dataset_access.py) | Dependency đọc dataset và dependency riêng cho scientist/analysis/training |
-| [app/api/v1/endpoints/dataset_access.py](app/api/v1/endpoints/dataset_access.py) | Năm API mới |
-| [migrations/20261026_dataset_access_management.sql](migrations/20261026_dataset_access_management.sql) | Migration bổ sung, không xóa dữ liệu |
-| [tests/test_dataset_access.py](tests/test_dataset_access.py) | Test service, HTTP ASGI, router thật và SQLAlchemy/SQLite |
-| [migrations/20261026_remove_legacy_dataset_access_columns.sql](migrations/20261026_remove_legacy_dataset_access_columns.sql) | Bỏ cột phiên bản/thời hạn sau khi kiểm tra dữ liệu |
+| File                                                                                                                         | Trách nhiệm                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [app/schemas/dataset_access.py](app/schemas/dataset_access.py)                                                               | Validate UUID, từ chối field dư, DTO không có mật khẩu                     |
+| [app/crud/crud_dataset_access.py](app/crud/crud_dataset_access.py)                                                           | Truy vấn và thay đổi bản ghi; lọc dataset bằng EXISTS trước phân trang     |
+| [app/services/dataset_access_service.py](app/services/dataset_access_service.py)                                             | Cấp/thu hồi, validation nghiệp vụ, transaction và xử lý xung đột           |
+| [app/core/dataset_access.py](app/core/dataset_access.py)                                                                     | Dependency đọc dataset và dependency riêng cho scientist/analysis/training |
+| [app/api/v1/endpoints/dataset_access.py](app/api/v1/endpoints/dataset_access.py)                                             | Năm API mới                                                                |
+| [migrations/20261026_dataset_access_management.sql](migrations/20261026_dataset_access_management.sql)                       | Migration bổ sung, không xóa dữ liệu                                       |
+| [tests/test_dataset_access.py](tests/test_dataset_access.py)                                                                 | Test service, HTTP ASGI, router thật và SQLAlchemy/SQLite                  |
+| [migrations/20261026_remove_legacy_dataset_access_columns.sql](migrations/20261026_remove_legacy_dataset_access_columns.sql) | Bỏ cột phiên bản/thời hạn sau khi kiểm tra dữ liệu                         |
 
 ### 3. File chỉnh sửa
 
@@ -413,13 +445,13 @@ Không chỉnh sửa Frontend, JWT, role, dữ liệu hoặc thuật toán valid
 
 Bảng `dataset_access_grants` hiện có:
 
-| Cột | Ý nghĩa |
-| --- | --- |
-| `id` | UUID, khóa chính |
-| `dataset_id` | UUID NOT NULL, khóa ngoại tới dataset |
-| `user_id` | UUID NOT NULL, khóa ngoại tới người được cấp quyền |
+| Cột          | Ý nghĩa                                                         |
+| ------------ | --------------------------------------------------------------- |
+| `id`         | UUID, khóa chính                                                |
+| `dataset_id` | UUID NOT NULL, khóa ngoại tới dataset                           |
+| `user_id`    | UUID NOT NULL, khóa ngoại tới người được cấp quyền              |
 | `granted_by` | UUID người cấp quyền; có thể NULL nếu tài khoản admin đã bị xóa |
-| `created_at` | Thời điểm cấp quyền; API trả tên `granted_at` |
+| `created_at` | Thời điểm cấp quyền; API trả tên `granted_at`                   |
 
 Unique `(dataset_id, user_id)` ngăn cấp trùng kể cả khi request cạnh tranh.
 Index `user_id` và unique index hỗ trợ truy vấn quyền. Quyền tồn tại đến khi
@@ -492,7 +524,7 @@ Content-Type: application/json
 ```
 
 ```json
-{"user_id": "22222222-2222-4222-8222-222222222222"}
+{ "user_id": "22222222-2222-4222-8222-222222222222" }
 ```
 
 Response `201`:
@@ -593,17 +625,17 @@ Chưa được cấp: `[]`. Không trả đường dẫn file trên server. Role
 
 Các GET sau cho phép admin, data engineer hiện có, và consumer có grant:
 
-| Đường dẫn sau `/api/v1/datasets` | Bảo vệ |
-| --- | --- |
-| `/{dataset_id}/preview` | Chặn trước khi đọc dữ liệu file |
-| `/{dataset_id}/columns` | Chặn metadata cột |
-| `/{dataset_id}/column-mappings` | Chặn mapping |
-| `/{dataset_id}/versions` | Chặn danh sách phiên bản của dataset |
-| `/{dataset_id}/versions/{version_id}/status` | Grant dataset + xác nhận version thuộc dataset |
-| `/{dataset_id}/versions/{version_id}/report` | Grant dataset + truy vấn cặp dataset/version hiện có |
-| `/{dataset_id}/quality-checks/{check_id}` | Grant dataset + truy vấn cặp dataset/check |
-| `/{dataset_id}/quality-checks/{check_id}/report` | Như trên |
-| `/{dataset_id}/quality-checks/{check_id}/issues` | Như trên, trước phân trang lỗi |
+| Đường dẫn sau `/api/v1/datasets`                 | Bảo vệ                                               |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| `/{dataset_id}/preview`                          | Chặn trước khi đọc dữ liệu file                      |
+| `/{dataset_id}/columns`                          | Chặn metadata cột                                    |
+| `/{dataset_id}/column-mappings`                  | Chặn mapping                                         |
+| `/{dataset_id}/versions`                         | Chặn danh sách phiên bản của dataset                 |
+| `/{dataset_id}/versions/{version_id}/status`     | Grant dataset + xác nhận version thuộc dataset       |
+| `/{dataset_id}/versions/{version_id}/report`     | Grant dataset + truy vấn cặp dataset/version hiện có |
+| `/{dataset_id}/quality-checks/{check_id}`        | Grant dataset + truy vấn cặp dataset/check           |
+| `/{dataset_id}/quality-checks/{check_id}/report` | Như trên                                             |
+| `/{dataset_id}/quality-checks/{check_id}/issues` | Như trên, trước phân trang lỗi                       |
 
 `GET /datasets/versions` toàn hệ thống vẫn chỉ dành cho data engineer như cũ. Các API admin toàn hệ thống giữ dependency admin. Consumer không thể dùng những API này để liệt kê dữ liệu chưa được cấp.
 

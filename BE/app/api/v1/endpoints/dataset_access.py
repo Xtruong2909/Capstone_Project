@@ -8,6 +8,7 @@ from app.database.database import get_db
 from app.models.user import User
 from app.schemas.dataset_access import (
     AccessibleDataset,
+    ApprovedDatasetResponse,
     DatasetAccessRequest,
     DatasetAccessResponse,
     EligibleDatasetUser,
@@ -114,3 +115,23 @@ def accessible_datasets(
     Chưa được cấp quyền thì trả về danh sách rỗng.
     """
     return service.list_accessible(db, current_user, search, skip, limit)
+
+
+@router.get(
+    "/approved",
+    response_model=list[ApprovedDatasetResponse],
+    summary="Danh sách dataset đã được admin phê duyệt và hiển thị cho người dùng được phép xem",
+)
+def approved_datasets(
+    search: str | None = Query(None, max_length=255),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[ApprovedDatasetResponse]:
+    """Only return datasets whose latest approved version is visible to the current user.
+
+    Admin can see all approved datasets. Data Scientist / Business User only see approved
+    datasets they have been granted access to.
+    """
+    return service.list_approved_datasets(db, current_user, search, skip, limit)

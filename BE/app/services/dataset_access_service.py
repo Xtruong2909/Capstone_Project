@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 from app.crud import crud_dataset_access as repo
 from app.models.dataset import Dataset, DatasetAccessGrant
 from app.models.user import User
-from app.schemas.dataset_access import AccessibleDataset, DatasetAccessResponse, EligibleDatasetUser
+from app.schemas.dataset_access import (
+    AccessibleDataset,
+    ApprovedDatasetResponse,
+    DatasetAccessResponse,
+    EligibleDatasetUser,
+)
 
 
 def require_dataset(db: Session, dataset_id: UUID) -> Dataset:
@@ -119,4 +124,26 @@ def list_accessible(
     return [
         AccessibleDataset.model_validate(dataset)
         for dataset in repo.accessible_datasets(db, user, search, skip, limit)
+    ]
+
+
+def list_approved_datasets(
+    db: Session, user: User, search: str | None, skip: int, limit: int
+) -> list[ApprovedDatasetResponse]:
+    if user.role_id not in ("admin", *repo.ACCESS_ROLES):
+        raise HTTPException(403, "Dataset consumer role required")
+
+    return [
+        ApprovedDatasetResponse(
+            dataset_id=dataset.id,
+            dataset_name=dataset.name,
+            dataset_code=dataset.code,
+            source=dataset.source,
+            location_name=dataset.location_name,
+            version_id=version.id,
+            version_tag=version.version_tag,
+            approval_status=version.approval_status,
+            approved_by=version.approved_by,
+        )
+        for dataset, version in repo.approved_datasets(db, user, search, skip, limit)
     ]
