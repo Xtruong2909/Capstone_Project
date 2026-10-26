@@ -1,13 +1,13 @@
-from datetime import datetime
 from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetAccessGrant, DatasetVersion
+from app.models.dataset import Dataset, DatasetVersion
 from app.models.experiment import EvaluationMetric, Experiment
 from app.models.user import Role, User
 from app.schemas.admin import UserCreate, UserRoleId
-from sqlalchemy.orm import Session
 
 
 def get_admin_stats(db: Session) -> dict:
@@ -239,105 +239,3 @@ def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
         "stats": stats,
         "experiments": experiments,
     }
-
-
-def get_dataset_access_grants(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
-    """Retrieve all dataset access grants with user and dataset details."""
-    grants = (
-        db.query(DatasetAccessGrant)
-        .order_by(DatasetAccessGrant.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-
-    result = []
-    for g in grants:
-        result.append({
-            "id": g.id,
-            "dataset_id": g.dataset_version.dataset_id if g.dataset_version else None,
-            "dataset_name": g.dataset_version.dataset.name if g.dataset_version and g.dataset_version.dataset else "—",
-            "dataset_version_id": g.dataset_version_id,
-            "version_tag": g.dataset_version.version_tag if g.dataset_version else "—",
-            "user_id": g.user_id,
-            "user_email": g.user.email if g.user else "—",
-            "user_name": g.user.full_name if g.user else "—",
-            "user_role": g.user.role_id if g.user else "—",
-            "granted_by_email": g.granter.email if g.granter else None,
-            "expires_at": g.expires_at,
-            "created_at": g.created_at,
-        })
-    return result
-
-
-def get_dataset_access_grant_by_id(db: Session, grant_id: UUID) -> dict | None:
-    """Retrieve a single dataset access grant with joined details."""
-    g = db.query(DatasetAccessGrant).filter(DatasetAccessGrant.id == grant_id).first()
-    if not g:
-        return None
-    dataset_id = None
-    dataset_name = "—"
-    if g.dataset_version:
-        dataset_id = g.dataset_version.dataset_id
-        if g.dataset_version.dataset:
-            dataset_name = g.dataset_version.dataset.name
-
-    return {
-        "id": g.id,
-        "dataset_id": dataset_id,
-        "dataset_name": dataset_name,
-        "dataset_version_id": g.dataset_version_id,
-        "version_tag": g.dataset_version.version_tag if g.dataset_version else "—",
-        "user_id": g.user_id,
-        "user_email": g.user.email if g.user else "—",
-        "user_name": g.user.full_name if g.user else "—",
-        "user_role": g.user.role_id if g.user else "—",
-        "granted_by_email": g.granter.email if g.granter else None,
-        "expires_at": g.expires_at,
-        "created_at": g.created_at,
-    }
-
-
-def create_dataset_access_grant(
-    db: Session,
-    dataset_version_id: UUID,
-    user_id: UUID,
-    admin_id: UUID,
-    expires_at: datetime | None = None,
-) -> DatasetAccessGrant:
-    """Grant a user access to a specific dataset version."""
-    existing = (
-        db.query(DatasetAccessGrant)
-        .filter(
-            DatasetAccessGrant.dataset_version_id == dataset_version_id,
-            DatasetAccessGrant.user_id == user_id,
-        )
-        .first()
-    )
-    if existing:
-        existing.expires_at = expires_at
-        existing.granted_by = admin_id
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    grant = DatasetAccessGrant(
-        dataset_version_id=dataset_version_id,
-        user_id=user_id,
-        granted_by=admin_id,
-        expires_at=expires_at,
-    )
-    db.add(grant)
-    db.commit()
-    db.refresh(grant)
-    return grant
-
-
-def revoke_dataset_access_grant(db: Session, grant_id: UUID) -> bool:
-    """Revoke an existing dataset access grant."""
-    grant = db.query(DatasetAccessGrant).filter(DatasetAccessGrant.id == grant_id).first()
-    if not grant:
-        return False
-    db.delete(grant)
-    db.commit()
-    return True

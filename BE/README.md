@@ -97,7 +97,8 @@ Example response:
 
 `GET /api/v1/datasets/{dataset_id}/preview?page=1&page_size=20&representation=normalized`
 returns a paginated preview from the latest uploaded version without modifying the original
-file. It is available to authenticated Data Engineers. `dataset_id` is the dataset UUID;
+file. It is available to authenticated Data Engineers, Admins, and Data Scientists/Business Users
+with a dataset access grant. `dataset_id` is the dataset UUID;
 `page_size` must be between 1 and 100. CSV, JSON, XLS, XLSX, and Parquet files are supported.
 For an exactly matching pNEUMA CSV header, the default `normalized` representation expands
 trajectory points into one row per point and reports the total point count. Use
@@ -107,7 +108,9 @@ versioned sidecar index next to the immutable uploaded file so later pages do no
 
 ### Dataset column mapping
 
-These endpoints are available to authenticated Data Engineers. They configure display/consumer
+These endpoints are available to authenticated Data Engineers. Read-only GET endpoints also allow
+Admins and Data Scientists/Business Users with a dataset access grant; PATCH remains restricted
+to Data Engineers. They configure display/consumer
 column names for the latest uploaded version; they do not transform or overwrite the source file.
 
 | Method | Endpoint | Purpose |
@@ -351,3 +354,283 @@ Submitting an exported version to admin does not require a separate
 `POST /api/v1/datasets/{dataset_id}/quality-checks` run. The version must still have export /
 normalization history before it can be submitted. The normalized staging validation endpoint
 (`/api/v1/datasets/{dataset_id}/normalize/validate`) can be used separately to inspect the output.
+
+## Quản lý quyền truy cập Dataset
+
+### Cập nhật: chỉ cấp quyền toàn dataset, không có thời hạn
+
+Theo yêu cầu mới, đã bỏ hai cột `dataset_version_id` và `expires_at` khỏi bảng
+`dataset_access_grants`. Bảng còn `id`, `dataset_id` (NOT NULL), `user_id`,
+`granted_by`, `created_at`; giữ unique `(dataset_id, user_id)` và index user.
+
+- Database đã áp dụng migration mở rộng: chạy tiếp
+  [migration bỏ cột](migrations/20261026_remove_legacy_dataset_access_columns.sql).
+- Migration khóa bảng và từ chối chạy nếu còn quyền phiên bản hoặc có thời hạn,
+  tránh mất dữ liệu hay tự mở rộng quyền. Không xóa bản ghi quyền.
+- Schema khởi tạo mới trong [init_db.sql](init_db.sql) đã được cập nhật;
+  database mới dùng schema này không chạy lại hai migration access lịch sử.
+  Không chạy init_db.sql trên database đang dùng.
+- Đã xóa cả ba API cũ: GET/POST `/admin/access-grants` và
+  DELETE `/admin/access-grants/{grant_id}`. Các đường dẫn này trả 404 và không
+  còn trong Swagger. Đã bỏ schema/CRUD riêng chỉ phục vụ các API cũ.
+- Frontend chưa chỉnh sửa: form cấp quyền phiên bản cũ cần chuyển sang API mới.
+
+### 1. Kết quả kiểm tra kiến trúc
+
+- FastAPI dùng prefix `/api/v1`, SQLAlchemy sync `Session`, PostgreSQL/PostGIS.
+- JWT và RBAC được tái sử dụng từ [core/deps.py](app/core/deps.py); không thay đổi token, đăng nhập hoặc danh sách role.
+- Code thực tế có thêm `data_engineer`, ngoài `admin`, `data_scientist`, `business_user`. Giữ nguyên quyền và nghiệp vụ upload, mapping, validation, normalization, export, submit/resubmit của role này.
+- Tái sử dụng model `DatasetAccessGrant` và bảng `dataset_access_grants`, hiện chỉ cấp quyền toàn dataset. Không tạo bảng trùng chức năng; ba API `/admin/access-grants` cũ đã bị xóa.
+- Có dependency Alembic trong project nhưng không thấy cấu hình/env/revision Alembic. Các migration hiện tại là SQL trong [migrations/](migrations/), nên tính năng này tiếp tục dùng SQL migration.
+- Hai migration cấp quyền đã được áp dụng trên PostgreSQL local trong quá trình triển khai; môi trường khác cần kiểm tra schema trước khi áp dụng.
+
+### 2. File tạo mới
+
+| File | Trách nhiệm |
+| --- | --- |
+| [app/schemas/dataset_access.py](app/schemas/dataset_access.py) | Validate UUID, từ chối field dư, DTO không có mật khẩu |
+| [app/crud/crud_dataset_access.py](app/crud/crud_dataset_access.py) | Truy vấn và thay đổi bản ghi; lọc dataset bằng EXISTS trước phân trang |
+| [app/services/dataset_access_service.py](app/services/dataset_access_service.py) | Cấp/thu hồi, validation nghiệp vụ, transaction và xử lý xung đột |
+| [app/core/dataset_access.py](app/core/dataset_access.py) | Dependency đọc dataset và dependency riêng cho scientist/analysis/training |
+| [app/api/v1/endpoints/dataset_access.py](app/api/v1/endpoints/dataset_access.py) | Năm API mới |
+| [migrations/20261026_dataset_access_management.sql](migrations/20261026_dataset_access_management.sql) | Migration bổ sung, không xóa dữ liệu |
+| [tests/test_dataset_access.py](tests/test_dataset_access.py) | Test service, HTTP ASGI, router thật và SQLAlchemy/SQLite |
+| [migrations/20261026_remove_legacy_dataset_access_columns.sql](migrations/20261026_remove_legacy_dataset_access_columns.sql) | Bỏ cột phiên bản/thời hạn sau khi kiểm tra dữ liệu |
+
+### 3. File chỉnh sửa
+
+- [app/models/dataset.py](app/models/dataset.py): mở rộng model cấp quyền hiện có.
+- [app/api/v1/api.py](app/api/v1/api.py): đăng ký router mới.
+- [app/api/v1/endpoints/datasets.py](app/api/v1/endpoints/datasets.py): kiểm tra quyền các thao tác đọc.
+- [app/api/v1/endpoints/dataset_mapping.py](app/api/v1/endpoints/dataset_mapping.py): kiểm tra quyền đọc columns/mappings.
+- [app/api/v1/endpoints/data_quality.py](app/api/v1/endpoints/data_quality.py): kiểm tra quyền đọc kết quả quality check.
+- [app/api/v1/endpoints/admin.py](app/api/v1/endpoints/admin.py), [app/crud/crud_admin.py](app/crud/crud_admin.py), [app/schemas/admin.py](app/schemas/admin.py): bỏ router, CRUD và schema chỉ dùng cho ba API cấp quyền cũ.
+- [init_db.sql](init_db.sql): schema cấp quyền toàn dataset cho database mới.
+
+Không chỉnh sửa Frontend, JWT, role, dữ liệu hoặc thuật toán validation/preprocessing.
+
+### 4. Database và tương thích
+
+Bảng `dataset_access_grants` hiện có:
+
+| Cột | Ý nghĩa |
+| --- | --- |
+| `id` | UUID, khóa chính |
+| `dataset_id` | UUID NOT NULL, khóa ngoại tới dataset |
+| `user_id` | UUID NOT NULL, khóa ngoại tới người được cấp quyền |
+| `granted_by` | UUID người cấp quyền; có thể NULL nếu tài khoản admin đã bị xóa |
+| `created_at` | Thời điểm cấp quyền; API trả tên `granted_at` |
+
+Unique `(dataset_id, user_id)` ngăn cấp trùng kể cả khi request cạnh tranh.
+Index `user_id` và unique index hỗ trợ truy vấn quyền. Quyền tồn tại đến khi
+Admin thu hồi, không còn thời hạn hoặc scope theo phiên bản.
+
+Chọn migration theo schema thực tế, không chạy lại migration đã áp dụng:
+
+1. Database cũ chỉ có quyền phiên bản: áp dụng
+   [migration mở rộng](migrations/20261026_dataset_access_management.sql).
+2. Database đã mở rộng nhưng còn hai cột cũ: áp dụng
+   [migration bỏ cột](migrations/20261026_remove_legacy_dataset_access_columns.sql).
+   Script từ chối chạy nếu còn grant phiên bản hoặc có thời hạn; cần quyết định
+   chuyển đổi quyền trước, không tự mở rộng quyền hay xóa bản ghi.
+3. Database mới khởi tạo bằng [init_db.sql](init_db.sql) hiện tại đã có schema
+   cuối cùng; không chạy lại hai migration trên.
+
+Ví dụ từ thư mục BE, với kết nối PostgreSQL đã cấu hình và chỉ khi bước tương ứng
+chưa được áp dụng:
+
+```powershell
+psql -v ON_ERROR_STOP=1 -f migrations/20261026_dataset_access_management.sql
+psql -v ON_ERROR_STOP=1 -f migrations/20261026_remove_legacy_dataset_access_columns.sql
+```
+
+Trên PostgreSQL local đã áp dụng cả hai migration, xác nhận bỏ đúng hai cột và
+giữ nguyên 2 bản ghi quyền tại thời điểm kiểm tra. Không chạy lại
+[init_db.sql](init_db.sql) trên database hiện có vì script có lệnh DROP TABLE.
+
+Ba API cũ GET/POST `/admin/access-grants` và DELETE
+`/admin/access-grants/{grant_id}` đã bị xóa, trả 404. Frontend chưa thay đổi:
+các màn hình còn gọi API cũ cần chuyển sang API mới bên dưới.
+
+### 5. API và ví dụ
+
+Prefix thực tế của tất cả đường dẫn dưới đây: `/api/v1`.
+
+Header: `Authorization: Bearer <access_token>`.
+
+Các UUID sau chỉ là ví dụ tài liệu, cần thay bằng ID thật lấy từ API/database.
+
+#### GET /admin/datasets/{dataset_id}/eligible-users
+
+Chỉ admin. Không có request body. Tham số `search` (tên/email), `skip=0`, `limit=50` (1–100).
+
+```http
+GET /api/v1/admin/datasets/11111111-1111-4111-8111-111111111111/eligible-users?search=example&skip=0&limit=50
+```
+
+Response `200`:
+
+```json
+[
+  {
+    "user_id": "22222222-2222-4222-8222-222222222222",
+    "full_name": "Nguyen An",
+    "email": "an@example.test",
+    "role": "data_scientist",
+    "has_access": false
+  }
+]
+```
+
+#### POST /admin/datasets/{dataset_id}/access
+
+Chỉ admin. Không nhận role hoặc ID người cấp từ client.
+
+```http
+POST /api/v1/admin/datasets/11111111-1111-4111-8111-111111111111/access
+Content-Type: application/json
+```
+
+```json
+{"user_id": "22222222-2222-4222-8222-222222222222"}
+```
+
+Response `201`:
+
+```json
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "dataset_id": "11111111-1111-4111-8111-111111111111",
+  "user_id": "22222222-2222-4222-8222-222222222222",
+  "full_name": "Nguyen An",
+  "email": "an@example.test",
+  "role": "data_scientist",
+  "granted_by": "44444444-4444-4444-8444-444444444444",
+  "granted_at": "2026-10-26T04:00:00Z"
+}
+```
+
+Lỗi: 401 JWT thiếu/không hợp lệ; 403 không phải admin; 404 dataset/user không tồn tại; 409 cấp trùng; 422 UUID/body/role đích không hợp lệ. Unique violation do request cạnh tranh được rollback và chuyển thành 409 khi grant đã tồn tại.
+
+#### GET /admin/datasets/{dataset_id}/access
+
+Chỉ admin. Không có request body; `skip`, `limit` giống trên.
+
+```http
+GET /api/v1/admin/datasets/11111111-1111-4111-8111-111111111111/access?skip=0&limit=50
+```
+
+Response `200`: mảng các object có đầy đủ các field như response POST, ví dụ:
+
+```json
+[
+  {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "dataset_id": "11111111-1111-4111-8111-111111111111",
+    "user_id": "22222222-2222-4222-8222-222222222222",
+    "full_name": "Nguyen An",
+    "email": "an@example.test",
+    "role": "data_scientist",
+    "granted_by": "44444444-4444-4444-8444-444444444444",
+    "granted_at": "2026-10-26T04:00:00Z"
+  }
+]
+```
+
+Chưa cấp cho ai: `[]`.
+
+#### DELETE /admin/datasets/{dataset_id}/access/{user_id}
+
+Chỉ admin. Không có request body.
+
+```http
+DELETE /api/v1/admin/datasets/11111111-1111-4111-8111-111111111111/access/22222222-2222-4222-8222-222222222222
+```
+
+Response `204 No Content`, không có JSON body. Dataset/grant không tồn tại: `404`. Không xóa user, dataset hoặc grant dataset khác. Request đọc tiếp theo của user bị thu hồi nhận 403.
+
+#### GET /datasets/accessible
+
+Admin nhận toàn bộ dataset; scientist/business chỉ nhận dataset được cấp. Danh tính lấy từ JWT. `user_id` không phải tham số API; nếu gửi thêm query này thì không có tác dụng đổi danh tính.
+
+Không có request body. Hỗ trợ `search` theo tên/code, `skip`, `limit`.
+
+```http
+GET /api/v1/datasets/accessible?search=Traffic&skip=0&limit=50
+```
+
+Response `200`:
+
+```json
+[
+  {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Traffic UAV",
+    "code": "TRAFFIC-UAV",
+    "source": "UAV",
+    "description": null,
+    "capture_date": null,
+    "location_name": "Test location",
+    "created_at": "2026-10-26T03:00:00Z"
+  }
+]
+```
+
+Chưa được cấp: `[]`. Không trả đường dẫn file trên server. Role `data_engineer` tiếp tục dùng các API engineering hiện có; API consumer này trả 403 cho role đó.
+
+### 6. Swagger
+
+1. Áp dụng migration trên môi trường mong muốn, chạy backend theo hướng dẫn dự án.
+2. Mở `/docs` trên host backend.
+3. Gọi `POST /api/v1/auth/login` bằng tài khoản thật; nếu bắt buộc đổi mật khẩu thì hoàn tất luồng đó trước.
+4. Bấm **Authorize**, nhập JWT `access_token` vào ô HTTPBearer.
+5. Với admin: gọi eligible-users → POST access → GET access.
+6. Đăng nhập scientist/business, thay token trong Authorize; kiểm tra accessible và preview dataset được cấp.
+7. Gọi preview dataset khác: 403. Gửi token consumer vào API quản trị: 403.
+8. Đổi lại token admin, DELETE access; đổi token consumer và đọc lại dataset: 403, accessible không còn dataset vừa thu hồi.
+
+### 7. API hiện có đã bổ sung kiểm tra quyền
+
+Các GET sau cho phép admin, data engineer hiện có, và consumer có grant:
+
+| Đường dẫn sau `/api/v1/datasets` | Bảo vệ |
+| --- | --- |
+| `/{dataset_id}/preview` | Chặn trước khi đọc dữ liệu file |
+| `/{dataset_id}/columns` | Chặn metadata cột |
+| `/{dataset_id}/column-mappings` | Chặn mapping |
+| `/{dataset_id}/versions` | Chặn danh sách phiên bản của dataset |
+| `/{dataset_id}/versions/{version_id}/status` | Grant dataset + xác nhận version thuộc dataset |
+| `/{dataset_id}/versions/{version_id}/report` | Grant dataset + truy vấn cặp dataset/version hiện có |
+| `/{dataset_id}/quality-checks/{check_id}` | Grant dataset + truy vấn cặp dataset/check |
+| `/{dataset_id}/quality-checks/{check_id}/report` | Như trên |
+| `/{dataset_id}/quality-checks/{check_id}/issues` | Như trên, trước phân trang lỗi |
+
+`GET /datasets/versions` toàn hệ thống vẫn chỉ dành cho data engineer như cũ. Các API admin toàn hệ thống giữ dependency admin. Consumer không thể dùng những API này để liệt kê dữ liệu chưa được cấp.
+
+Dependency `require_dataset_scientist` kết hợp role admin/scientist và dataset grant, dành cho API analysis/training trong tương lai. Helper `check_dataset_version_access` phân giải version về dataset gốc. Không dùng quyền đọc dataset làm quyền thực hiện mọi thao tác.
+
+### 8. Kiểm thử và giới hạn xác minh
+
+- Lần chạy toàn bộ gần nhất: **287 tests passed** sau khi bỏ hai cột. Sau khi xóa ba API cũ, chạy lại bộ test phân quyền: **40 tests passed**.
+- Lint tất cả file Python tạo/chỉnh sửa: **pass**. `git diff --check`: **pass**.
+- Bộ test phân quyền: cấp quyền hai role; nhiều user/dataset; duplicate; role guards; thu hồi; 403; danh sách theo JWT; missing/invalid token; UUID/body validation; xác nhận bỏ hai cột và ba API cũ; cạnh tranh unique mô phỏng; kiểm tra 9 router đọc thật; cấm business preprocessing; sai parent version; query SQLAlchemy và unique constraint trên SQLite tạm.
+- 247 test cũ pass trước khi bổ sung test mới.
+- Concurrency được kiểm tra qua mô phỏng IntegrityError và unique constraint thực trong SQLite; chưa chạy hai transaction đồng thời trên PostgreSQL.
+- SQLite test không kiểm chứng PostGIS. Trên PostgreSQL local đã kiểm tra migration, truy vấn quyền và response; kiểm thử tạo quyền trước khi bỏ cột dùng transaction rollback, không lưu quyền thử nghiệm.
+- Môi trường Windows mặc định gặp lỗi có sẵn `csv.field_size_limit` với giá trị 2 GiB lớn hơn C long. Chạy test với biến môi trường process-only, không sửa cấu hình file/thuật toán:
+
+```powershell
+$env:MAX_DATASET_UPLOAD_BYTES = '2147483647'
+uv run pytest -q
+uv run ruff check .
+```
+
+Trong phiên thực thi dùng Python của `.venv` hiện có (`.venv/Scripts/python.exe -m pytest`) thay vì cài dependency mới.
+
+Lint toàn repo còn các lỗi có sẵn ở [crud_dataset.py](app/crud/crud_dataset.py), [crud_user.py](app/crud/crud_user.py), [user.py](app/models/user.py) (import order), và [dataset_normalization_service.py](app/services/dataset_normalization_service.py) (S110/S112). Không sửa logic normalization ngoài phạm vi.
+
+### 9. Những phần chưa có trong backend hiện tại
+
+Chưa thấy HTTP API riêng cho Dataset Detail, Download, Analysis, Traffic Aggregation, Traffic Visualization, Heatmap, Forecasting hay Model Training. Có schema SQL liên quan traffic/forecast và model experiment, nhưng không có router nghiệp vụ tương ứng để tích hợp. Không tạo API giả hoặc viết lại những tính năng này.
+
+Vì vậy test Business User không được training hiện xác minh dependency dành cho training, không phải một API training đang tồn tại. Khi triển khai các router mới, phải sử dụng dependency phù hợp và phân giải mọi ID file/version/experiment về dataset gốc trước khi trả dữ liệu. Quyền dataset-wide áp dụng cho toàn bộ phiên bản hiện tại và tương lai của dataset đó; không tự bổ sung bộ lọc approval ngoài nghiệp vụ đã có.

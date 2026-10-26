@@ -130,24 +130,3 @@ class ExperimentStats(BaseModel):
 class ExperimentsOverviewResponse(BaseModel):
     stats: ExperimentStats
     experiments: list[ExperimentOverviewItem]
-
-
-class DatasetAccessGrantItem(BaseModel):
-    id: UUID
-    dataset_id: UUID | None = None
-    dataset_name: str
-    dataset_version_id: UUID
-    version_tag: str
-    user_id: UUID
-    user_email: str
-    user_name: str
-    user_role: str
-    granted_by_email: str | None = None
-    expires_at: datetime | None = None
-    created_at: datetime
-
-
-class GrantAccessRequest(BaseModel):
-    dataset_version_id: UUID
-    user_id: UUID
-    expires_at: datetime | None = None
