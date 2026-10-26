@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Users,
   CheckCircle,
+  Database,
   ScrollText,
   LogOut,
   Shield,
@@ -55,10 +56,19 @@ export default function AdminLayout() {
 
           <NavLink
             to="/admin/datasets"
+            end
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <CheckCircle size={18} />
             <span>Dataset Approvals</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/datasets-available"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Database size={18} />
+            <span>Dataset Available</span>
           </NavLink>
 
           <NavLink

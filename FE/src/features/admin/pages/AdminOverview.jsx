@@ -72,22 +72,6 @@ export default function AdminOverview() {
     fetchData()
   }, [])
 
-  const handleQuickReview = async (versionId, status) => {
-    const note = prompt(
-      `Enter ${status === 'APPROVED' ? 'approval' : 'rejection'} note (optional):`,
-      status === 'APPROVED' ? 'Meets UAV trajectory data quality standards' : 'Does not meet quality requirements'
-    )
-    setActionLoading(versionId)
-    try {
-      await adminService.reviewDataset(versionId, { status, note })
-      await fetchData()
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Dataset review action failed.')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
   const handleGrantSubmit = async (e) => {
     e.preventDefault()
     if (!grantForm.user_id || !grantForm.dataset_version_id) {
@@ -163,7 +147,9 @@ export default function AdminOverview() {
   const activeUsersCount = users.filter((u) => u.is_active).length
 
   // Filter pending & approved datasets
-  const pendingDatasets = datasets.filter((d) => d.approval_status === 'PENDING')
+  const pendingDatasets = datasets.filter(
+    (d) => d.approval_status === 'PENDING' || d.approval_status === 'SUBMITTED'
+  )
   const approvedDatasetsCount = datasets.filter((d) => d.approval_status === 'APPROVED').length
 
   // Get experiment stats
@@ -218,15 +204,6 @@ export default function AdminOverview() {
               <span className={`status-pulse-dot ${isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'}`} />
               <span>{isOnline ? 'Database Online' : 'Database Offline'}</span>
             </div>
-
-            <button
-              type="button"
-              className="btn-hero-primary"
-              onClick={() => setIsGrantModalOpen(true)}
-            >
-              <Plus size={16} />
-              <span>Grant Access</span>
-            </button>
 
             <button
               type="button"
@@ -442,26 +419,6 @@ export default function AdminOverview() {
                       <span>•</span>
                       <span>{(item.total_records || 0).toLocaleString()} rows</span>
                     </div>
-                  </div>
-                  <div className="mini-approval-actions">
-                    <button
-                      type="button"
-                      className="btn-action btn-action--success"
-                      style={{ padding: '0.42rem 0.8rem', fontSize: '0.75rem' }}
-                      disabled={actionLoading === item.id}
-                      onClick={() => handleQuickReview(item.id, 'APPROVED')}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-action btn-action--danger"
-                      style={{ padding: '0.42rem 0.8rem', fontSize: '0.75rem' }}
-                      disabled={actionLoading === item.id}
-                      onClick={() => handleQuickReview(item.id, 'REJECTED')}
-                    >
-                      Reject
-                    </button>
                   </div>
                 </div>
               ))}
@@ -719,16 +676,6 @@ export default function AdminOverview() {
               <span className="badge badge--engineer">{accessGrants.length}</span>
             </div>
           </div>
-
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.95rem', fontSize: '0.8rem' }}
-            onClick={() => setIsGrantModalOpen(true)}
-          >
-            <Plus size={15} />
-            <span>Grant Access</span>
-          </button>
         </div>
 
         {accessGrants.length === 0 ? (

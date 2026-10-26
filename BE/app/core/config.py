@@ -33,4 +33,4 @@ SMTP_TIMEOUT_SECONDS = int(os.getenv("SMTP_TIMEOUT_SECONDS", "15"))
 DATASET_UPLOAD_DIR = Path(
     os.getenv("DATASET_UPLOAD_DIR", str(BASE_DIR / "uploads" / "datasets"))
 )
-MAX_DATASET_UPLOAD_BYTES = int(os.getenv("MAX_DATASET_UPLOAD_BYTES", str(2 * 1024**3)))
+MAX_DATASET_UPLOAD_BYTES = int(os.getenv("MAX_DATASET_UPLOAD_BYTES", str(1024**3)))

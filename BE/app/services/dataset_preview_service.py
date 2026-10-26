@@ -48,7 +48,12 @@ PNEUMA_HEADERS = (
     "time",
 )
 PNEUMA_POINT_FIELDS = ("lat", "lon", "speed", "lon_acc", "lat_acc", "time")
-csv.field_size_limit(min(MAX_DATASET_UPLOAD_BYTES, sys.maxsize))
+try:
+    csv.field_size_limit(min(MAX_DATASET_UPLOAD_BYTES, sys.maxsize))
+except OverflowError:
+    # On Windows 64-bit, C long is 32-bit signed integer (max 2**31 - 1 = 2,147,483,647).
+    # sys.maxsize is 64-bit, so csv.field_size_limit raises OverflowError when limit > 2**31 - 1.
+    csv.field_size_limit(2147483647)
 logger = logging.getLogger(__name__)
 
 

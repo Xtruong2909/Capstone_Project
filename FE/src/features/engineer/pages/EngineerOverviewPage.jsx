@@ -274,7 +274,7 @@ export default function EngineerOverviewPage() {
       )}
 
       {/* 4. Two-Column Overview Layout: Recent Datasets + Pipeline Readiness */}
-      <div className="overview-grid">
+      <div className="overview-grid" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '1.75rem' }}>
         <div className="admin-card" style={{ marginBottom: 0 }}>
           <div className="admin-card__header">
             <div className="admin-card__header-left">
@@ -415,31 +415,39 @@ export default function EngineerOverviewPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              padding: '1.5rem 1.6rem 1.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.35rem',
+            }}
+          >
             <div
               style={{
                 background: '#f8fafc',
                 border: '1px solid #e2e8f0',
                 borderRadius: '12px',
-                padding: '1rem 1.15rem',
+                padding: '1.25rem 1.4rem',
               }}
             >
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  fontSize: '0.82rem',
+                  alignItems: 'center',
+                  fontSize: '0.86rem',
                   fontWeight: 700,
                   color: '#0f172a',
-                  marginBottom: '0.45rem',
+                  marginBottom: '0.65rem',
                 }}
               >
                 <span>Approved for Data Science</span>
-                <span style={{ color: '#059669' }}>
+                <span style={{ color: '#059669', fontWeight: 800 }}>
                   {approvedCount} / {totalDatasetsCount} ({approvalRatePct}%)
                 </span>
               </div>
-              <div className="stat-card__mini-bar">
+              <div className="stat-card__mini-bar" style={{ height: '7px', marginBottom: '1.15rem' }}>
                 <div
                   className="stat-card__mini-bar-fill"
                   style={{
@@ -453,8 +461,7 @@ export default function EngineerOverviewPage() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '0.5rem',
-                  marginTop: '0.85rem',
+                  gap: '0.75rem',
                   textAlign: 'center',
                 }}
               >
@@ -462,14 +469,15 @@ export default function EngineerOverviewPage() {
                   style={{
                     background: '#ffffff',
                     border: '1px solid #bbf7d0',
-                    borderRadius: '8px',
-                    padding: '0.5rem',
+                    borderRadius: '10px',
+                    padding: '0.9rem 0.6rem',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                   }}
                 >
-                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669' }}>
                     {approvedCount}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '0.3rem' }}>
                     Approved
                   </div>
                 </div>
@@ -477,14 +485,15 @@ export default function EngineerOverviewPage() {
                   style={{
                     background: '#ffffff',
                     border: '1px solid #fde68a',
-                    borderRadius: '8px',
-                    padding: '0.5rem',
+                    borderRadius: '10px',
+                    padding: '0.9rem 0.6rem',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                   }}
                 >
-                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#d97706' }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706' }}>
                     {pendingCount}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '0.3rem' }}>
                     Pending
                   </div>
                 </div>
@@ -492,29 +501,40 @@ export default function EngineerOverviewPage() {
                   style={{
                     background: '#ffffff',
                     border: '1px solid #fecaca',
-                    borderRadius: '8px',
-                    padding: '0.5rem',
+                    borderRadius: '10px',
+                    padding: '0.9rem 0.6rem',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                   }}
                 >
-                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#dc2626' }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626' }}>
                     {rejectedCount}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '0.3rem' }}>
                     Rejected
                   </div>
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+                alignItems: 'center',
+                paddingTop: '0.2rem',
+              }}
+            >
               <button
                 type="button"
                 className="btn-action btn-action--primary"
                 style={{
                   width: '100%',
+                  maxWidth: '340px',
                   justifyContent: 'center',
-                  padding: '0.7rem 1rem',
+                  padding: '0.72rem 1.25rem',
                   fontSize: '0.86rem',
+                  borderRadius: '9px',
                 }}
                 onClick={() => navigate('/engineer/upload')}
               >
@@ -527,12 +547,14 @@ export default function EngineerOverviewPage() {
                 className="btn-action"
                 style={{
                   width: '100%',
+                  maxWidth: '340px',
                   justifyContent: 'center',
-                  padding: '0.7rem 1rem',
+                  padding: '0.72rem 1.25rem',
                   fontSize: '0.86rem',
                   background: '#f3e8ff',
                   color: '#7c3aed',
                   border: '1px solid #d8b4fe',
+                  borderRadius: '9px',
                   fontWeight: 700,
                 }}
                 onClick={() => startNewVersionIteration(datasets[0])}

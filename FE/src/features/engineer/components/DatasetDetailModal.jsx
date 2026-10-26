@@ -1,4 +1,7 @@
-import { X, FileText, GitBranch, Eye } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { X, FileText, GitBranch, Eye, Workflow, Send } from 'lucide-react'
+import { pipelineService } from '../../../services/pipelineService'
 import {
   formatBytes,
   resolveEffectiveVersionTag,
@@ -24,13 +27,36 @@ export default function DatasetDetailModal({
   onClose,
   onStartNewVersion,
   onPreviewDataset,
+  onOpenPipelineStudio,
 }) {
+  const navigate = useNavigate()
   if (!item) return null
 
   const effectiveVersion = resolveEffectiveVersionTag(item, versionLineageMap)
   const effectiveRecordCount = resolveEffectiveRecordCount(item, recordCountsMap)
   const reviewNote = resolveEffectiveApprovalNote(item)
   const lineageInfo = versionLineageMap[item.dataset_id]
+  const [isResubmitting, setIsResubmitting] = useState(false)
+
+  const handleResubmit = async () => {
+    if (!item?.dataset_id || !item?.version_id) return
+    const note = prompt(
+      'Enter feedback response or update note for Administrator:',
+      'Updated mapping and resolved trajectory quality issues'
+    )
+    if (note === null) return
+
+    setIsResubmitting(true)
+    try {
+      await pipelineService.resubmitVersionForReview(item.dataset_id, item.version_id, note)
+      alert('Version resubmitted successfully for Administrator approval.')
+      onClose()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Resubmission failed. Please check version status.')
+    } finally {
+      setIsResubmitting(false)
+    }
+  }
 
   return (
     <div
@@ -232,6 +258,40 @@ export default function DatasetDetailModal({
             >
               <GitBranch size={14} />
               <span>Upload New Version</span>
+            </button>
+            {item.approval_status === 'REJECTED' && item.version_id && (
+              <button
+                type="button"
+                className="btn-action btn-action--success"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                disabled={isResubmitting}
+                onClick={handleResubmit}
+              >
+                <Send size={14} />
+                <span>{isResubmitting ? 'Resubmitting...' : 'Resubmit to Admin'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-action"
+              style={{
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                border: '1px solid #bfdbfe',
+                fontWeight: 700,
+              }}
+              onClick={() => {
+                const id = item.dataset_id
+                onClose()
+                if (onOpenPipelineStudio) {
+                  onOpenPipelineStudio(id)
+                } else {
+                  navigate(`/engineer/pipeline-studio?datasetId=${encodeURIComponent(id)}`)
+                }
+              }}
+            >
+              <Workflow size={14} />
+              <span>Pipeline Studio</span>
             </button>
             <button
               type="button"

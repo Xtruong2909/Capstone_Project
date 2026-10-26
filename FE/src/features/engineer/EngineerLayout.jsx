@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Upload,
   Table2,
+  Workflow,
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
@@ -103,6 +104,16 @@ export default function EngineerLayout() {
     }
   }
 
+  const openPipelineStudioForDataset = (datasetId, step = 1) => {
+    if (datasetId) {
+      navigate(
+        `/engineer/pipeline-studio?datasetId=${encodeURIComponent(datasetId)}&step=${step}`
+      )
+    } else {
+      navigate('/engineer/pipeline-studio')
+    }
+  }
+
   return (
     <div className="admin-shell">
       {/* Sidebar */}
@@ -143,6 +154,14 @@ export default function EngineerLayout() {
           >
             <Upload size={18} />
             <span>Upload & Versioning</span>
+          </NavLink>
+
+          <NavLink
+            to="/engineer/pipeline-studio"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Workflow size={18} />
+            <span>Pipeline Studio</span>
           </NavLink>
 
           <NavLink
@@ -197,6 +216,7 @@ export default function EngineerLayout() {
               registerRecordCount,
               prependUploadedDataset,
               openPreviewForDataset,
+              openPipelineStudioForDataset,
               startNewVersionIteration,
             }}
           />

@@ -10,6 +10,7 @@ import {
   MessageSquareWarning,
   Eye,
   Info,
+  Workflow,
 } from 'lucide-react'
 import {
   formatBytes,
@@ -377,6 +378,30 @@ export default function EngineerCatalogPage() {
                         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                           <button
                             type="button"
+                            className="btn-action"
+                            style={{
+                              padding: '0.38rem 0.65rem',
+                              fontSize: '0.76rem',
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              border: '1px solid #bfdbfe',
+                              fontWeight: 700,
+                            }}
+                            onClick={() =>
+                              navigate(
+                                `/engineer/pipeline-studio?datasetId=${encodeURIComponent(
+                                  item.dataset_id
+                                )}`
+                              )
+                            }
+                            title="Open in Pipeline Studio"
+                          >
+                            <Workflow size={13} />
+                            <span>Pipeline Studio</span>
+                          </button>
+
+                          <button
+                            type="button"
                             className="btn-action btn-action--primary"
                             style={{ padding: '0.38rem 0.68rem', fontSize: '0.76rem' }}
                             onClick={() => openPreviewForDataset(item.dataset_id)}
@@ -431,6 +456,9 @@ export default function EngineerCatalogPage() {
         onClose={() => setDetailModalItem(null)}
         onStartNewVersion={startNewVersionIteration}
         onPreviewDataset={openPreviewForDataset}
+        onOpenPipelineStudio={(id) =>
+          navigate(`/engineer/pipeline-studio?datasetId=${encodeURIComponent(id)}`)
+        }
       />
     </>
   )

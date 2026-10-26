@@ -10,6 +10,7 @@ import AdminLayout from './features/admin/AdminLayout'
 import AdminOverview from './features/admin/pages/AdminOverview'
 import AdminUsersPage from './features/admin/pages/AdminUsersPage'
 import AdminDatasetsPage from './features/admin/pages/AdminDatasetsPage'
+import AdminAvailableDatasetsPage from './features/admin/pages/AdminAvailableDatasetsPage'
 import AdminAuditLogsPage from './features/admin/pages/AdminAuditLogsPage'
 
 // Data Engineer features
@@ -18,6 +19,7 @@ import EngineerOverviewPage from './features/engineer/pages/EngineerOverviewPage
 import EngineerCatalogPage from './features/engineer/pages/EngineerCatalogPage'
 import EngineerUploadPage from './features/engineer/pages/EngineerUploadPage'
 import EngineerPreviewPage from './features/engineer/pages/EngineerPreviewPage'
+import EngineerPipelineStudioPage from './features/engineer/pages/EngineerPipelineStudioPage'
 
 // Other role workspaces
 import RoleDashboardPage from './features/roles/RoleDashboardPage'
@@ -38,6 +40,7 @@ export default function App() {
           <Route index element={<AdminOverview />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="datasets" element={<AdminDatasetsPage />} />
+          <Route path="datasets-available" element={<AdminAvailableDatasetsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
         </Route>
       </Route>
@@ -49,6 +52,7 @@ export default function App() {
           <Route path="datasets" element={<EngineerCatalogPage />} />
           <Route path="upload" element={<EngineerUploadPage />} />
           <Route path="preview" element={<EngineerPreviewPage />} />
+          <Route path="pipeline-studio" element={<EngineerPipelineStudioPage />} />
         </Route>
       </Route>
 

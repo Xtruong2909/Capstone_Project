@@ -11,6 +11,7 @@ import {
   Trash2,
   FileText,
   Check,
+  Workflow,
 } from 'lucide-react'
 import { datasetService } from '../../../services/datasetService'
 import {
@@ -513,7 +514,34 @@ export default function EngineerUploadPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/engineer/pipeline-studio?datasetId=${encodeURIComponent(
+                      uploadSuccess.dataset_id
+                    )}`
+                  )
+                }
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.58rem 1.15rem',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  border: '1.5px solid #047857',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(4, 120, 87, 0.28)',
+                }}
+              >
+                <Workflow size={16} color="#ffffff" />
+                <span>Proceed to Pipeline Studio</span>
+              </button>
               <button
                 type="button"
                 onClick={() => openPreviewForDataset(uploadSuccess.dataset_id)}
