@@ -14,7 +14,7 @@ export default function AdminAuditLogsPage() {
       const data = await adminService.getAuditLogs()
       setLogs(data)
     } catch (err) {
-      setError('Không thể tải nhật ký hoạt động hệ thống.')
+      setError('Failed to load system audit logs.')
     } finally {
       setIsLoading(false)
     }
@@ -36,7 +36,7 @@ export default function AdminAuditLogsPage() {
       <div className="admin-card">
         <div className="admin-card__header">
           <h3 className="admin-card__title">
-            Nhật ký kiểm toán hệ thống ({logs.length})
+            System Audit Logs ({logs.length})
           </h3>
           <button
             type="button"
@@ -45,14 +45,14 @@ export default function AdminAuditLogsPage() {
             onClick={fetchLogs}
           >
             <RefreshCw size={14} />
-            <span>Làm mới</span>
+            <span>Refresh</span>
           </button>
         </div>
 
         {isLoading ? (
           <div className="empty-state">
             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>Đang tải nhật ký kiểm toán...</p>
+            <p>Loading audit logs...</p>
           </div>
         ) : error ? (
           <div className="empty-state">
@@ -62,9 +62,9 @@ export default function AdminAuditLogsPage() {
         ) : logs.length === 0 ? (
           <div className="empty-state">
             <ScrollText size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>Chưa có nhật ký hoạt động nào được ghi nhận.</p>
+            <p>No audit log entries recorded yet.</p>
             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              Mọi hành vi thêm tài khoản, cập nhật trạng thái, phê duyệt dataset sẽ tự động được ghi lại tại đây.
+              All user creation, status updates, and dataset approval actions are automatically logged here.
             </span>
           </div>
         ) : (
@@ -73,12 +73,12 @@ export default function AdminAuditLogsPage() {
               <thead>
                 <tr>
                   <th>#ID</th>
-                  <th>Thời gian</th>
-                  <th>Tài khoản</th>
-                  <th>Hành động</th>
-                  <th>Loại tài nguyên</th>
-                  <th>Địa chỉ IP</th>
-                  <th>Chi tiết</th>
+                  <th>Timestamp</th>
+                  <th>Account</th>
+                  <th>Action</th>
+                  <th>Resource Type</th>
+                  <th>IP Address</th>
+                  <th>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -86,7 +86,7 @@ export default function AdminAuditLogsPage() {
                   <tr key={log.id}>
                     <td>#{log.id}</td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(log.created_at).toLocaleString('vi-VN')}
+                      {new Date(log.created_at).toLocaleString('en-US')}
                     </td>
                     <td>{log.user_email || 'System'}</td>
                     <td>
