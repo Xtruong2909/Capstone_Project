@@ -4,6 +4,7 @@ import {
   Upload,
   GitBranch,
   Sparkles,
+  Zap,
   AlertCircle,
   CheckCircle2,
   Eye,
@@ -17,10 +18,11 @@ import { datasetService } from '../../../services/datasetService'
 import {
   ALLOWED_EXTENSIONS,
   MAX_UPLOAD_SIZE_BYTES,
-  SAMPLE_PNEUMA_CSV_CONTENT,
   formatBytes,
   resolveEffectiveVersionTag,
 } from '../utils/engineerHelpers'
+import { quickGeneratePneumaSampleFile } from '../utils/pneumaSampleGenerator'
+import PneumaSampleGeneratorModal from '../components/PneumaSampleGeneratorModal'
 
 export default function EngineerUploadPage() {
   const navigate = useNavigate()
@@ -57,6 +59,8 @@ export default function EngineerUploadPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
+  const [isSampleGeneratorOpen, setIsSampleGeneratorOpen] = useState(false)
+  const [isQuickGenerating, setIsQuickGenerating] = useState(false)
 
   // Apply URL query or router state when arriving from "New Version" action
   useEffect(() => {
@@ -108,7 +112,7 @@ export default function EngineerUploadPage() {
     }
   }
 
-  const validateAndInspectFile = (file) => {
+  const validateAndInspectFile = (file, { updateFormName = true } = {}) => {
     if (!file) return
     setUploadError(null)
     setUploadSuccess(null)
@@ -145,7 +149,7 @@ export default function EngineerUploadPage() {
 
     setSelectedFile(file)
 
-    if (uploadMode === 'new' && !uploadForm.name) {
+    if (updateFormName && uploadMode === 'new' && !uploadForm.name) {
       const baseName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ')
       setUploadForm((prev) => ({
         ...prev,
@@ -186,13 +190,22 @@ export default function EngineerUploadPage() {
     }
   }
 
-  const handleGenerateSamplePneumaFile = () => {
-    const blob = new Blob([SAMPLE_PNEUMA_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' })
-    const timestampSuffix = new Date().toTimeString().slice(0, 5).replace(':', '')
-    const sampleFile = new File([blob], `pneuma_athens_uav_${timestampSuffix}.csv`, {
-      type: 'text/csv',
-    })
-    validateAndInspectFile(sampleFile)
+  const handleSampleDatasetGenerated = (sampleFile, summary) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+    setUploadError(null)
+    setUploadSuccess(null)
+    validateAndInspectFile(sampleFile, { updateFormName: false })
+
+    const typeSummary =
+      summary?.types?.length === 6
+        ? 'All 6 Vehicle Types'
+        : summary?.types?.join(', ') || 'pNEUMA Corridor'
+
+    const timeTag =
+      summary?.timestampSuffix ||
+      new Date().toTimeString().slice(0, 8).replace(/:/g, '')
 
     if (uploadMode === 'iteration' && parentDatasetId) {
       const parent = datasets.find((d) => d.dataset_id === parentDatasetId)
@@ -205,13 +218,31 @@ export default function EngineerUploadPage() {
       }))
     } else {
       setUploadForm({
-        name: `pNEUMA Athens Corridor ${timestampSuffix}`,
+        name: `pNEUMA Athens (${summary?.count || 5} veh - ${typeSummary}) #${timeTag}`,
         source: 'pNEUMA Drone Swarm - EPFL Open Traffic',
-        location_name: 'Athens Central Business District (Syntagma)',
+        location_name: 'Athens Central Business District (Syntagma / Panepistimiou)',
         capture_date: '2018-10-24',
-        description:
-          'UAV swarm vehicle trajectory dataset from pNEUMA (normalized lat/lon coordinates, instantaneous velocity, and acceleration time-series).',
+        description: `Genuine pNEUMA UAV trajectory recording sampled from Athens drone swarm (EPFL Open Traffic). Contains ${summary?.count || 5} vehicles (${typeSummary}) with 25Hz GPS coordinates, instantaneous velocity, and kinematics.`,
       })
+    }
+  }
+
+  const handleGenerateSamplePneumaFile = () => {
+    setIsSampleGeneratorOpen(true)
+  }
+
+  const handleQuick1ClickGenerate = async () => {
+    if (isQuickGenerating) return
+    setIsQuickGenerating(true)
+    setUploadError(null)
+    setUploadSuccess(null)
+    try {
+      const result = await quickGeneratePneumaSampleFile()
+      handleSampleDatasetGenerated(result.file, result.summary)
+    } catch (err) {
+      setUploadError(err.message || 'Failed to generate quick sample dataset.')
+    } finally {
+      setIsQuickGenerating(false)
     }
   }
 
@@ -408,11 +439,33 @@ export default function EngineerUploadPage() {
               color: '#1d4ed8',
               border: '1px solid #bfdbfe',
               fontWeight: 700,
+              opacity: isQuickGenerating ? 0.65 : 1,
+              cursor: isQuickGenerating ? 'not-allowed' : 'pointer',
             }}
             onClick={handleGenerateSamplePneumaFile}
+            disabled={isQuickGenerating}
           >
             <Sparkles size={15} />
             <span>Generate Sample pNEUMA (.csv)</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn-action"
+            style={{
+              background: '#f0fdf4',
+              color: '#15803d',
+              border: '1px solid #bbf7d0',
+              fontWeight: 700,
+              opacity: isQuickGenerating ? 0.65 : 1,
+              cursor: isQuickGenerating ? 'not-allowed' : 'pointer',
+            }}
+            onClick={handleQuick1ClickGenerate}
+            disabled={isQuickGenerating}
+            title="Instant 1-Click: Generates a balanced 5-vehicle sample"
+          >
+            <Zap size={14} />
+            <span>{isQuickGenerating ? 'Generating Sample...' : 'Quick 1-Click Generate'}</span>
           </button>
         </div>
       </div>
@@ -952,7 +1005,9 @@ export default function EngineerUploadPage() {
                     </span>
                     {fileInspection.estimatedRows != null && (
                       <span className="badge badge--engineer">
-                        ~{fileInspection.estimatedRows.toLocaleString()} trajectory rows
+                        {fileInspection.isPneuma
+                          ? `~${fileInspection.estimatedRows.toLocaleString()} vehicle tracks`
+                          : `~${fileInspection.estimatedRows.toLocaleString()} trajectory rows`}
                       </span>
                     )}
                     {fileInspection.delimiter && (
@@ -1264,6 +1319,14 @@ export default function EngineerUploadPage() {
           </button>
         </div>
       </form>
+
+      {isSampleGeneratorOpen && (
+        <PneumaSampleGeneratorModal
+          isOpen={isSampleGeneratorOpen}
+          onClose={() => setIsSampleGeneratorOpen(false)}
+          onGenerate={handleSampleDatasetGenerated}
+        />
+      )}
     </div>
   )
 }
