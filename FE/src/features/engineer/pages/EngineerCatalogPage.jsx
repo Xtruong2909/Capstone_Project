@@ -331,13 +331,13 @@ export default function EngineerCatalogPage() {
               }}
             >
               <colgroup>
-                <col style={{ width: '16%' }} />
+                <col style={{ width: '15%' }} />
                 <col style={{ width: '10%' }} />
                 <col style={{ width: '11%' }} />
                 <col style={{ width: '7%' }} />
                 <col style={{ width: '10%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '15%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '17%' }} />
                 <col style={{ width: '8%' }} />
                 <col style={{ width: '14%' }} />
               </colgroup>
@@ -582,38 +582,50 @@ export default function EngineerCatalogPage() {
                       </td>
 
                       {/* 7. Review Feedback */}
-                      <td style={bodyCellStyle}>
+                      <td style={{ ...bodyCellStyle, verticalAlign: 'middle' }}>
                         <div
                           style={{
-                            padding: '0.38rem 0.58rem',
+                            padding: '0.42rem 0.65rem',
                             borderRadius: '7px',
                             background:
                               item.approval_status === 'REJECTED'
                                 ? '#fef2f2'
                                 : item.approval_status === 'APPROVED'
                                 ? '#f0fdf4'
+                                : item.approval_status === 'SUBMITTED'
+                                ? '#eff6ff'
                                 : '#f8fafc',
                             borderLeft:
                               item.approval_status === 'REJECTED'
                                 ? '3px solid #ef4444'
                                 : item.approval_status === 'APPROVED'
                                 ? '3px solid #10b981'
+                                : item.approval_status === 'SUBMITTED'
+                                ? '3px solid #3b82f6'
                                 : '3px solid #cbd5e1',
-                            fontSize: '0.74rem',
+                            fontSize: '0.75rem',
                             fontWeight: 500,
                             color:
                               item.approval_status === 'REJECTED'
                                 ? '#991b1b'
                                 : item.approval_status === 'APPROVED'
                                 ? '#166534'
+                                : item.approval_status === 'SUBMITTED'
+                                ? '#1e40af'
                                 : '#475569',
-                            lineHeight: 1.35,
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
+                            lineHeight: 1.45,
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            whiteSpace: 'normal',
+                            maxHeight: '110px',
+                            overflowY: 'auto',
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#cbd5e1 transparent',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
                           }}
-                          title={reviewNote}
+                          onClick={() => setDetailModalItem(item)}
+                          title={`${reviewNote || 'No feedback note available'}\n(Click to inspect details)`}
                         >
                           {reviewNote || '—'}
                         </div>

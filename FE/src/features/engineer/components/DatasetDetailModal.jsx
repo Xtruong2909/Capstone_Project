@@ -121,18 +121,24 @@ export default function DatasetDetailModal({
                   ? '#fef2f2'
                   : item.approval_status === 'APPROVED'
                   ? '#f0fdf4'
+                  : item.approval_status === 'SUBMITTED'
+                  ? '#eff6ff'
                   : '#fffbeb',
               border:
                 item.approval_status === 'REJECTED'
                   ? '1px solid #fecaca'
                   : item.approval_status === 'APPROVED'
                   ? '1px solid #bbf7d0'
+                  : item.approval_status === 'SUBMITTED'
+                  ? '1px solid #bfdbfe'
                   : '1px solid #fde68a',
               color:
                 item.approval_status === 'REJECTED'
                   ? '#991b1b'
                   : item.approval_status === 'APPROVED'
                   ? '#166534'
+                  : item.approval_status === 'SUBMITTED'
+                  ? '#1d4ed8'
                   : '#92400e',
               fontSize: '0.84rem',
             }}
