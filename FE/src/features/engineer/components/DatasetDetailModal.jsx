@@ -10,11 +10,24 @@ import {
 } from '../utils/engineerHelpers'
 
 export function DatasetStatusBadge({ status }) {
-  switch (status) {
+  switch ((status || '').toUpperCase()) {
     case 'APPROVED':
       return <span className="badge badge--approved">Approved</span>
     case 'REJECTED':
       return <span className="badge badge--rejected">Rejected</span>
+    case 'SUBMITTED':
+      return (
+        <span
+          className="badge badge--pending"
+          style={{
+            background: '#eff6ff',
+            color: '#1d4ed8',
+            border: '1px solid #bfdbfe',
+          }}
+        >
+          Submitted
+        </span>
+      )
     default:
       return <span className="badge badge--pending">Pending</span>
   }

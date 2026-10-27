@@ -384,15 +384,6 @@ export default function EngineerOverviewPage() {
                               <Eye size={13} />
                               <span>Preview</span>
                             </button>
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              style={{ padding: '0.35rem 0.55rem', fontSize: '0.75rem' }}
-                              onClick={() => setDetailModalItem(item)}
-                              title="View Metadata & Admin Review Note"
-                            >
-                              <Info size={13} />
-                            </button>
                           </div>
                         </td>
                       </tr>

@@ -237,7 +237,9 @@
 .admin-content {
   padding: 1.75rem 2.25rem 2.5rem;
   flex: 1;
-  max-width: 1560px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   margin: 0 auto;
 }
@@ -1395,4 +1397,167 @@
   color: #475569;
 }
 
+
+
+
+/* ====================================================================
+   COLLAPSIBLE SIDEBAR & TABLE SEPARATION ENHANCEMENTS
+   ==================================================================== */
+
+.admin-sidebar {
+  border-right: 1px solid #cbd5e1;
+  box-shadow: 6px 0 28px -10px rgba(15, 23, 42, 0.09);
+  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: visible;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 30;
+}
+
+.admin-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 1.3rem 1.2rem;
+}
+
+.admin-sidebar--collapsed {
+  width: 78px;
+}
+
+.admin-sidebar--collapsed .admin-sidebar__header {
+  justify-content: center;
+  padding: 1.2rem 0.5rem;
+}
+
+/* Proximity Hover Zone in the Vertical Center of Sidebar's Right Edge */
+.admin-sidebar__edge-zone {
+  position: absolute;
+  top: 50%;
+  right: -28px;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+/* Eye-Catching Floating Toggle Pill (Hidden until user hovers near the middle edge) */
+.admin-sidebar__floating-toggle {
+  width: 34px;
+  height: 62px;
+  border-radius: 9999px;
+  border: 2.5px solid #ffffff;
+  background: linear-gradient(180deg, #2563eb 0%, #4f46e5 52%, #7c3aed 100%);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transform: scale(0.72) translateX(-6px);
+  pointer-events: none;
+  transition:
+    opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s ease,
+    background 0.22s ease;
+  box-shadow:
+    0 10px 24px -4px rgba(37, 99, 235, 0.55),
+    0 4px 10px -2px rgba(124, 58, 237, 0.35),
+    0 0 0 4px rgba(59, 130, 246, 0.16);
+}
+
+.admin-sidebar__edge-zone:hover .admin-sidebar__floating-toggle,
+.admin-sidebar__floating-toggle:focus-visible {
+  opacity: 1;
+  transform: scale(1) translateX(0);
+  pointer-events: auto;
+}
+
+.admin-sidebar__floating-toggle:hover {
+  transform: scale(1.08) translateX(1px);
+  background: linear-gradient(180deg, #1d4ed8 0%, #4338ca 50%, #6d28d9 100%);
+  box-shadow:
+    0 14px 28px -4px rgba(37, 99, 235, 0.68),
+    0 6px 14px -2px rgba(124, 58, 237, 0.45),
+    0 0 0 6px rgba(59, 130, 246, 0.22);
+}
+
+.admin-sidebar__floating-toggle:active {
+  transform: scale(0.96);
+}
+
+.admin-sidebar--collapsed .admin-sidebar__nav {
+  padding: 1rem 0.65rem;
+  align-items: center;
+}
+
+.admin-sidebar--collapsed .admin-nav-item {
+  justify-content: center;
+  padding: 0.78rem;
+  width: 46px;
+  height: 46px;
+}
+
+.admin-sidebar--collapsed .admin-nav-item span {
+  display: none;
+}
+
+.admin-sidebar--collapsed .admin-nav-item:hover {
+  transform: scale(1.06);
+}
+
+.admin-sidebar--collapsed .admin-sidebar__footer {
+  padding: 0.85rem 0.6rem;
+  align-items: center;
+}
+
+.admin-sidebar--collapsed .admin-user-profile {
+  justify-content: center;
+  padding: 0.35rem;
+  width: 46px;
+  height: 46px;
+}
+
+.admin-sidebar--collapsed .admin-logout-btn {
+  width: 46px;
+  height: 40px;
+  padding: 0;
+}
+
+/* Workspace Separation & Single-Viewport Fit (No Horizontal/Vertical Overflow) */
+.admin-main {
+  background: linear-gradient(180deg, #eef2f6 0%, #f1f5f9 100%);
+  min-width: 0;
+}
+
+.admin-header {
+  height: 54px;
+  padding: 0 1.5rem;
+}
+
+.admin-content {
+  max-width: 100%;
+  width: 100%;
+  padding: 1.15rem 1.5rem;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.admin-card {
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 16px;
+  margin-bottom: 1rem;
+  box-shadow:
+    0 12px 28px -8px rgba(15, 23, 42, 0.08),
+    0 4px 12px -4px rgba(15, 23, 42, 0.04);
+}
 
