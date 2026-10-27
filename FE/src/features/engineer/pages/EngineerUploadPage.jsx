@@ -4,7 +4,6 @@ import {
   Upload,
   GitBranch,
   Sparkles,
-  Zap,
   AlertCircle,
   CheckCircle2,
   Eye,
@@ -21,7 +20,6 @@ import {
   formatBytes,
   resolveEffectiveVersionTag,
 } from '../utils/engineerHelpers'
-import { quickGeneratePneumaSampleFile } from '../utils/pneumaSampleGenerator'
 import PneumaSampleGeneratorModal from '../components/PneumaSampleGeneratorModal'
 
 export default function EngineerUploadPage() {
@@ -60,7 +58,6 @@ export default function EngineerUploadPage() {
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
   const [isSampleGeneratorOpen, setIsSampleGeneratorOpen] = useState(false)
-  const [isQuickGenerating, setIsQuickGenerating] = useState(false)
 
   // Apply URL query or router state when arriving from "New Version" action
   useEffect(() => {
@@ -229,21 +226,6 @@ export default function EngineerUploadPage() {
 
   const handleGenerateSamplePneumaFile = () => {
     setIsSampleGeneratorOpen(true)
-  }
-
-  const handleQuick1ClickGenerate = async () => {
-    if (isQuickGenerating) return
-    setIsQuickGenerating(true)
-    setUploadError(null)
-    setUploadSuccess(null)
-    try {
-      const result = await quickGeneratePneumaSampleFile()
-      handleSampleDatasetGenerated(result.file, result.summary)
-    } catch (err) {
-      setUploadError(err.message || 'Failed to generate quick sample dataset.')
-    } finally {
-      setIsQuickGenerating(false)
-    }
   }
 
   const handleFileChange = (e) => {
@@ -439,33 +421,11 @@ export default function EngineerUploadPage() {
               color: '#1d4ed8',
               border: '1px solid #bfdbfe',
               fontWeight: 700,
-              opacity: isQuickGenerating ? 0.65 : 1,
-              cursor: isQuickGenerating ? 'not-allowed' : 'pointer',
             }}
             onClick={handleGenerateSamplePneumaFile}
-            disabled={isQuickGenerating}
           >
             <Sparkles size={15} />
             <span>Generate Sample pNEUMA (.csv)</span>
-          </button>
-
-          <button
-            type="button"
-            className="btn-action"
-            style={{
-              background: '#f0fdf4',
-              color: '#15803d',
-              border: '1px solid #bbf7d0',
-              fontWeight: 700,
-              opacity: isQuickGenerating ? 0.65 : 1,
-              cursor: isQuickGenerating ? 'not-allowed' : 'pointer',
-            }}
-            onClick={handleQuick1ClickGenerate}
-            disabled={isQuickGenerating}
-            title="Instant 1-Click: Generates a balanced 5-vehicle sample"
-          >
-            <Zap size={14} />
-            <span>{isQuickGenerating ? 'Generating Sample...' : 'Quick 1-Click Generate'}</span>
           </button>
         </div>
       </div>

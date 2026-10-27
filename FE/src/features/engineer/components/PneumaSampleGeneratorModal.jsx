@@ -69,6 +69,8 @@ const TYPE_CONFIG = {
 export default function PneumaSampleGeneratorModal({ isOpen, onClose, onGenerate }) {
   const [selectedTypes, setSelectedTypes] = useState([...PNEUMA_VEHICLE_TYPES])
   const [vehicleCount, setVehicleCount] = useState(5)
+  const [isCustomCount, setIsCustomCount] = useState(false)
+  const [customInputValue, setCustomInputValue] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [poolMeta, setPoolMeta] = useState(null)
   const [errorMsg, setErrorMsg] = useState(null)
@@ -470,55 +472,149 @@ export default function PneumaSampleGeneratorModal({ isOpen, onClose, onGenerate
             </div>
           </div>
 
-          {/* Section 2: Number of Vehicles Selector */}
+          {/* Section 2: Number of Vehicles Selector & Custom Input */}
           <div style={{ marginBottom: '1.35rem' }}>
-            <label
+            <div
               style={{
-                display: 'block',
-                fontSize: '0.86rem',
-                fontWeight: 700,
-                color: '#0f172a',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 marginBottom: '0.55rem',
               }}
             >
-              Number of Vehicles ({vehicleCount} Selected)
-            </label>
+              <label
+                style={{
+                  fontSize: '0.86rem',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <Database size={15} color="#2563eb" />
+                <span>
+                  Số lượng phương tiện:{' '}
+                  <strong style={{ color: '#2563eb' }}>{vehicleCount || 5} xe</strong>
+                </span>
+              </label>
+
+              <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                (Tùy chọn tự do từ 1 đến 100 xe từ tập pNEUMA thật)
+              </span>
+            </div>
 
             <div
               style={{
                 display: 'flex',
                 gap: '0.65rem',
                 flexWrap: 'wrap',
+                alignItems: 'center',
               }}
             >
               {VEHICLE_COUNT_OPTIONS.map((count) => {
-                const isActive = vehicleCount === count
+                const isActive = vehicleCount === count && !isCustomCount
                 return (
                   <button
                     key={count}
                     type="button"
-                    onClick={() => !isGenerating && setVehicleCount(count)}
+                    onClick={() => {
+                      if (isGenerating) return
+                      setIsCustomCount(false)
+                      setVehicleCount(count)
+                      setCustomInputValue('')
+                    }}
                     disabled={isGenerating}
                     style={{
-                      flex: 1,
-                      minWidth: '70px',
+                      flex: '1 1 65px',
                       padding: '0.55rem 0.85rem',
                       borderRadius: '10px',
                       border: isActive ? '2px solid #2563eb' : '1px solid #cbd5e1',
                       background: isActive ? '#eff6ff' : '#ffffff',
                       color: isGenerating ? '#94a3b8' : isActive ? '#1d4ed8' : '#334155',
                       fontWeight: isActive ? 800 : 600,
-                      fontSize: '0.88rem',
+                      fontSize: '0.85rem',
                       cursor: isGenerating ? 'not-allowed' : 'pointer',
                       opacity: isGenerating ? 0.65 : 1,
                       transition: 'all 0.15s ease',
                       boxShadow: isActive ? '0 2px 8px rgba(37, 99, 235, 0.15)' : 'none',
                     }}
                   >
-                    {count} vehicles
+                    {count} xe
                   </button>
                 )
               })}
+
+              {/* Custom Number Input */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  background: isCustomCount ? '#eff6ff' : '#ffffff',
+                  border: isCustomCount ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                  borderRadius: '10px',
+                  padding: '0.3rem 0.65rem',
+                  flex: '1 1 130px',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isCustomCount ? '0 2px 8px rgba(37, 99, 235, 0.15)' : 'none',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    color: isCustomCount ? '#1d4ed8' : '#64748b',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Tùy chỉnh:
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={isCustomCount ? customInputValue : ''}
+                  placeholder={String(vehicleCount || 5)}
+                  disabled={isGenerating}
+                  onChange={(e) => {
+                    setIsCustomCount(true)
+                    setCustomInputValue(e.target.value)
+                    const val = parseInt(e.target.value, 10)
+                    if (!isNaN(val) && val >= 1) {
+                      setVehicleCount(Math.min(100, Math.max(1, val)))
+                    }
+                  }}
+                  onFocus={() => {
+                    setIsCustomCount(true)
+                    if (!customInputValue) {
+                      setCustomInputValue(String(vehicleCount || 5))
+                    }
+                  }}
+                  onBlur={() => {
+                    const val = parseInt(customInputValue, 10)
+                    if (isNaN(val) || val < 1) {
+                      setVehicleCount(5)
+                      setCustomInputValue('5')
+                    } else {
+                      const clamped = Math.min(100, Math.max(1, val))
+                      setVehicleCount(clamped)
+                      setCustomInputValue(String(clamped))
+                    }
+                  }}
+                  style={{
+                    width: '60px',
+                    border: 'none',
+                    background: 'transparent',
+                    fontWeight: 800,
+                    fontSize: '0.88rem',
+                    color: '#0f172a',
+                    outline: 'none',
+                    textAlign: 'center',
+                  }}
+                />
+                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>xe</span>
+              </div>
             </div>
           </div>
 
