@@ -15,14 +15,12 @@ export const PNEUMA_CSV_HEADER =
 let cachedPool = null
 
 /**
- * Dynamically loads the ~1.5MB genuine pNEUMA sample pool JSON.
+ * Dynamically loads the ~1.5MB genuine pNEUMA sample pool.
  */
 export async function getSamplePool() {
   if (!cachedPool) {
-    const mod = await import('../../../assets/data/pneuma_sample_pool.json', {
-      with: { type: 'json' },
-    })
-    cachedPool = mod.default || mod
+    const mod = await import('../../../assets/data/pneuma_sample_pool.js')
+    cachedPool = mod.default || mod.pneumaSamplePool || mod
   }
   return cachedPool
 }
