@@ -2,22 +2,22 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users,
-  Shield,
   Database,
   Clock,
-  Server,
   AlertCircle,
   RefreshCw,
   CheckCircle2,
   ArrowRight,
   ShieldCheck,
-  Cpu,
   FlaskConical,
   KeyRound,
   Plus,
   Trash2,
   X,
-  TrendingUp,
+  Activity,
+  Award,
+  Layers,
+  ScrollText,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import apiClient from '../../../services/apiClient'
@@ -62,7 +62,7 @@ export default function AdminOverview() {
       setExperimentsData(expData)
       setAccessGrants(grantsData)
     } catch (err) {
-      setError('Không thể tải dữ liệu thống kê từ hệ thống.')
+      setError('Failed to load system overview statistics.')
     } finally {
       setIsLoading(false)
     }
@@ -72,26 +72,10 @@ export default function AdminOverview() {
     fetchData()
   }, [])
 
-  const handleQuickReview = async (versionId, status) => {
-    const note = prompt(
-      `Nhập ghi chú ${status === 'APPROVED' ? 'phê duyệt' : 'từ chối'} (tùy chọn):`,
-      status === 'APPROVED' ? 'Đạt tiêu chuẩn chất lượng dữ liệu UAV' : 'Chưa đạt yêu cầu'
-    )
-    setActionLoading(versionId)
-    try {
-      await adminService.reviewDataset(versionId, { status, note })
-      await fetchData()
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Thao tác phê duyệt thất bại.')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
   const handleGrantSubmit = async (e) => {
     e.preventDefault()
     if (!grantForm.user_id || !grantForm.dataset_version_id) {
-      setGrantError('Vui lòng chọn người dùng và phiên bản dữ liệu.')
+      setGrantError('Please select both a user and a dataset version.')
       return
     }
     setGrantSubmitting(true)
@@ -107,20 +91,20 @@ export default function AdminOverview() {
       const updatedGrants = await adminService.getAccessGrants()
       setAccessGrants(updatedGrants)
     } catch (err) {
-      setGrantError(err.response?.data?.detail || 'Không thể cấp quyền truy cập.')
+      setGrantError(err.response?.data?.detail || 'Failed to grant dataset access.')
     } finally {
       setGrantSubmitting(false)
     }
   }
 
   const handleRevokeGrant = async (grantId) => {
-    if (!confirm('Bạn có chắc chắn muốn thu hồi quyền truy cập này?')) return
+    if (!confirm('Are you sure you want to revoke this access permission?')) return
     setActionLoading(grantId)
     try {
       await adminService.revokeAccess(grantId)
       setAccessGrants((prev) => prev.filter((g) => g.id !== grantId))
     } catch (err) {
-      alert(err.response?.data?.detail || 'Thu hồi quyền thất bại.')
+      alert(err.response?.data?.detail || 'Failed to revoke access permission.')
     } finally {
       setActionLoading(null)
     }
@@ -130,7 +114,7 @@ export default function AdminOverview() {
     return (
       <div className="empty-state">
         <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 1rem', color: '#2563eb' }} />
-        <p>Đang tải dữ liệu tổng quan hệ thống...</p>
+        <p>Loading system overview...</p>
       </div>
     )
   }
@@ -146,7 +130,7 @@ export default function AdminOverview() {
           style={{ marginTop: '1rem' }}
           onClick={fetchData}
         >
-          Thử lại
+          Retry
         </button>
       </div>
     )
@@ -162,15 +146,38 @@ export default function AdminOverview() {
   }
   const activeUsersCount = users.filter((u) => u.is_active).length
 
-  // Filter pending datasets
-  const pendingDatasets = datasets.filter((d) => d.approval_status === 'PENDING')
-
-  // Candidate users for grant (exclude admin)
-  const candidateUsers = users.filter((u) => u.role_id !== 'admin')
+  // Filter pending & approved datasets
+  const pendingDatasets = datasets.filter(
+    (d) => d.approval_status === 'PENDING' || d.approval_status === 'SUBMITTED'
+  )
+  const approvedDatasetsCount = datasets.filter((d) => d.approval_status === 'APPROVED').length
 
   // Get experiment stats
   const expStats = experimentsData.stats || {}
   const experimentsList = experimentsData.experiments || []
+
+  // Meaningful Governance & Operational Health Rates (0% - 100%)
+  const activeUserRatePct = users.length > 0
+    ? Math.round((activeUsersCount / users.length) * 100)
+    : 100
+  const approvalRatePct = datasets.length > 0
+    ? Math.round((approvedDatasetsCount / datasets.length) * 100)
+    : 100
+  const totalFinishedOrRunningExps = expStats.total_experiments || experimentsList.length
+  const completedExpsCount = expStats.completed_count ?? experimentsList.filter((e) => e.status === 'COMPLETED').length
+  const experimentSuccessRatePct = totalFinishedOrRunningExps > 0
+    ? Math.round((completedExpsCount / totalFinishedOrRunningExps) * 100)
+    : 100
+  const nowTimestamp = Date.now()
+  const validGrantsCount = accessGrants.filter(
+    (g) => !g.expires_at || new Date(g.expires_at).getTime() > nowTimestamp
+  ).length
+  const validGrantRatePct = accessGrants.length > 0
+    ? Math.round((validGrantsCount / accessGrants.length) * 100)
+    : 100
+
+  // Candidate users for grant (exclude admin)
+  const candidateUsers = users.filter((u) => u.role_id !== 'admin')
 
   const getRoleBadgeClass = (roleId) => {
     switch (roleId) {
@@ -181,178 +188,237 @@ export default function AdminOverview() {
     }
   }
 
+  const isOnline = dbStatus?.status === 'connected'
+
   return (
     <div>
-      {/* 1. TOP: Hạ tầng hệ thống & Môi trường thực thi */}
-      <div className="admin-card" style={{ marginBottom: '1.75rem' }}>
-        <div className="admin-card__header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <Server size={18} color="#0f172a" />
-            <h3 className="admin-card__title">Hạ tầng hệ thống & Môi trường thực thi</h3>
+      {/* 1. Hero Banner */}
+      <div className="admin-hero-banner">
+        <div className="admin-hero-banner__top">
+          <div className="admin-hero-banner__content">
+            <h2 className="admin-hero-banner__title">Administration Overview</h2>
           </div>
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            onClick={fetchData}
-          >
-            <RefreshCw size={14} />
-            <span>Làm mới</span>
-          </button>
+
+          <div className="admin-hero-banner__actions">
+            <div className={`status-pill-live ${isOnline ? 'status-pill-live--online' : 'status-pill-live--offline'}`}>
+              <span className={`status-pulse-dot ${isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'}`} />
+              <span>{isOnline ? 'Database Online' : 'Database Offline'}</span>
+            </div>
+
+            <button
+              type="button"
+              className="btn-hero-refresh"
+              onClick={fetchData}
+            >
+              <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
-        <div style={{ padding: '1.25rem 1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-          {/* PostgreSQL + PostGIS */}
-          <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem' }}>
-              <Server size={20} color="#2563eb" />
-              <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>PostgreSQL 16 + PostGIS 3.4</strong>
+        {/* Quick Navigation Tiles */}
+        <div className="hero-quick-grid">
+          <Link to="/admin/users" className="hero-quick-tile">
+            <div className="hero-quick-tile__left">
+              <div className="hero-quick-tile__icon admin-card__icon-box--blue">
+                <Users size={18} />
+              </div>
+              <div>
+                <div className="hero-quick-tile__value">{stats?.total_users ?? users.length}</div>
+                <div className="hero-quick-tile__label">Users</div>
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-              <span className={`badge ${dbStatus?.status === 'connected' ? 'badge--active' : 'badge--inactive'}`}>
-                {dbStatus?.status === 'connected' ? 'Đã kết nối' : 'Mất kết nối'}
-              </span>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Cổng: 5433</span>
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Container: capstone_postgres (Healthy)</span>
-          </div>
+            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+          </Link>
 
-          {/* FastAPI Backend */}
-          <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem' }}>
-              <Server size={20} color="#16a34a" />
-              <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>FastAPI REST Backend</strong>
+          <Link to="/admin/datasets" className="hero-quick-tile">
+            <div className="hero-quick-tile__left">
+              <div className="hero-quick-tile__icon admin-card__icon-box--amber">
+                <Clock size={18} />
+              </div>
+              <div>
+                <div className="hero-quick-tile__value">{stats?.pending_approvals ?? pendingDatasets.length}</div>
+                <div className="hero-quick-tile__label">Pending Approvals</div>
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-              <span className="badge badge--active">Đang hoạt động</span>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Port: 8000</span>
-            </div>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Python 3.12 (uvicorn worker)</span>
-          </div>
+            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+          </Link>
 
-          {/* React Vite Frontend */}
-          <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem' }}>
-              <Cpu size={20} color="#9333ea" />
-              <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>React 19 Frontend SPA</strong>
+          <Link to="/admin/datasets" className="hero-quick-tile">
+            <div className="hero-quick-tile__left">
+              <div className="hero-quick-tile__icon admin-card__icon-box--green">
+                <Database size={18} />
+              </div>
+              <div>
+                <div className="hero-quick-tile__value">{stats?.total_datasets ?? 0}</div>
+                <div className="hero-quick-tile__label">Datasets</div>
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-              <span className="badge badge--active">Đang phục vụ</span>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Port: 5173</span>
+            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+          </Link>
+
+          <Link to="/admin/audit-logs" className="hero-quick-tile">
+            <div className="hero-quick-tile__left">
+              <div className="hero-quick-tile__icon admin-card__icon-box--purple">
+                <ScrollText size={18} />
+              </div>
+              <div>
+                <div className="hero-quick-tile__value">{stats?.total_audit_logs ?? 0}</div>
+                <div className="hero-quick-tile__label">Audit Logs</div>
+              </div>
             </div>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Vite 8 + React Router 7</span>
-          </div>
+            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+          </Link>
         </div>
       </div>
 
-      {/* 2. KPI Stats Grid - 100% Real DB counts */}
+      {/* 2. Operational & Governance Health Rate Cards */}
       <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--blue">
-            <Users size={24} />
+        <div className="stat-card stat-card--blue">
+          <Users size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <h3>{activeUserRatePct}%</h3>
+              <p>Active Accounts</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--blue">
+              <Activity size={22} />
+            </div>
           </div>
-          <div className="stat-card__info">
-            <h3>{stats?.total_users ?? 0}</h3>
-            <p>Người dùng hệ thống</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--purple">
-            <Shield size={24} />
-          </div>
-          <div className="stat-card__info">
-            <h3>{stats?.total_roles ?? 0}</h3>
-            <p>Vai trò chuẩn hóa</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--green">
-            <Database size={24} />
-          </div>
-          <div className="stat-card__info">
-            <h3>{stats?.total_datasets ?? 0}</h3>
-            <p>Bộ dữ liệu UAV</p>
+          <div className="stat-card__mini-bar">
+            <div
+              className="stat-card__mini-bar-fill"
+              style={{ width: `${activeUserRatePct}%`, background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }}
+            />
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-card__icon stat-card__icon--amber">
-            <Clock size={24} />
+        <div className="stat-card stat-card--green">
+          <CheckCircle2 size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <h3>{approvalRatePct}%</h3>
+              <p>Approval Rate</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--green">
+              <CheckCircle2 size={22} />
+            </div>
           </div>
-          <div className="stat-card__info">
-            <h3>{stats?.pending_approvals ?? 0}</h3>
-            <p>Chờ phê duyệt</p>
+          <div className="stat-card__mini-bar">
+            <div
+              className="stat-card__mini-bar-fill"
+              style={{ width: `${approvalRatePct}%`, background: 'linear-gradient(90deg, #059669, #34d399)' }}
+            />
+          </div>
+        </div>
+
+        <div className="stat-card stat-card--purple">
+          <FlaskConical size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <h3>{experimentSuccessRatePct}%</h3>
+              <p>Training Success Rate</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--purple">
+              <FlaskConical size={22} />
+            </div>
+          </div>
+          <div className="stat-card__mini-bar">
+            <div
+              className="stat-card__mini-bar-fill"
+              style={{ width: `${experimentSuccessRatePct}%`, background: 'linear-gradient(90deg, #7c3aed, #c084fc)' }}
+            />
+          </div>
+        </div>
+
+        <div className="stat-card stat-card--amber">
+          <KeyRound size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <h3>{validGrantRatePct}%</h3>
+              <p>Valid Access Grants</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--amber">
+              <KeyRound size={22} />
+            </div>
+          </div>
+          <div className="stat-card__mini-bar">
+            <div
+              className="stat-card__mini-bar-fill"
+              style={{ width: `${validGrantRatePct}%`, background: 'linear-gradient(90deg, #d97706, #fbbf24)' }}
+            />
           </div>
         </div>
       </div>
 
       {/* 3. Middle Section: Pending Approvals & Role Breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1.35rem', marginBottom: '1.75rem' }}>
         {/* Left: Pending Dataset Approvals Queue */}
         <div className="admin-card" style={{ marginBottom: 0 }}>
           <div className="admin-card__header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <Clock size={18} color="#d97706" />
-              <h3 className="admin-card__title">Hàng đợi phê duyệt Dataset</h3>
-              {pendingDatasets.length > 0 && (
-                <span className="badge badge--pending" style={{ fontSize: '0.7rem' }}>
-                  {pendingDatasets.length} cần duyệt
-                </span>
-              )}
+            <div className="admin-card__header-left">
+              <div className="admin-card__icon-box admin-card__icon-box--amber">
+                <Clock size={18} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 className="admin-card__title">Pending Approvals</h3>
+                {pendingDatasets.length > 0 && (
+                  <span className="badge badge--pending">{pendingDatasets.length}</span>
+                )}
+              </div>
             </div>
-            <Link to="/admin/datasets" style={{ fontSize: '0.825rem', color: '#2563eb', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span>Xem tất cả</span>
+            <Link
+              to="/admin/datasets"
+              style={{
+                fontSize: '0.8rem',
+                color: '#2563eb',
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '8px',
+                textDecoration: 'none',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
+              <span>View All</span>
               <ArrowRight size={14} />
             </Link>
           </div>
 
           {pendingDatasets.length === 0 ? (
-            <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center' }}>
-              <CheckCircle2 size={32} style={{ color: '#16a34a', margin: '0 auto 0.75rem' }} />
-              <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', color: '#0f172a' }}>
-                Hàng đợi phê duyệt trống
+            <div className="vivid-empty-box">
+              <div
+                className="vivid-empty-box__icon"
+                style={{
+                  background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)',
+                  color: '#15803d',
+                  border: '1px solid #86efac',
+                }}
+              >
+                <CheckCircle2 size={26} />
+              </div>
+              <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                No pending datasets
               </h4>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>
-                Hiện không có phiên bản dataset nào từ Data Engineer chờ phê duyệt.
-              </p>
             </div>
           ) : (
             <div className="mini-approval-list">
               {pendingDatasets.slice(0, 3).map((item) => (
                 <div key={item.id} className="mini-approval-item">
                   <div className="mini-approval-info">
-                    <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{item.dataset_name}</strong>
+                    <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>{item.dataset_name}</strong>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b' }}>
-                      <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                      <code style={{ background: '#ffffff', color: '#b45309', padding: '0.12rem 0.45rem', borderRadius: '6px', border: '1px solid #fcd34d', fontWeight: 600 }}>
                         {item.version_tag}
                       </code>
                       <span>•</span>
-                      <span>{item.file_format}</span>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>{item.file_format}</span>
                       <span>•</span>
-                      <span>{item.total_records.toLocaleString()} dòng</span>
+                      <span>{(item.total_records || 0).toLocaleString()} rows</span>
                     </div>
-                  </div>
-                  <div className="mini-approval-actions">
-                    <button
-                      type="button"
-                      className="btn-action btn-action--success"
-                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}
-                      disabled={actionLoading === item.id}
-                      onClick={() => handleQuickReview(item.id, 'APPROVED')}
-                    >
-                      Duyệt
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-action btn-action--danger"
-                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}
-                      disabled={actionLoading === item.id}
-                      onClick={() => handleQuickReview(item.id, 'REJECTED')}
-                    >
-                      Từ chối
-                    </button>
                   </div>
                 </div>
               ))}
@@ -363,149 +429,195 @@ export default function AdminOverview() {
         {/* Right: User Role Breakdown */}
         <div className="admin-card" style={{ marginBottom: 0 }}>
           <div className="admin-card__header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <ShieldCheck size={18} color="#2563eb" />
-              <h3 className="admin-card__title">Cơ cấu tài khoản & Vai trò</h3>
+            <div className="admin-card__header-left">
+              <div className="admin-card__icon-box admin-card__icon-box--blue">
+                <ShieldCheck size={18} />
+              </div>
+              <h3 className="admin-card__title">Role Distribution</h3>
             </div>
-            <span style={{ fontSize: '0.75rem', color: '#16a34a', background: '#f0fdf4', padding: '0.2rem 0.6rem', borderRadius: '9999px', border: '1px solid #bbf7d0', fontWeight: 600 }}>
-              Hoạt động: {activeUsersCount}/{users.length}
+            <span className="badge badge--active">
+              {activeUsersCount}/{users.length} active
             </span>
           </div>
 
           <div className="role-breakdown-card">
             {/* Visual Multi-color Progress Bar */}
-            <div className="role-stacked-bar">
-              <div
-                className="role-stacked-segment"
-                style={{ width: `${(roleBreakdown.data_engineer / totalUsersCount) * 100}%`, background: '#2563eb' }}
-                title={`Data Engineer: ${roleBreakdown.data_engineer}`}
-              />
-              <div
-                className="role-stacked-segment"
-                style={{ width: `${(roleBreakdown.data_scientist / totalUsersCount) * 100}%`, background: '#9333ea' }}
-                title={`Data Scientist: ${roleBreakdown.data_scientist}`}
-              />
-              <div
-                className="role-stacked-segment"
-                style={{ width: `${(roleBreakdown.business_user / totalUsersCount) * 100}%`, background: '#16a34a' }}
-                title={`Business User: ${roleBreakdown.business_user}`}
-              />
-              <div
-                className="role-stacked-segment"
-                style={{ width: `${(roleBreakdown.admin / totalUsersCount) * 100}%`, background: '#dc2626' }}
-                title={`Administrator: ${roleBreakdown.admin}`}
-              />
+            <div className="role-stacked-bar-wrapper">
+              <div className="role-stacked-bar">
+                <div
+                  className="role-stacked-segment"
+                  style={{ width: `${(roleBreakdown.data_engineer / totalUsersCount) * 100}%`, background: '#2563eb' }}
+                  title={`Data Engineer: ${roleBreakdown.data_engineer}`}
+                />
+                <div
+                  className="role-stacked-segment"
+                  style={{ width: `${(roleBreakdown.data_scientist / totalUsersCount) * 100}%`, background: '#9333ea' }}
+                  title={`Data Scientist: ${roleBreakdown.data_scientist}`}
+                />
+                <div
+                  className="role-stacked-segment"
+                  style={{ width: `${(roleBreakdown.business_user / totalUsersCount) * 100}%`, background: '#16a34a' }}
+                  title={`Business User: ${roleBreakdown.business_user}`}
+                />
+                <div
+                  className="role-stacked-segment"
+                  style={{ width: `${(roleBreakdown.admin / totalUsersCount) * 100}%`, background: '#e11d48' }}
+                  title={`Administrator: ${roleBreakdown.admin}`}
+                />
+              </div>
             </div>
 
-            {/* Role Stat Items */}
+            {/* Vivid Role Stat Items */}
             <div className="role-stat-grid">
-              <div className="role-stat-item">
+              <div className="role-stat-item role-stat-item--blue">
                 <div className="role-stat-item__header">
                   <span className="role-stat-item__name">
                     <span className="role-stat-item__dot" style={{ background: '#2563eb' }} />
                     Data Engineer
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  <span className="role-stat-item__pct">
                     {Math.round((roleBreakdown.data_engineer / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <h4 className="role-stat-item__count">{roleBreakdown.data_engineer}</h4>
+                <div className="role-stat-item__body">
+                  <h4 className="role-stat-item__count">{roleBreakdown.data_engineer}</h4>
+                </div>
               </div>
 
-              <div className="role-stat-item">
+              <div className="role-stat-item role-stat-item--purple">
                 <div className="role-stat-item__header">
                   <span className="role-stat-item__name">
                     <span className="role-stat-item__dot" style={{ background: '#9333ea' }} />
                     Data Scientist
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  <span className="role-stat-item__pct">
                     {Math.round((roleBreakdown.data_scientist / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <h4 className="role-stat-item__count">{roleBreakdown.data_scientist}</h4>
+                <div className="role-stat-item__body">
+                  <h4 className="role-stat-item__count">{roleBreakdown.data_scientist}</h4>
+                </div>
               </div>
 
-              <div className="role-stat-item">
+              <div className="role-stat-item role-stat-item--green">
                 <div className="role-stat-item__header">
                   <span className="role-stat-item__name">
                     <span className="role-stat-item__dot" style={{ background: '#16a34a' }} />
                     Business User
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  <span className="role-stat-item__pct">
                     {Math.round((roleBreakdown.business_user / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <h4 className="role-stat-item__count">{roleBreakdown.business_user}</h4>
+                <div className="role-stat-item__body">
+                  <h4 className="role-stat-item__count">{roleBreakdown.business_user}</h4>
+                </div>
               </div>
 
-              <div className="role-stat-item">
+              <div className="role-stat-item role-stat-item--rose">
                 <div className="role-stat-item__header">
                   <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#dc2626' }} />
+                    <span className="role-stat-item__dot" style={{ background: '#e11d48' }} />
                     Administrator
                   </span>
-                  <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  <span className="role-stat-item__pct">
                     {Math.round((roleBreakdown.admin / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <h4 className="role-stat-item__count">{roleBreakdown.admin}</h4>
+                <div className="role-stat-item__body">
+                  <h4 className="role-stat-item__count">{roleBreakdown.admin}</h4>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. PROPOSAL 1: Trung tâm Giám sát Huấn luyện Mô hình AI/ML (ML Forecasting Experiments Monitor) */}
-      <div className="admin-card" style={{ marginBottom: '1.75rem' }}>
+      {/* 4. ML Forecasting Experiments Monitor */}
+      <div className="admin-card">
         <div className="admin-card__header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <FlaskConical size={18} color="#9333ea" />
-            <h3 className="admin-card__title">Giám sát Thí nghiệm & Huấn luyện Mô hình AI/ML</h3>
+          <div className="admin-card__header-left">
+            <div className="admin-card__icon-box admin-card__icon-box--purple">
+              <FlaskConical size={18} />
+            </div>
+            <h3 className="admin-card__title">AI/ML Experiments</h3>
+          </div>
+        </div>
+
+        {/* 4-Box KPI Ribbon */}
+        <div className="exp-kpi-ribbon">
+          <div className="exp-kpi-box exp-kpi-box--slate">
+            <div className="admin-card__icon-box" style={{ background: '#e2e8f0', color: '#334155' }}>
+              <Layers size={18} />
+            </div>
+            <div>
+              <div className="exp-kpi-box__val">{expStats.total_experiments ?? 0}</div>
+              <div className="exp-kpi-box__lbl">Total</div>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.75rem', color: '#334155', background: '#f8fafc', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              Tổng: <strong>{expStats.total_experiments ?? 0}</strong>
-            </span>
-            <span style={{ fontSize: '0.75rem', color: '#2563eb', background: '#eff6ff', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
-              Đang train: <strong>{expStats.running_count ?? 0}</strong>
-            </span>
-            <span style={{ fontSize: '0.75rem', color: '#16a34a', background: '#f0fdf4', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-              Hoàn tất: <strong>{expStats.completed_count ?? 0}</strong>
-            </span>
-            {expStats.best_model_name && (
-              <span style={{ fontSize: '0.75rem', color: '#0f172a', background: '#faf5ff', padding: '0.25rem 0.6rem', borderRadius: '6px', border: '1px solid #e9d5ff', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                <TrendingUp size={12} color="#9333ea" />
-                <span>Mô hình tối ưu: <strong>{expStats.best_model_name}</strong> (R²={expStats.best_r2_score})</span>
-              </span>
-            )}
+          <div className="exp-kpi-box exp-kpi-box--blue">
+            <div className="admin-card__icon-box admin-card__icon-box--blue">
+              <Activity size={18} />
+            </div>
+            <div>
+              <div className="exp-kpi-box__val">{expStats.running_count ?? 0}</div>
+              <div className="exp-kpi-box__lbl">Running</div>
+            </div>
+          </div>
+
+          <div className="exp-kpi-box exp-kpi-box--green">
+            <div className="admin-card__icon-box admin-card__icon-box--green">
+              <CheckCircle2 size={18} />
+            </div>
+            <div>
+              <div className="exp-kpi-box__val">{expStats.completed_count ?? 0}</div>
+              <div className="exp-kpi-box__lbl">Completed</div>
+            </div>
+          </div>
+
+          <div className="exp-kpi-box exp-kpi-box--purple">
+            <div className="admin-card__icon-box admin-card__icon-box--purple">
+              <Award size={18} />
+            </div>
+            <div>
+              <div className="exp-kpi-box__val" style={{ fontSize: '1rem' }}>
+                {expStats.best_r2_score != null ? `R² ${expStats.best_r2_score}` : '—'}
+              </div>
+              <div className="exp-kpi-box__lbl">Best Score</div>
+            </div>
           </div>
         </div>
 
         {experimentsList.length === 0 ? (
-          <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center' }}>
-            <FlaskConical size={32} style={{ color: '#94a3b8', margin: '0 auto 0.75rem' }} />
-            <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', color: '#0f172a' }}>
-              Chưa có tiến trình thí nghiệm nào được khởi tạo
+          <div className="vivid-empty-box">
+            <div
+              className="vivid-empty-box__icon"
+              style={{
+                background: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)',
+                color: '#7e22ce',
+                border: '1px solid #d8b4fe',
+              }}
+            >
+              <FlaskConical size={26} />
+            </div>
+            <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+              No experiments recorded yet
             </h4>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '640px', marginInline: 'auto' }}>
-              Khi Data Scientist tiến hành huấn luyện các mô hình dự báo chuỗi thời gian (ARIMA hoặc Facebook Prophet),
-              tiến trình thực thi, thời gian tính toán và chỉ số benchmark (MAE, RMSE, MAPE, R²) sẽ hiển thị theo thời gian thực tại đây.
-            </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Tên thí nghiệm</th>
-                  <th>Mô hình</th>
-                  <th>Biến mục tiêu</th>
-                  <th>Khoảng tổng hợp</th>
-                  <th>Trạng thái</th>
-                  <th>Người thực hiện</th>
-                  <th>Đánh giá (Metrics)</th>
-                  <th>Thời gian</th>
+                  <th>Experiment Name</th>
+                  <th>Model</th>
+                  <th>Target Variable</th>
+                  <th>Aggregation Window</th>
+                  <th>Status</th>
+                  <th>Created By</th>
+                  <th>Evaluation Metrics</th>
+                  <th>Date</th>
                 </tr>
               </thead>
               <tbody>
@@ -521,14 +633,14 @@ export default function AdminOverview() {
                       <span className="badge badge--scientist">{exp.model_type}</span>
                     </td>
                     <td>{exp.target_variable}</td>
-                    <td>{exp.temporal_aggregation_sec / 60} phút</td>
+                    <td>{exp.temporal_aggregation_sec / 60} min</td>
                     <td>
                       <span className={`badge ${
                         exp.status === 'COMPLETED' ? 'badge--active' :
                         exp.status === 'RUNNING' ? 'badge--pending' : 'badge--rejected'
                       }`}>
-                        {exp.status === 'COMPLETED' ? 'Hoàn thành' :
-                         exp.status === 'RUNNING' ? 'Đang chạy' : exp.status}
+                        {exp.status === 'COMPLETED' ? 'Completed' :
+                         exp.status === 'RUNNING' ? 'Running' : exp.status}
                       </span>
                     </td>
                     <td>{exp.creator_name || '—'}</td>
@@ -538,11 +650,11 @@ export default function AdminOverview() {
                           <span>R²: <strong>{exp.metrics.r2_score}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
                         </div>
                       ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Chưa có metrics</span>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No metrics</span>
                       )}
                     </td>
                     <td style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {new Date(exp.created_at).toLocaleDateString('vi-VN')}
+                      {new Date(exp.created_at).toLocaleDateString('en-US')}
                     </td>
                   </tr>
                 ))}
@@ -552,48 +664,48 @@ export default function AdminOverview() {
         )}
       </div>
 
-      {/* 5. PROPOSAL 3: Ma trận Cấp quyền Dữ liệu (Dataset Access Governance Matrix) */}
+      {/* 5. Dataset Access Governance Matrix */}
       <div className="admin-card" style={{ marginBottom: 0 }}>
         <div className="admin-card__header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <KeyRound size={18} color="#2563eb" />
-            <h3 className="admin-card__title">Ma trận Phân quyền & Cấp quyền Dữ liệu UAV</h3>
+          <div className="admin-card__header-left">
+            <div className="admin-card__icon-box admin-card__icon-box--green">
+              <KeyRound size={18} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h3 className="admin-card__title">Dataset Access Permissions</h3>
+              <span className="badge badge--engineer">{accessGrants.length}</span>
+            </div>
           </div>
-
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
-            onClick={() => setIsGrantModalOpen(true)}
-          >
-            <Plus size={14} />
-            <span>Cấp quyền mới</span>
-          </button>
         </div>
 
         {accessGrants.length === 0 ? (
-          <div style={{ padding: '2.5rem 1.5rem', textAlign: 'center' }}>
-            <KeyRound size={32} style={{ color: '#94a3b8', margin: '0 auto 0.75rem' }} />
-            <h4 style={{ margin: '0 0 0.35rem', fontSize: '0.95rem', color: '#0f172a' }}>
-              Chưa có quyền truy cập dữ liệu nào được gán thủ công
+          <div className="vivid-empty-box">
+            <div
+              className="vivid-empty-box__icon"
+              style={{
+                background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                color: '#1d4ed8',
+                border: '1px solid #93c5fd',
+              }}
+            >
+              <KeyRound size={26} />
+            </div>
+            <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+              No access grants issued yet
             </h4>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '640px', marginInline: 'auto' }}>
-              Hiện các thành viên chỉ có quyền xem mặc định theo vai trò. Bạn có thể sử dụng nút <strong>"Cấp quyền mới"</strong> phía trên
-              để phân quyền trực tiếp cho Data Scientist (quyền huấn luyện mô hình) hoặc Business User (quyền xem kết quả) theo từng phiên bản dataset.
-            </p>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Tài khoản được cấp</th>
-                  <th>Vai trò</th>
-                  <th>Bộ dữ liệu & Phiên bản</th>
-                  <th>Người cấp</th>
-                  <th>Thời hạn</th>
-                  <th>Thời gian cấp</th>
-                  <th>Thao tác</th>
+                  <th>Granted User</th>
+                  <th>Role</th>
+                  <th>Dataset & Version</th>
+                  <th>Granted By</th>
+                  <th>Expiration</th>
+                  <th>Granted Date</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -609,34 +721,34 @@ export default function AdminOverview() {
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontWeight: 500, color: '#0f172a' }}>{grant.dataset_name}</span>{' '}
-                      <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
+                      <span style={{ fontWeight: 600, color: '#0f172a' }}>{grant.dataset_name}</span>{' '}
+                      <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.12rem 0.4rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
                         {grant.version_tag}
                       </code>
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{grant.granted_by_email || 'System'}</td>
                     <td>
                       {grant.expires_at ? (
-                        <span style={{ fontSize: '0.8rem', color: '#d97706' }}>
-                          {new Date(grant.expires_at).toLocaleDateString('vi-VN')}
+                        <span style={{ fontSize: '0.8rem', color: '#d97706', fontWeight: 600 }}>
+                          {new Date(grant.expires_at).toLocaleDateString('en-US')}
                         </span>
                       ) : (
-                        <span className="badge badge--active">Vô thời hạn</span>
+                        <span className="badge badge--active">Unlimited</span>
                       )}
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(grant.created_at).toLocaleDateString('vi-VN')}
+                      {new Date(grant.created_at).toLocaleDateString('en-US')}
                     </td>
                     <td>
                       <button
                         type="button"
                         className="btn-action btn-action--danger"
-                        style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+                        style={{ padding: '0.38rem 0.75rem', fontSize: '0.75rem' }}
                         disabled={actionLoading === grant.id}
                         onClick={() => handleRevokeGrant(grant.id)}
                       >
                         <Trash2 size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                        Thu hồi
+                        Revoke
                       </button>
                     </td>
                   </tr>
@@ -647,7 +759,7 @@ export default function AdminOverview() {
         )}
       </div>
 
-      {/* Modal Cấp quyền truy cập mới */}
+      {/* Grant Dataset Access Modal */}
       {isGrantModalOpen && (
         <div
           className="modal-backdrop"
@@ -657,7 +769,7 @@ export default function AdminOverview() {
         >
           <div className="modal-dialog">
             <div className="modal-header">
-              <h3>Cấp quyền truy cập Dataset</h3>
+              <h3>Grant Dataset Access</h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -683,7 +795,7 @@ export default function AdminOverview() {
               )}
 
               <div className="form-field">
-                <label className="form-label">Chọn người dùng nhận quyền</label>
+                <label className="form-label">Select Recipient User</label>
                 <select
                   required
                   value={grantForm.user_id}
@@ -691,7 +803,7 @@ export default function AdminOverview() {
                   className="admin-select"
                   style={{ width: '100%' }}
                 >
-                  <option value="">-- Chọn thành viên --</option>
+                  <option value="">-- Select team member --</option>
                   {candidateUsers.map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.full_name} ({u.email}) - [{u.role_id}]
@@ -701,7 +813,7 @@ export default function AdminOverview() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">Chọn phiên bản Dataset</label>
+                <label className="form-label">Select Dataset Version</label>
                 <select
                   required
                   value={grantForm.dataset_version_id}
@@ -709,7 +821,7 @@ export default function AdminOverview() {
                   className="admin-select"
                   style={{ width: '100%' }}
                 >
-                  <option value="">-- Chọn phiên bản dữ liệu --</option>
+                  <option value="">-- Select dataset version --</option>
                   {datasets.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.dataset_name} ({d.version_tag}) - [{d.approval_status}]
@@ -718,13 +830,13 @@ export default function AdminOverview() {
                 </select>
                 {datasets.length === 0 && (
                   <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
-                    * Hiện chưa có phiên bản dataset nào được tạo trong hệ thống.
+                    * No dataset versions have been created in the system yet.
                   </p>
                 )}
               </div>
 
               <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Thời hạn cấp quyền (Để trống nếu vô thời hạn)</label>
+                <label className="form-label">Expiration Date (Leave blank for unlimited access)</label>
                 <input
                   type="date"
                   value={grantForm.expires_at}
@@ -740,7 +852,7 @@ export default function AdminOverview() {
                   className="btn-secondary"
                   onClick={() => setIsGrantModalOpen(false)}
                 >
-                  Hủy
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -748,7 +860,7 @@ export default function AdminOverview() {
                   className="btn-action btn-action--primary"
                   style={{ padding: '0.55rem 1.25rem' }}
                 >
-                  {grantSubmitting ? 'Đang cấp...' : 'Xác nhận cấp quyền'}
+                  {grantSubmitting ? 'Granting...' : 'Confirm Grant'}
                 </button>
               </div>
             </form>

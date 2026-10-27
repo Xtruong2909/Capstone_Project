@@ -1,41 +1,82 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
   CheckCircle,
+  Database,
   ScrollText,
   LogOut,
   Shield,
-  KeyRound,
-} from "lucide-react";
-import { useAuth } from "../../hooks/useAuth";
-
-
-import "./AdminLayout.css";
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
+import { useAuth } from '../../hooks/useAuth'
+import './AdminLayout.css'
 
 export default function AdminLayout() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar_collapsed_admin') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('sidebar_collapsed_admin', String(next))
+      } catch {
+        // ignore storage error
+      }
+      return next
+    })
+  }
+
   const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
+    logout()
+    navigate('/login')
+  }
 
   return (
     <div className="admin-shell">
-      {/* Sidebar */}
-      <aside className="admin-sidebar">
+      {/* Collapsible Sidebar */}
+      <aside
+        className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
+      >
+        {/* Single Center-Edge Proximity Hover Zone & Floating Toggle Button */}
+        <div className="admin-sidebar__edge-zone">
+          <button
+            type="button"
+            className="admin-sidebar__floating-toggle"
+            onClick={toggleSidebar}
+            aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+            title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+          >
+            {isSidebarCollapsed ? (
+              <ChevronRight size={18} strokeWidth={2.6} />
+            ) : (
+              <ChevronLeft size={18} strokeWidth={2.6} />
+            )}
+          </button>
+        </div>
+
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge">
+            <div className="admin-sidebar__logo-badge" title="Urban Traffic - Admin Portal">
               <Shield size={20} />
             </div>
-            <div className="admin-sidebar__brand-text">
-              <h2>Urban Traffic</h2>
-              <span>Admin Portal</span>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="admin-sidebar__brand-text">
+                <h2>Urban Traffic</h2>
+                <span>Admin Portal</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -43,67 +84,124 @@ export default function AdminLayout() {
           <NavLink
             to="/admin"
             end
-            className={({ isActive }) =>
-              `admin-nav-item ${isActive ? "active" : ""}`
-            }
+            title="System Overview"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
-            <LayoutDashboard size={18} />
-            <span>Tổng quan hệ thống</span>
+            <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
+            <span>System Overview</span>
           </NavLink>
 
           <NavLink
             to="/admin/users"
-            className={({ isActive }) =>
-              `admin-nav-item ${isActive ? "active" : ""}`
-            }
+            title="User Management"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
-            <Users size={18} />
-            <span>Quản lý người dùng</span>
+            <Users size={19} style={{ flexShrink: 0 }} />
+            <span>User Management</span>
           </NavLink>
 
           <NavLink
             to="/admin/datasets"
-            className={({ isActive }) =>
-              `admin-nav-item ${isActive ? "active" : ""}`
-            }
+            end
+            title="Dataset Approvals"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
-            <CheckCircle size={18} />
-            <span>Phê duyệt Dataset</span>
+            <CheckCircle size={19} style={{ flexShrink: 0 }} />
+            <span>Dataset Approvals</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/datasets-available"
+            title="Dataset Available"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Database size={19} style={{ flexShrink: 0 }} />
+            <span>Dataset Available</span>
           </NavLink>
 
           <NavLink
             to="/admin/audit-logs"
-            className={({ isActive }) =>
-              `admin-nav-item ${isActive ? "active" : ""}`
-            }
+            title="Audit Logs"
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
-            <ScrollText size={18} />
-            <span>Nhật ký hoạt động</span>
+            <ScrollText size={19} style={{ flexShrink: 0 }} />
+            <span>Audit Logs</span>
           </NavLink>
         </nav>
 
         <div className="admin-sidebar__footer">
-          <div className="admin-user-profile">
+          {!isSidebarCollapsed ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.1rem 0.2rem',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Role
+              </span>
+              <span
+                className="badge badge--admin"
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.6rem',
+                  fontWeight: 700,
+                  borderRadius: '9999px',
+                }}
+              >
+                Administrator
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <span
+                className="badge badge--admin"
+                title="Role: Administrator"
+                style={{
+                  fontSize: '0.65rem',
+                  padding: '0.15rem 0.35rem',
+                  fontWeight: 800,
+                  borderRadius: '6px',
+                }}
+              >
+                AD
+              </span>
+            </div>
+          )}
+
+          <div
+            className="admin-user-profile"
+            title={`${user?.full_name || 'Administrator'} (${user?.email || 'admin@gmail.com'})`}
+          >
             <div className="admin-avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : "A"}
+              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
             </div>
-            <div className="admin-user-info">
-              <span className="admin-user-name">
-                {user?.full_name || "Administrator"}
-              </span>
-              <span className="admin-user-email">
-                {user?.email || "admin@gmail.com"}
-              </span>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="admin-user-info">
+                <span className="admin-user-name">{user?.full_name || 'Administrator'}</span>
+                <span className="admin-user-email">{user?.email || 'admin@gmail.com'}</span>
+              </div>
+            )}
           </div>
 
           <button
             type="button"
             className="admin-logout-btn"
             onClick={handleLogout}
+            title="Sign Out"
           >
-            <LogOut size={16} />
-            <span>Đăng xuất</span>
+            <LogOut size={16} style={{ flexShrink: 0 }} />
+            {!isSidebarCollapsed && <span>Sign Out</span>}
           </button>
         </div>
       </aside>
@@ -112,12 +210,7 @@ export default function AdminLayout() {
       <div className="admin-main">
         <header className="admin-header">
           <div className="admin-header__title">
-            <h1>Bảng điều khiển Quản trị viên</h1>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div className="admin-header__badge">
-              <span>Vai trò: Administrator</span>
-            </div>
+            <h1>Administrator Dashboard</h1>
           </div>
         </header>
 
@@ -126,5 +219,5 @@ export default function AdminLayout() {
         </main>
       </div>
     </div>
-  );
+  )
 }
