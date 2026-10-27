@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.dataset_access import require_dataset_reader
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.user import User
@@ -31,7 +32,7 @@ router = APIRouter()
 def list_dataset_columns(
     dataset_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DatasetColumnsResponse:
     try:
         return get_dataset_columns(db, dataset_id)
@@ -90,7 +91,7 @@ def update_dataset_column_mappings(
 def read_dataset_column_mappings(
     dataset_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DatasetColumnMappingsResponse:
     try:
         return get_dataset_column_mappings(db, dataset_id)

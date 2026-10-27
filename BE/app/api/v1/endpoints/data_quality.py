@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.dataset_access import require_dataset_reader
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.user import User
@@ -71,7 +72,7 @@ def read_quality_check_status(
     dataset_id: UUID,
     check_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DataQualityCheckStatus:
     try:
         return get_data_quality_status(db, dataset_id=dataset_id, check_id=check_id)
@@ -88,7 +89,7 @@ def read_quality_check_report(
     dataset_id: UUID,
     check_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DataQualityReport:
     try:
         return get_data_quality_report(db, dataset_id=dataset_id, check_id=check_id)
@@ -109,7 +110,7 @@ def read_quality_check_issues(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DataQualityIssuesPage:
     try:
         return get_data_quality_issues(

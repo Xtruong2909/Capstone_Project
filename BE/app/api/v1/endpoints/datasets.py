@@ -15,6 +15,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+from app.core.dataset_access import require_dataset_reader
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.audit import AuditLog
@@ -77,7 +78,7 @@ def preview_dataset(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     representation: Literal["raw", "normalized"] = "normalized",
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DatasetPreviewResponse:
     """Read metadata and a paginated sample from the latest dataset version."""
     try:
@@ -277,7 +278,7 @@ def get_processing_report(
     dataset_id: UUID,
     version_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> ProcessingReportResponse:
     """
     Bước 6: Truy vấn báo cáo tổng hợp quá trình làm sạch/chuẩn hóa của phiên bản dataset.
@@ -330,7 +331,7 @@ def list_dataset_versions(
     dataset_id: UUID,
     status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED"] | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> list[DatasetVersionListItem]:
     """Return all versions for a dataset, optionally filtered by approval status."""
     query = db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset_id)
@@ -363,7 +364,7 @@ def get_dataset_version_status(
     dataset_id: UUID,
     version_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_reader),
 ) -> DatasetVersionStatusResponse:
     """Returns the current review status, submit metadata, and rejection note for a dataset version."""
     version = (
