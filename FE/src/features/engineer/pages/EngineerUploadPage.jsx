@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import {
   Upload,
@@ -17,10 +17,10 @@ import { datasetService } from '../../../services/datasetService'
 import {
   ALLOWED_EXTENSIONS,
   MAX_UPLOAD_SIZE_BYTES,
-  SAMPLE_PNEUMA_CSV_CONTENT,
   formatBytes,
   resolveEffectiveVersionTag,
 } from '../utils/engineerHelpers'
+import PneumaSampleGeneratorModal from '../components/PneumaSampleGeneratorModal'
 
 export default function EngineerUploadPage() {
   const navigate = useNavigate()
@@ -29,7 +29,7 @@ export default function EngineerUploadPage() {
   const fileInputRef = useRef(null)
 
   const {
-    datasets,
+    datasets = [],
     versionLineageMap,
     registerVersionLineage,
     registerRecordCount,
@@ -37,10 +37,24 @@ export default function EngineerUploadPage() {
     openPreviewForDataset,
   } = useOutletContext()
 
+  // Distinct datasets deduplicated by dataset_id so every dropdown option is unique and selectable
+  const uniqueDatasets = useMemo(() => {
+    const seen = new Set()
+    const result = []
+    for (const d of datasets) {
+      if (d?.dataset_id && !seen.has(d.dataset_id)) {
+        seen.add(d.dataset_id)
+        result.push(d)
+      }
+    }
+    return result
+  }, [datasets])
+
   const [uploadMode, setUploadMode] = useState('new')
   const [parentDatasetId, setParentDatasetId] = useState('')
   const [targetVersionTag, setTargetVersionTag] = useState('v1.1-cleaned')
   const [changeSummary, setChangeSummary] = useState('')
+  const hasInitializedIterationRef = useRef(false)
 
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
@@ -57,6 +71,7 @@ export default function EngineerUploadPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
+  const [isSampleGeneratorOpen, setIsSampleGeneratorOpen] = useState(false)
 
   // Apply URL query or router state when arriving from "New Version" action
   useEffect(() => {
@@ -64,51 +79,55 @@ export default function EngineerUploadPage() {
     const parentIdParam = searchParams.get('parentId')
     const baseFromState = location.state?.baseDataset
 
-    if (modeParam === 'iteration' || baseFromState) {
+    if (modeParam === 'iteration' || baseFromState || parentIdParam) {
       setUploadMode('iteration')
-      const baseDataset =
-        baseFromState ||
-        datasets.find((d) => d.dataset_id === parentIdParam) ||
-        datasets[0]
+      if (!hasInitializedIterationRef.current && uniqueDatasets.length > 0) {
+        const baseDataset =
+          baseFromState ||
+          uniqueDatasets.find((d) => d.dataset_id === parentIdParam) ||
+          uniqueDatasets[0]
 
-      if (baseDataset) {
-        setParentDatasetId(baseDataset.dataset_id)
-        const nextTag =
-          baseDataset.approval_status === 'REJECTED' ? 'v1.1-cleaned' : 'v2.0-aligned'
-        setTargetVersionTag(nextTag)
-        setChangeSummary(
-          baseDataset.approval_status === 'REJECTED'
-            ? 'Removed malformed trajectory records and re-validated pNEUMA schema.'
-            : 'Updated temporal alignment and trajectory smoothing.'
-        )
-        const cleanBaseName = baseDataset.name.replace(/\s*\(v[\d.]+[^)]*\)\s*$/i, '')
-        setUploadForm({
-          name: `${cleanBaseName} (${nextTag})`,
-          source: baseDataset.source || 'pNEUMA Drone Swarm - Athens',
-          location_name: baseDataset.location_name || 'Athens Central Business District',
-          capture_date: baseDataset.capture_date || new Date().toISOString().slice(0, 10),
-          description: baseDataset.description || '',
-        })
+        if (baseDataset) {
+          setParentDatasetId(baseDataset.dataset_id)
+          const nextTag =
+            baseDataset.approval_status === 'REJECTED' ? 'v1.1-cleaned' : 'v2.0-aligned'
+          setTargetVersionTag(nextTag)
+          setChangeSummary(
+            baseDataset.approval_status === 'REJECTED'
+              ? 'Removed malformed trajectory records and re-validated pNEUMA schema.'
+              : 'Updated temporal alignment and trajectory smoothing.'
+          )
+          const cleanBaseName = baseDataset.name.replace(/\s*\(v[\d.]+[^)]*\)\s*$/i, '')
+          setUploadForm({
+            name: `${cleanBaseName} (${nextTag})`,
+            source: baseDataset.source || 'pNEUMA Drone Swarm - Athens',
+            location_name: baseDataset.location_name || 'Athens Central Business District',
+            capture_date: baseDataset.capture_date || new Date().toISOString().slice(0, 10),
+            description: baseDataset.description || '',
+          })
+          hasInitializedIterationRef.current = true
+        }
       }
     }
-  }, [searchParams, location.state, datasets])
+  }, [searchParams, location.state, uniqueDatasets])
 
   const handleParentDatasetSelect = (datasetId) => {
     setParentDatasetId(datasetId)
-    const found = datasets.find((d) => d.dataset_id === datasetId)
+    const found = uniqueDatasets.find((d) => d.dataset_id === datasetId)
     if (found) {
       const cleanBaseName = found.name.replace(/\s*\(v[\d.]+[^)]*\)\s*$/i, '')
-      setUploadForm({
+      setUploadForm((prev) => ({
+        ...prev,
         name: `${cleanBaseName} (${targetVersionTag})`,
-        source: found.source || 'pNEUMA Drone Swarm - Athens',
-        location_name: found.location_name || 'Athens Central Business District',
-        capture_date: found.capture_date || new Date().toISOString().slice(0, 10),
-        description: found.description || '',
-      })
+        source: found.source || prev.source || 'pNEUMA Drone Swarm - Athens',
+        location_name: found.location_name || prev.location_name || 'Athens Central Business District',
+        capture_date: found.capture_date || prev.capture_date || new Date().toISOString().slice(0, 10),
+        description: found.description || prev.description || '',
+      }))
     }
   }
 
-  const validateAndInspectFile = (file) => {
+  const validateAndInspectFile = (file, { updateFormName = true } = {}) => {
     if (!file) return
     setUploadError(null)
     setUploadSuccess(null)
@@ -145,7 +164,7 @@ export default function EngineerUploadPage() {
 
     setSelectedFile(file)
 
-    if (uploadMode === 'new' && !uploadForm.name) {
+    if (updateFormName && uploadMode === 'new' && !uploadForm.name) {
       const baseName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ')
       setUploadForm((prev) => ({
         ...prev,
@@ -186,16 +205,25 @@ export default function EngineerUploadPage() {
     }
   }
 
-  const handleGenerateSamplePneumaFile = () => {
-    const blob = new Blob([SAMPLE_PNEUMA_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' })
-    const timestampSuffix = new Date().toTimeString().slice(0, 5).replace(':', '')
-    const sampleFile = new File([blob], `pneuma_athens_uav_${timestampSuffix}.csv`, {
-      type: 'text/csv',
-    })
-    validateAndInspectFile(sampleFile)
+  const handleSampleDatasetGenerated = (sampleFile, summary) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+    setUploadError(null)
+    setUploadSuccess(null)
+    validateAndInspectFile(sampleFile, { updateFormName: false })
+
+    const typeSummary =
+      summary?.types?.length === 6
+        ? 'All 6 Vehicle Types'
+        : summary?.types?.join(', ') || 'pNEUMA Corridor'
+
+    const timeTag =
+      summary?.timestampSuffix ||
+      new Date().toTimeString().slice(0, 8).replace(/:/g, '')
 
     if (uploadMode === 'iteration' && parentDatasetId) {
-      const parent = datasets.find((d) => d.dataset_id === parentDatasetId)
+      const parent = uniqueDatasets.find((d) => d.dataset_id === parentDatasetId)
       const cleanBaseName = parent
         ? parent.name.replace(/\s*\(v[\d.]+[^)]*\)\s*$/i, '')
         : `pNEUMA Athens Corridor`
@@ -205,14 +233,17 @@ export default function EngineerUploadPage() {
       }))
     } else {
       setUploadForm({
-        name: `pNEUMA Athens Corridor ${timestampSuffix}`,
+        name: `pNEUMA Athens (${summary?.count || 5} veh - ${typeSummary}) #${timeTag}`,
         source: 'pNEUMA Drone Swarm - EPFL Open Traffic',
-        location_name: 'Athens Central Business District (Syntagma)',
+        location_name: 'Athens Central Business District (Syntagma / Panepistimiou)',
         capture_date: '2018-10-24',
-        description:
-          'UAV swarm vehicle trajectory dataset from pNEUMA (normalized lat/lon coordinates, instantaneous velocity, and acceleration time-series).',
+        description: `Genuine pNEUMA UAV trajectory recording sampled from Athens drone swarm (EPFL Open Traffic). Contains ${summary?.count || 5} vehicles (${typeSummary}) with 25Hz GPS coordinates, instantaneous velocity, and kinematics.`,
       })
     }
+  }
+
+  const handleGenerateSamplePneumaFile = () => {
+    setIsSampleGeneratorOpen(true)
   }
 
   const handleFileChange = (e) => {
@@ -301,7 +332,7 @@ export default function EngineerUploadPage() {
       )
 
       if (uploadMode === 'iteration') {
-        const parentItem = datasets.find((d) => d.dataset_id === parentDatasetId)
+        const parentItem = uniqueDatasets.find((d) => d.dataset_id === parentDatasetId)
         registerVersionLineage(uploaded.dataset_id, {
           customVersionTag: targetVersionTag,
           parentDatasetId,
@@ -758,10 +789,9 @@ export default function EngineerUploadPage() {
                   style={{ width: '100%' }}
                 >
                   <option value="">-- Select existing dataset --</option>
-                  {datasets.map((d) => (
+                  {uniqueDatasets.map((d) => (
                     <option key={d.dataset_id} value={d.dataset_id}>
-                      {d.name} [{d.approval_status}] (
-                      {resolveEffectiveVersionTag(d, versionLineageMap)})
+                      {d.name} [{d.approval_status}] ({resolveEffectiveVersionTag(d, versionLineageMap)})
                     </option>
                   ))}
                 </select>
@@ -775,7 +805,7 @@ export default function EngineerUploadPage() {
                   onChange={(e) => {
                     const newTag = e.target.value
                     setTargetVersionTag(newTag)
-                    const parent = datasets.find((d) => d.dataset_id === parentDatasetId)
+                    const parent = uniqueDatasets.find((d) => d.dataset_id === parentDatasetId)
                     if (parent) {
                       const cleanBaseName = parent.name.replace(/\s*\(v[\d.]+[^)]*\)\s*$/i, '')
                       setUploadForm((prev) => ({
@@ -952,7 +982,9 @@ export default function EngineerUploadPage() {
                     </span>
                     {fileInspection.estimatedRows != null && (
                       <span className="badge badge--engineer">
-                        ~{fileInspection.estimatedRows.toLocaleString()} trajectory rows
+                        {fileInspection.isPneuma
+                          ? `~${fileInspection.estimatedRows.toLocaleString()} vehicle tracks`
+                          : `~${fileInspection.estimatedRows.toLocaleString()} trajectory rows`}
                       </span>
                     )}
                     {fileInspection.delimiter && (
@@ -1264,6 +1296,14 @@ export default function EngineerUploadPage() {
           </button>
         </div>
       </form>
+
+      {isSampleGeneratorOpen && (
+        <PneumaSampleGeneratorModal
+          isOpen={isSampleGeneratorOpen}
+          onClose={() => setIsSampleGeneratorOpen(false)}
+          onGenerate={handleSampleDatasetGenerated}
+        />
+      )}
     </div>
   )
 }

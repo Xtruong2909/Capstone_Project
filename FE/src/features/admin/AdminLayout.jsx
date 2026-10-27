@@ -66,7 +66,7 @@ export default function AdminLayout() {
           </button>
         </div>
 
-        <div className="admin-sidebar__header" style={{ flexDirection: 'column', alignItems: isSidebarCollapsed ? 'center' : 'flex-start', gap: '0.75rem' }}>
+        <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
             <div className="admin-sidebar__logo-badge" title="Urban Traffic - Admin Portal">
               <Shield size={20} />
@@ -77,19 +77,6 @@ export default function AdminLayout() {
                 <span>Admin Portal</span>
               </div>
             )}
-          </div>
-
-          <div
-            className="admin-header__badge"
-            title="Role: Administrator"
-            style={{
-              width: isSidebarCollapsed ? 'auto' : '100%',
-              textAlign: 'center',
-              padding: isSidebarCollapsed ? '0.24rem 0.45rem' : '0.36rem 0.85rem',
-              fontSize: isSidebarCollapsed ? '0.68rem' : '0.75rem',
-            }}
-          >
-            <span>{isSidebarCollapsed ? 'AD' : 'Role: Administrator'}</span>
           </div>
         </div>
 
@@ -143,6 +130,55 @@ export default function AdminLayout() {
         </nav>
 
         <div className="admin-sidebar__footer">
+          {!isSidebarCollapsed ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.1rem 0.2rem',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                Role
+              </span>
+              <span
+                className="badge badge--admin"
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.6rem',
+                  fontWeight: 700,
+                  borderRadius: '9999px',
+                }}
+              >
+                Administrator
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <span
+                className="badge badge--admin"
+                title="Role: Administrator"
+                style={{
+                  fontSize: '0.65rem',
+                  padding: '0.15rem 0.35rem',
+                  fontWeight: 800,
+                  borderRadius: '6px',
+                }}
+              >
+                AD
+              </span>
+            </div>
+          )}
+
           <div
             className="admin-user-profile"
             title={`${user?.full_name || 'Administrator'} (${user?.email || 'admin@gmail.com'})`}

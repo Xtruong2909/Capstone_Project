@@ -331,13 +331,13 @@ export default function EngineerCatalogPage() {
               }}
             >
               <colgroup>
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '7%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '9%' }} />
                 <col style={{ width: '15%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '16%' }} />
                 <col style={{ width: '8%' }} />
                 <col style={{ width: '14%' }} />
               </colgroup>
@@ -450,16 +450,16 @@ export default function EngineerCatalogPage() {
                           style={{
                             display: 'inline-block',
                             maxWidth: '100%',
-                            padding: '0.22rem 0.52rem',
+                            padding: '0.28rem 0.55rem',
                             background: '#eef2ff',
                             color: '#4338ca',
                             border: '1px solid #c7d2fe',
                             borderRadius: '6px',
                             fontWeight: 700,
                             fontSize: '0.75rem',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
+                            lineHeight: 1.35,
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
                           }}
                           title={item.source}
                         >
@@ -470,11 +470,8 @@ export default function EngineerCatalogPage() {
                             style={{
                               fontSize: '0.7rem',
                               color: '#64748b',
-                              marginTop: '0.2rem',
+                              marginTop: '0.25rem',
                               fontWeight: 500,
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
                             }}
                           >
                             {item.capture_date}
@@ -487,24 +484,24 @@ export default function EngineerCatalogPage() {
                         <div
                           style={{
                             display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.3rem',
+                            alignItems: 'flex-start',
+                            gap: '0.35rem',
                             maxWidth: '100%',
-                            padding: '0.24rem 0.55rem',
+                            padding: '0.28rem 0.55rem',
                             background: '#f0fdfa',
                             color: '#0f766e',
                             border: '1px solid #99f6e4',
                             borderRadius: '6px',
                             fontWeight: 700,
-                            fontSize: '0.76rem',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
+                            fontSize: '0.75rem',
+                            lineHeight: 1.35,
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
                           }}
                           title={item.location_name}
                         >
-                          <MapPin size={12} style={{ flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <MapPin size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+                          <span>
                             {item.location_name || '—'}
                           </span>
                         </div>
@@ -582,38 +579,50 @@ export default function EngineerCatalogPage() {
                       </td>
 
                       {/* 7. Review Feedback */}
-                      <td style={bodyCellStyle}>
+                      <td style={{ ...bodyCellStyle, verticalAlign: 'middle' }}>
                         <div
                           style={{
-                            padding: '0.38rem 0.58rem',
+                            padding: '0.42rem 0.65rem',
                             borderRadius: '7px',
                             background:
                               item.approval_status === 'REJECTED'
                                 ? '#fef2f2'
                                 : item.approval_status === 'APPROVED'
                                 ? '#f0fdf4'
+                                : item.approval_status === 'SUBMITTED'
+                                ? '#eff6ff'
                                 : '#f8fafc',
                             borderLeft:
                               item.approval_status === 'REJECTED'
                                 ? '3px solid #ef4444'
                                 : item.approval_status === 'APPROVED'
                                 ? '3px solid #10b981'
+                                : item.approval_status === 'SUBMITTED'
+                                ? '3px solid #3b82f6'
                                 : '3px solid #cbd5e1',
-                            fontSize: '0.74rem',
+                            fontSize: '0.75rem',
                             fontWeight: 500,
                             color:
                               item.approval_status === 'REJECTED'
                                 ? '#991b1b'
                                 : item.approval_status === 'APPROVED'
                                 ? '#166534'
+                                : item.approval_status === 'SUBMITTED'
+                                ? '#1e40af'
                                 : '#475569',
-                            lineHeight: 1.35,
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
+                            lineHeight: 1.45,
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            whiteSpace: 'normal',
+                            maxHeight: '110px',
+                            overflowY: 'auto',
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#cbd5e1 transparent',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
                           }}
-                          title={reviewNote}
+                          onClick={() => setDetailModalItem(item)}
+                          title={`${reviewNote || 'No feedback note available'}\n(Click to inspect details)`}
                         >
                           {reviewNote || '—'}
                         </div>
