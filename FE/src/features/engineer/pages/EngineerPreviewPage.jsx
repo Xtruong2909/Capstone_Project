@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import {
   Table2,
@@ -17,10 +17,29 @@ import {
 
 export default function EngineerPreviewPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { datasets, versionLineageMap, registerRecordCount } = useOutletContext()
+  const { datasets = [], versionLineageMap = {}, registerRecordCount } = useOutletContext()
+
+  // Distinct datasets deduplicated by dataset_id so every dropdown option is unique & selectable
+  const uniqueDatasets = useMemo(() => {
+    const seen = new Set()
+    const result = []
+    for (const d of datasets) {
+      if (d?.dataset_id && !seen.has(d.dataset_id)) {
+        seen.add(d.dataset_id)
+        result.push(d)
+      }
+    }
+    return result
+  }, [datasets])
 
   const queryDatasetId = searchParams.get('datasetId') || ''
-  const [selectedDatasetId, setSelectedDatasetId] = useState(queryDatasetId)
+  const activeDatasetId = useMemo(() => {
+    if (queryDatasetId && uniqueDatasets.some((d) => d.dataset_id === queryDatasetId)) {
+      return queryDatasetId
+    }
+    return uniqueDatasets[0]?.dataset_id || ''
+  }, [queryDatasetId, uniqueDatasets])
+
   const [previewRepresentation, setPreviewRepresentation] = useState('normalized')
   const [previewPage, setPreviewPage] = useState(1)
   const [previewPageSize, setPreviewPageSize] = useState(20)
@@ -28,37 +47,31 @@ export default function EngineerPreviewPage() {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
 
-  // Sync with URL query or default to the first dataset when catalog loads
+  // Keep URL in sync with valid datasetId
   useEffect(() => {
-    if (queryDatasetId && queryDatasetId !== selectedDatasetId) {
-      setSelectedDatasetId(queryDatasetId)
-      setPreviewPage(1)
-    } else if (!queryDatasetId && !selectedDatasetId && datasets.length > 0) {
-      const firstId = datasets[0].dataset_id
-      setSelectedDatasetId(firstId)
-      setSearchParams({ datasetId: firstId }, { replace: true })
+    if (!queryDatasetId && activeDatasetId) {
+      setSearchParams({ datasetId: activeDatasetId }, { replace: true })
     }
-  }, [queryDatasetId, selectedDatasetId, datasets, setSearchParams])
+  }, [queryDatasetId, activeDatasetId, setSearchParams])
 
   const handleSelectDataset = (nextId) => {
-    setSelectedDatasetId(nextId)
-    setPreviewPage(1)
     if (nextId) {
-      setSearchParams({ datasetId: nextId }, { replace: true })
+      setSearchParams({ datasetId: nextId })
     } else {
-      setSearchParams({}, { replace: true })
+      setSearchParams({})
     }
+    setPreviewPage(1)
   }
 
   useEffect(() => {
-    if (!selectedDatasetId) return
+    if (!activeDatasetId) return
 
     let isCancelled = false
     const loadPreview = async () => {
       setIsPreviewLoading(true)
       setPreviewError(null)
       try {
-        const result = await datasetService.previewDataset(selectedDatasetId, {
+        const result = await datasetService.previewDataset(activeDatasetId, {
           page: previewPage,
           page_size: previewPageSize,
           representation: previewRepresentation,
@@ -66,7 +79,7 @@ export default function EngineerPreviewPage() {
         if (isCancelled) return
         setPreviewData(result)
         if (result?.pagination?.total_rows != null) {
-          registerRecordCount(selectedDatasetId, result.pagination.total_rows)
+          registerRecordCount(activeDatasetId, result.pagination.total_rows)
         }
       } catch (err) {
         if (isCancelled) return
@@ -85,7 +98,7 @@ export default function EngineerPreviewPage() {
     return () => {
       isCancelled = true
     }
-  }, [selectedDatasetId, previewPage, previewPageSize, previewRepresentation])
+  }, [activeDatasetId, previewPage, previewPageSize, previewRepresentation])
 
   return (
     <div className="admin-card">
@@ -103,16 +116,19 @@ export default function EngineerPreviewPage() {
           {/* Dataset Selector */}
           <select
             className="admin-select"
-            value={selectedDatasetId}
+            value={activeDatasetId}
             onChange={(e) => handleSelectDataset(e.target.value)}
             style={{ minWidth: '250px', fontWeight: 600 }}
           >
-            <option value="">-- Select a dataset to preview --</option>
-            {datasets.map((d) => (
-              <option key={d.dataset_id} value={d.dataset_id}>
-                {d.name} ({d.file_format} • {resolveEffectiveVersionTag(d, versionLineageMap)})
-              </option>
-            ))}
+            {uniqueDatasets.length === 0 ? (
+              <option value="">-- No datasets available --</option>
+            ) : (
+              uniqueDatasets.map((d) => (
+                <option key={d.dataset_id} value={d.dataset_id}>
+                  {d.name} ({d.file_format || 'CSV'} • {resolveEffectiveVersionTag(d, versionLineageMap)}) [{d.approval_status}]
+                </option>
+              ))
+            )}
           </select>
 
           {/* Representation Toggle: normalized vs raw */}

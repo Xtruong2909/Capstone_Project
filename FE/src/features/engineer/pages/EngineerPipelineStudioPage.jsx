@@ -93,29 +93,44 @@ export default function EngineerPipelineStudioPage() {
   const [isLoadingColumns, setIsLoadingColumns] = useState(false);
   const [columnsFetchError, setColumnsError] = useState(null);
 
+  // Distinct datasets deduplicated by dataset_id so each dropdown option is unique and selectable
+  const uniqueDatasets = useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    for (const d of datasets) {
+      if (d?.dataset_id && !seen.has(d.dataset_id)) {
+        seen.add(d.dataset_id);
+        result.push(d);
+      }
+    }
+    return result;
+  }, [datasets]);
+
   // Determine active dataset object from catalog
   const activeDataset = useMemo(() => {
-    if (!queryDatasetId) return datasets[0] || null;
-    return datasets.find((d) => d.dataset_id === queryDatasetId) || null;
-  }, [queryDatasetId, datasets]);
+    if (queryDatasetId) {
+      const match = uniqueDatasets.find((d) => d.dataset_id === queryDatasetId);
+      if (match) return match;
+    }
+    return uniqueDatasets[0] || null;
+  }, [queryDatasetId, uniqueDatasets]);
 
-  const activeDatasetId = activeDataset?.dataset_id || queryDatasetId || "";
+  const activeDatasetId = activeDataset?.dataset_id || "";
 
   // Sync initial URL params if missing datasetId
   useEffect(() => {
-    if (!queryDatasetId && datasets.length > 0) {
-      const firstId = datasets[0].dataset_id;
+    if (!queryDatasetId && activeDatasetId) {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          next.set("datasetId", firstId);
+          next.set("datasetId", activeDatasetId);
           if (!next.has("step")) next.set("step", "1");
           return next;
         },
         { replace: true },
       );
     }
-  }, [queryDatasetId, datasets, setSearchParams]);
+  }, [queryDatasetId, activeDatasetId, setSearchParams]);
 
   // Get or initialize active dataset state
   const currentWizardState = useMemo(() => {
@@ -231,7 +246,7 @@ export default function EngineerPipelineStudioPage() {
     return () => {
       isCancelled = true;
     };
-  }, [activeDatasetId, wizardStateByDataset]);
+  }, [activeDatasetId]);
 
   // ---- Wizard State Update Callbacks ----
 
@@ -488,7 +503,7 @@ export default function EngineerPipelineStudioPage() {
               className="admin-select"
               value={activeDatasetId}
               onChange={(e) => handleDatasetChange(e.target.value)}
-              disabled={isLoadingCatalog || datasets.length === 0}
+              disabled={isLoadingCatalog || uniqueDatasets.length === 0}
               style={{
                 flex: 1,
                 fontSize: "0.84rem",
@@ -498,12 +513,12 @@ export default function EngineerPipelineStudioPage() {
                 borderColor: "#cbd5e1",
               }}
             >
-              {datasets.length === 0 ? (
+              {uniqueDatasets.length === 0 ? (
                 <option value="">No datasets available</option>
               ) : (
-                datasets.map((d) => (
+                uniqueDatasets.map((d) => (
                   <option key={d.dataset_id} value={d.dataset_id}>
-                    {d.name} ({d.file_format || "CSV"}) — [{d.approval_status}]
+                    {d.name} ({d.file_format || "CSV"}) — [{d.approval_status}] ({resolveEffectiveVersionTag(d, versionLineageMap)})
                   </option>
                 ))
               )}
