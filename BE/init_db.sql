@@ -183,13 +183,13 @@ CREATE TABLE data_cleaning_histories (
 
 CREATE TABLE dataset_access_grants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_user_dataset_grant UNIQUE(dataset_version_id, user_id)
+    CONSTRAINT uq_dataset_user_access UNIQUE(dataset_id, user_id)
 );
+CREATE INDEX ix_dataset_access_grants_user_id ON dataset_access_grants(user_id);
 
 -- ====================================================================
 -- PHÂN HỆ 3: CHUỖI THỜI GIAN KHÔNG - THỜI GIAN (SPATIAL-TEMPORAL TIME SERIES)
