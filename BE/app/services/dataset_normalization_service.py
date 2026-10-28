@@ -52,12 +52,7 @@ def _get_staging_dir() -> Path:
 
 
 def _resolve_file_path(version: DatasetVersion) -> Path:
-    stored_path = (
-        version.data_file_path
-        or version.csv_file_path
-        or version.parquet_file_path
-        or version.geojson_file_path
-    )
+    stored_path = version.data_file_path or version.csv_file_path or version.parquet_file_path
     if not stored_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -523,7 +518,7 @@ def export_normalized_dataset_service(
         new_version_id=new_version_id,
         version_tag=new_version_tag,
         file_format=format_upper,
-        file_path=str(output_file_path),
+        file_path=output_file_path.relative_to(upload_root).as_posix(),
         file_size_bytes=file_size_bytes,
         total_records=records_after,
         records_before=records_before,

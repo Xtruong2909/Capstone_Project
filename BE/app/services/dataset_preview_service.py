@@ -81,12 +81,7 @@ class DatasetPreviewData:
 
 
 def _resolve_file_path(version: DatasetVersion) -> Path:
-    stored_path = (
-        version.data_file_path
-        or version.csv_file_path
-        or version.parquet_file_path
-        or version.geojson_file_path
-    )
+    stored_path = version.data_file_path or version.csv_file_path or version.parquet_file_path
     if not stored_path:
         raise DatasetPreviewNotFoundError("Dataset version không có đường dẫn file")
 

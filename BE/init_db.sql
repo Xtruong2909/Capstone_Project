@@ -7,25 +7,8 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";
 
--- 2. DROP TABLES IN REVERSE ORDER OF DEPENDENCY (FOR CLEAN RESET IF NEEDED)
-DROP TABLE IF EXISTS ai_assistant_logs CASCADE;
-DROP TABLE IF EXISTS traffic_reports CASCADE;
-DROP TABLE IF EXISTS evaluation_metrics CASCADE;
-DROP TABLE IF EXISTS forecast_results CASCADE;
-DROP TABLE IF EXISTS model_parameters CASCADE;
-DROP TABLE IF EXISTS experiments CASCADE;
-DROP TABLE IF EXISTS traffic_time_series CASCADE;
-DROP TABLE IF EXISTS dataset_access_grants CASCADE;
-DROP TABLE IF EXISTS data_cleaning_histories CASCADE;
-DROP TABLE IF EXISTS data_quality_issues CASCADE;
-DROP TABLE IF EXISTS data_quality_checks CASCADE;
-DROP TABLE IF EXISTS data_quality_reports CASCADE;
-DROP TABLE IF EXISTS dataset_column_mappings CASCADE;
-DROP TABLE IF EXISTS dataset_versions CASCADE;
-DROP TABLE IF EXISTS datasets CASCADE;
-DROP TABLE IF EXISTS audit_logs CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS roles CASCADE;
+-- Fresh databases only. Existing databases must use migrations; never reset data.
+BEGIN;
 
 -- ====================================================================
 -- PHÂN HỆ 1: NGƯỜI DÙNG, PHÂN QUYỀN (RBAC) & KIỂM TOÁN (AUDIT TRAIL)
@@ -77,11 +60,9 @@ CREATE TABLE datasets (
     description TEXT,
     capture_date DATE,
     location_name VARCHAR(255) NOT NULL,
-    roi_geometry GEOMETRY(Polygon, 4326),
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_datasets_roi ON datasets USING GIST(roi_geometry);
 
 CREATE TABLE dataset_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,7 +72,6 @@ CREATE TABLE dataset_versions (
     original_filename VARCHAR(255),
     csv_file_path VARCHAR(512),
     parquet_file_path VARCHAR(512),
-    geojson_file_path VARCHAR(512),
     file_format VARCHAR(16) NOT NULL DEFAULT 'CSV',
     file_size_bytes BIGINT NOT NULL DEFAULT 0,
     total_records BIGINT NOT NULL DEFAULT 0,
@@ -155,20 +135,6 @@ CREATE INDEX ix_data_quality_issues_issue_type ON data_quality_issues(issue_type
 CREATE INDEX ix_data_quality_issue_check_row
     ON data_quality_issues(check_id, row_number);
 
-CREATE TABLE data_quality_reports (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    dataset_version_id UUID NOT NULL UNIQUE REFERENCES dataset_versions(id) ON DELETE CASCADE,
-    missing_coordinates_count INTEGER DEFAULT 0,
-    negative_speed_count INTEGER DEFAULT 0,
-    invalid_timestamp_count INTEGER DEFAULT 0,
-    out_of_bounds_count INTEGER DEFAULT 0,
-    duplicate_records_count INTEGER DEFAULT 0,
-    error_rate_percentage DECIMAL(5, 2) NOT NULL DEFAULT 0.00,
-    quality_flag VARCHAR(16) NOT NULL,
-    summary_details JSONB,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE data_cleaning_histories (
     id BIGSERIAL PRIMARY KEY,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
@@ -199,14 +165,15 @@ CREATE TABLE traffic_time_series (
     id BIGSERIAL PRIMARY KEY,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
     time_bucket TIMESTAMPTZ NOT NULL,
-    aggregation_interval INTEGER NOT NULL, -- 60 (1m), 180 (3m), 300 (5m), 900 (15m)
+    aggregation_interval INTEGER NOT NULL DEFAULT 60 CONSTRAINT ck_traffic_interval CHECK (aggregation_interval = 60),
     roi_identifier VARCHAR(64) NOT NULL DEFAULT 'MAIN_ROI' CHECK (roi_identifier ~ '^[A-Za-z0-9_-]+$'),
-    vehicle_count INTEGER NOT NULL DEFAULT 0,
-    traffic_flow DECIMAL(10, 2) NOT NULL DEFAULT 0.00, -- Target chính: xe/phút
-    traffic_density DECIMAL(10, 4) NOT NULL DEFAULT 0.0000, -- xe/m2
-    mean_speed DECIMAL(6, 2) NOT NULL DEFAULT 0.00, -- km/h
-    congestion_level VARCHAR(32) NOT NULL DEFAULT 'FREE_FLOW',
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    vehicle_count INTEGER CONSTRAINT ck_traffic_count CHECK (vehicle_count >= 0), -- Counting-line passage events, not trajectory rows
+    traffic_flow DECIMAL(10, 2) CONSTRAINT ck_traffic_flow CHECK (traffic_flow >= 0 AND traffic_flow < 'Infinity'), -- passages/min; NULL until counting line is defined
+    traffic_density DECIMAL(10, 4) CONSTRAINT ck_traffic_density CHECK (traffic_density >= 0 AND traffic_density < 'Infinity'), -- NULL until method and units are defined
+    mean_speed DECIMAL(6, 2) CONSTRAINT ck_traffic_speed CHECK (mean_speed >= 0 AND mean_speed < 'Infinity'), -- km/h; m/s sources require x3.6
+    congestion_level VARCHAR(32), -- NULL until a classification rule is defined
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_traffic_bucket UNIQUE(dataset_version_id, roi_identifier, time_bucket)
 );
 CREATE INDEX idx_tts_composite ON traffic_time_series(dataset_version_id, aggregation_interval, time_bucket);
 CREATE INDEX idx_tts_time ON traffic_time_series(time_bucket);
@@ -220,16 +187,19 @@ CREATE TABLE experiments (
     name VARCHAR(128) NOT NULL CHECK (length(trim(name)) >= 2),
     description TEXT,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE RESTRICT,
-    model_type VARCHAR(32) NOT NULL, -- BASELINE, RANDOM_FOREST, ARIMA, PROPHET, LSTM
-    target_variable VARCHAR(32) NOT NULL DEFAULT 'traffic_flow',
-    temporal_aggregation_sec INTEGER NOT NULL DEFAULT 60,
-    forecast_horizon_steps INTEGER NOT NULL DEFAULT 1, -- t+1, t+3, t+5
-    train_split_ratio DECIMAL(3, 2) NOT NULL DEFAULT 0.80,
+    model_type VARCHAR(32) NOT NULL CONSTRAINT ck_experiment_model CHECK (model_type IN ('RANDOM_FOREST', 'PERSISTENCE', 'HISTORICAL_AVERAGE')),
+    target_variable VARCHAR(32) NOT NULL DEFAULT 'traffic_flow' CONSTRAINT ck_experiment_target CHECK (target_variable = 'traffic_flow'),
+    temporal_aggregation_sec INTEGER NOT NULL DEFAULT 60 CONSTRAINT ck_experiment_interval CHECK (temporal_aggregation_sec = 60),
+    forecast_horizon_minutes INTEGER NOT NULL DEFAULT 1 CONSTRAINT ck_experiment_horizon CHECK (forecast_horizon_minutes IN (1, 3, 5)),
+    train_split_ratio DECIMAL(3, 2) NOT NULL DEFAULT 0.70 CONSTRAINT ck_experiment_split CHECK (train_split_ratio = 0.70),
+    split_strategy VARCHAR(32) NOT NULL DEFAULT 'CHRONOLOGICAL' CONSTRAINT ck_experiment_strategy CHECK (split_strategy = 'CHRONOLOGICAL'),
+    run_config JSONB,
     random_seed INTEGER NOT NULL DEFAULT 42,
     status VARCHAR(32) NOT NULL DEFAULT 'DRAFT', -- DRAFT, RUNNING, COMPLETED, FAILED
     execution_time_sec DECIMAL(8, 2),
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_experiment_horizon UNIQUE(id, forecast_horizon_minutes)
 );
 CREATE INDEX idx_experiments_model ON experiments(model_type);
 CREATE INDEX idx_experiments_status ON experiments(status);
@@ -246,22 +216,23 @@ CREATE INDEX idx_model_params_exp ON model_parameters(experiment_id);
 CREATE TABLE forecast_results (
     id BIGSERIAL PRIMARY KEY,
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    timestamp TIMESTAMPTZ NOT NULL,
-    step_ahead INTEGER NOT NULL, -- 1, 3, 5
+    timestamp TIMESTAMPTZ NOT NULL, -- Target bucket start, not forecast origin
+    horizon_minutes INTEGER NOT NULL CONSTRAINT ck_forecast_horizon CHECK (horizon_minutes IN (1, 3, 5)),
     predicted_value DECIMAL(10, 2) NOT NULL,
     actual_value DECIMAL(10, 2),
     lower_bound DECIMAL(10, 2),
-    upper_bound DECIMAL(10, 2)
+    upper_bound DECIMAL(10, 2),
+    CONSTRAINT fk_forecast_horizon FOREIGN KEY(experiment_id, horizon_minutes)
+        REFERENCES experiments(id, forecast_horizon_minutes) ON DELETE CASCADE,
+    CONSTRAINT uq_forecast_target UNIQUE(experiment_id, timestamp)
 );
 CREATE INDEX idx_forecast_exp_time ON forecast_results(experiment_id, timestamp);
 
 CREATE TABLE evaluation_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     experiment_id UUID NOT NULL UNIQUE REFERENCES experiments(id) ON DELETE CASCADE,
-    mae DECIMAL(10, 4) NOT NULL,
-    rmse DECIMAL(10, 4) NOT NULL,
-    mape DECIMAL(8, 4) NOT NULL,
-    r2_score DECIMAL(6, 4) NOT NULL,
+    mae DECIMAL(10, 4) NOT NULL CONSTRAINT ck_metric_mae CHECK (mae >= 0 AND mae < 'Infinity'),
+    rmse DECIMAL(10, 4) NOT NULL CONSTRAINT ck_metric_rmse CHECK (rmse >= 0 AND rmse < 'Infinity'),
     evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -312,3 +283,5 @@ ON CONFLICT (id) DO NOTHING;
 -- 3. Insert Primary Benchmark Dataset (pNEUMA)
 INSERT INTO datasets (id, name, code, source, description, capture_date, location_name, created_by) VALUES
 ('11111111-1111-1111-1111-111111111111', 'pNEUMA Athens CBD Dataset', 'PNEUMA_ATHENS', 'EPFL (Barmpounakis & Geroliminis, 2020)', 'Large-scale naturalistic traffic dataset captured by a swarm of 10 drones in central Athens, Greece', '2018-10-24', 'Athens Central Business District, Greece', '00000000-0000-0000-0000-000000000001');
+
+COMMIT;

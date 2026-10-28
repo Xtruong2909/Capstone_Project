@@ -454,7 +454,7 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
             text(
                 "CREATE TABLE datasets (id CHAR(32) PRIMARY KEY, "
                 "name TEXT, code TEXT, source TEXT, description TEXT, "
-                "capture_date DATE, location_name TEXT, roi_geometry BLOB, "
+                "capture_date DATE, location_name TEXT, "
                 "created_by CHAR(32), created_at DATETIME)"
             )
         )

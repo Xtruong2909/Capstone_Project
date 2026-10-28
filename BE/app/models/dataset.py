@@ -1,7 +1,6 @@
 import uuid
 from datetime import UTC, datetime
 
-from geoalchemy2 import Geometry
 from sqlalchemy import (
     BigInteger,
     Column,
@@ -30,7 +29,6 @@ class Dataset(Base):
     description = Column(Text, nullable=True)
     capture_date = Column(Date, nullable=True)
     location_name = Column(String(255), nullable=False)
-    roi_geometry = Column(Geometry("POLYGON", srid=4326), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
@@ -48,7 +46,6 @@ class DatasetVersion(Base):
     original_filename = Column(String(255), nullable=True)
     csv_file_path = Column(String(512), nullable=True)
     parquet_file_path = Column(String(512), nullable=True)
-    geojson_file_path = Column(String(512), nullable=True)
     file_format = Column(String(16), nullable=False, default="CSV")
     file_size_bytes = Column(BigInteger, nullable=False, default=0)
     total_records = Column(BigInteger, nullable=False, default=0)

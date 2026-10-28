@@ -7,7 +7,8 @@ from app.models.dataset import (
     DatasetColumnMapping,
     DatasetVersion,
 )
-from app.models.experiment import EvaluationMetric, Experiment
+from app.models.experiment import EvaluationMetric, Experiment, ForecastResult
+from app.models.traffic import TrafficTimeSeries
 from app.models.user import Role, User
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "DatasetVersion",
     "EvaluationMetric",
     "Experiment",
+    "ForecastResult",
     "Role",
+    "TrafficTimeSeries",
     "User",
 ]
