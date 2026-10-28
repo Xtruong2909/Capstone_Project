@@ -256,6 +256,10 @@ def normalize_dataset_structure_service(
                 for row in csv_reader:
                     if not row or not any(row):
                         continue
+                    if [str(cell).strip().lower() for cell in row] == [
+                        str(header).strip().lower() for header in PNEUMA_HEADERS
+                    ]:
+                        continue
                     records_before += 1
                     while row and not row[-1].strip():
                         row.pop()
@@ -306,6 +310,12 @@ def normalize_dataset_structure_service(
                 normalized_columns = [rename_map.get(col.lower(), col) for col in raw_headers]
                 dict_reader = csv.DictReader(infile, fieldnames=raw_headers, delimiter=delimiter)
                 for row in dict_reader:
+                    if row is not None and all(
+                        str(value).strip().lower() == str(key).strip().lower()
+                        for key, value in row.items()
+                        if key is not None and value is not None
+                    ):
+                        continue
                     records_before += 1
                     mapped_row = {
                         rename_map.get(k.lower(), k): v for k, v in row.items() if k

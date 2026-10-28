@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     dataset_access,
     dataset_mapping,
     datasets,
+    traffic_aggregation,
 )
 
 api_router = APIRouter()
@@ -35,4 +36,9 @@ api_router.include_router(
     data_quality.router,
     prefix="/datasets",
     tags=["Data Quality"],
+)
+api_router.include_router(
+    traffic_aggregation.router,
+    prefix="/datasets",
+    tags=["Traffic Temporal Aggregation"],
 )

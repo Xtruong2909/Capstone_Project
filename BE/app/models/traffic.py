@@ -1,21 +1,60 @@
 """One-minute observations; NULL means an unimplemented measurement, never zero."""
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database.database import Base
+
+
+class TrafficAggregationJob(Base):
+    __tablename__ = "traffic_aggregation_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dataset_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dataset_version_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    aggregation_interval = Column(Integer, nullable=False, default=60)
+    roi_identifier = Column(String(64), nullable=False, default="MAIN_ROI")
+    replace_existing = Column(Boolean, nullable=False, default=False)
+    status = Column(String(16), nullable=False, default="queued", index=True)
+    progress_percent = Column(Integer, nullable=False, default=0)
+    records_created = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text, nullable=True)
+    job_metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
 
 class TrafficTimeSeries(Base):
@@ -32,6 +71,7 @@ class TrafficTimeSeries(Base):
             "dataset_version_id", "roi_identifier", "time_bucket", name="uq_traffic_bucket"
         ),
     )
+
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     dataset_version_id = Column(
         UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="CASCADE"), nullable=False
