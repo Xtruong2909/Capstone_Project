@@ -15,7 +15,6 @@ import {
   Trash2,
   X,
   Activity,
-  Award,
   Layers,
   ScrollText,
 } from 'lucide-react'
@@ -578,13 +577,13 @@ export default function AdminOverview() {
 
           <div className="exp-kpi-box exp-kpi-box--purple">
             <div className="admin-card__icon-box admin-card__icon-box--purple">
-              <Award size={18} />
+              <AlertCircle size={18} />
             </div>
             <div>
               <div className="exp-kpi-box__val" style={{ fontSize: '1rem' }}>
-                {expStats.best_r2_score != null ? `R² ${expStats.best_r2_score}` : '—'}
+                {expStats.failed_count ?? 0}
               </div>
-              <div className="exp-kpi-box__lbl">Best Score</div>
+              <div className="exp-kpi-box__lbl">Failed</div>
             </div>
           </div>
         </div>
@@ -647,7 +646,7 @@ export default function AdminOverview() {
                     <td>
                       {exp.metrics ? (
                         <div style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                          <span>R²: <strong>{exp.metrics.r2_score}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
+                          <span>MAE: <strong>{exp.metrics.mae}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
                         </div>
                       ) : (
                         <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No metrics</span>
