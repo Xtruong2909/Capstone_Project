@@ -198,7 +198,7 @@ export default function EngineerPreviewPage() {
         </div>
       </div>
 
-      {!selectedDatasetId ? (
+      {!activeDatasetId ? (
         <div className="vivid-empty-box">
           <div
             className="vivid-empty-box__icon"
