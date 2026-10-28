@@ -1,5 +1,6 @@
 ﻿{
   "editor.formatOnSave": true,
+  "mssql.intelliSense.enableErrorChecking": false,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "python.formatting.provider": "none",
   "[python]": {

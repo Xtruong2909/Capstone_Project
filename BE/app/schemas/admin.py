@@ -99,8 +99,6 @@ class DatasetApprovalAction(BaseModel):
 class ExperimentMetricsSummary(BaseModel):
     mae: float
     rmse: float
-    mape: float
-    r2_score: float
 
 
 class ExperimentOverviewItem(BaseModel):
@@ -123,8 +121,6 @@ class ExperimentStats(BaseModel):
     running_count: int
     completed_count: int
     failed_count: int
-    best_model_name: str | None = None
-    best_r2_score: float | None = None
 
 
 class ExperimentsOverviewResponse(BaseModel):

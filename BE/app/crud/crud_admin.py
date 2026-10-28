@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.dataset import Dataset, DatasetVersion
-from app.models.experiment import EvaluationMetric, Experiment
+from app.models.experiment import Experiment
 from app.models.user import Role, User
 from app.schemas.admin import UserCreate, UserRoleId
 
@@ -177,28 +177,11 @@ def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
     completed_count = db.query(Experiment).filter(Experiment.status == "COMPLETED").count()
     failed_count = db.query(Experiment).filter(Experiment.status == "FAILED").count()
 
-    # Find best model based on highest R2 score
-    best_record = (
-        db.query(EvaluationMetric, Experiment)
-        .join(Experiment, EvaluationMetric.experiment_id == Experiment.id)
-        .order_by(EvaluationMetric.r2_score.desc())
-        .first()
-    )
-
-    best_model_name = None
-    best_r2_score = None
-    if best_record:
-        metric, exp = best_record
-        best_model_name = f"{exp.name} ({exp.model_type})"
-        best_r2_score = float(metric.r2_score)
-
     stats = {
         "total_experiments": total_experiments,
         "running_count": running_count,
         "completed_count": completed_count,
         "failed_count": failed_count,
-        "best_model_name": best_model_name,
-        "best_r2_score": best_r2_score,
     }
 
     # Retrieve experiments with details
@@ -216,8 +199,6 @@ def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
             metrics_dict = {
                 "mae": float(exp.evaluation_metric.mae),
                 "rmse": float(exp.evaluation_metric.rmse),
-                "mape": float(exp.evaluation_metric.mape),
-                "r2_score": float(exp.evaluation_metric.r2_score),
             }
 
         experiments.append({

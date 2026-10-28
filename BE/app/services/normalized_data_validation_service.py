@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from fastapi import HTTPException, status
 
@@ -24,6 +26,52 @@ COORDINATE_ALIASES = {
 }
 SPEED_ALIASES = ("speed", "velocity")
 MISSING_TEXT_VALUES = {"", "null", "none", "nan"}
+VALIDATION_BATCH_SIZE = 65_536
+
+
+def _missing_mask(column: pa.Array) -> pa.Array:
+    if pa.types.is_dictionary(column.type):
+        return _missing_mask(column.dictionary_decode())
+    if pa.types.is_floating(column.type):
+        return pc.or_(pc.is_null(column), pc.fill_null(pc.is_nan(column), False))
+    if pa.types.is_string(column.type) or pa.types.is_large_string(column.type):
+        # Preserve Python strip/lower semantics, including Unicode whitespace.
+        return pa.array([_is_missing(value) for value in column.to_pylist()])
+    return pc.is_null(column)
+
+
+def _coordinate_mask(column: pa.Array, lower: int, upper: int) -> pa.Array:
+    if pa.types.is_unsigned_integer(column.type):
+        return pc.fill_null(pc.greater(column, pa.scalar(upper, type=column.type)), False)
+    if pa.types.is_integer(column.type) or pa.types.is_floating(column.type):
+        invalid = pc.or_(pc.less(column, lower), pc.greater(column, upper))
+        if pa.types.is_floating(column.type):
+            invalid = pc.or_(invalid, pc.is_nan(column))
+        return pc.fill_null(invalid, False)
+    flags = []
+    for raw in column.to_pylist():
+        value = _number(raw)
+        flags.append(
+            (not math.isfinite(value) or not lower <= value <= upper)
+            if value is not None
+            else not _is_missing(raw)
+        )
+    return pa.array(flags, type=pa.bool_())
+
+
+def _negative_mask(column: pa.Array) -> pa.Array:
+    if pa.types.is_unsigned_integer(column.type):
+        return pa.array([False] * len(column))
+    if pa.types.is_integer(column.type) or pa.types.is_floating(column.type):
+        return pc.fill_null(pc.less(column, 0), False)
+    return pa.array(
+        [(value := _number(raw)) is not None and value < 0 for raw in column.to_pylist()],
+        type=pa.bool_(),
+    )
+
+
+def _count_mask(mask: pa.Array) -> int:
+    return pc.sum(mask).as_py() or 0
 
 
 def _latest_staging_file(dataset_id: UUID) -> Path:
@@ -98,19 +146,13 @@ def validate_normalized_dataset_service(
     normalized_names = {column.lower(): column for column in columns}
     coordinate_columns = {
         role: next(
-            (
-                normalized_names[alias]
-                for alias in aliases
-                if alias in normalized_names
-            ),
+            (normalized_names[alias] for alias in aliases if alias in normalized_names),
             None,
         )
         for role, aliases in COORDINATE_ALIASES.items()
     }
     speed_columns = [
-        normalized_names[alias]
-        for alias in SPEED_ALIASES
-        if alias in normalized_names
+        normalized_names[alias] for alias in SPEED_ALIASES if alias in normalized_names
     ]
 
     results = {
@@ -120,88 +162,83 @@ def validate_normalized_dataset_service(
         "negative_speed": 0,
     }
     total_rows = 0
+    valid_rows = 0
 
     try:
         with tempfile.TemporaryDirectory(prefix="normalized-validation-") as temp_dir:
             connection = sqlite3.connect(str(Path(temp_dir) / "validation.sqlite"))
             try:
+                # Scratch DB only: disposable on failure; no durability fsync needed.
+                connection.execute("PRAGMA journal_mode=OFF")
+                connection.execute("PRAGMA synchronous=OFF")
+                connection.execute("PRAGMA cache_size=-32768")
                 connection.execute(
-                    "CREATE TABLE seen_records (digest BLOB PRIMARY KEY)"
+                    "CREATE TABLE seen_records (digest BLOB PRIMARY KEY) WITHOUT ROWID"
                 )
                 connection.execute(
-                    "CREATE TABLE invalid_rows (row_number INTEGER PRIMARY KEY)"
+                    "CREATE TEMP TABLE incoming (digest BLOB PRIMARY KEY, invalid INTEGER NOT NULL) WITHOUT ROWID"
                 )
 
-                for batch in parquet_file.iter_batches(batch_size=10_000):
-                    invalid_batch: list[tuple[int]] = []
-                    for row in batch.to_pylist():
-                        total_rows += 1
-                        row_invalid = False
+                for batch in parquet_file.iter_batches(batch_size=VALIDATION_BATCH_SIZE):
+                    total_rows += batch.num_rows
+                    invalid = pa.array([False] * batch.num_rows)
+                    for column in batch.columns:
+                        missing = _missing_mask(column)
+                        results["missing_values"] += _count_mask(missing)
+                        invalid = pc.or_(invalid, missing)
 
-                        missing_count = sum(
-                            _is_missing(value) for value in row.values()
-                        )
-                        if missing_count:
-                            results["missing_values"] += missing_count
-                            row_invalid = True
+                    invalid_coordinates = pa.array([False] * batch.num_rows)
+                    for role, name in coordinate_columns.items():
+                        if name is not None:
+                            lower, upper = (-90, 90) if role == "latitude" else (-180, 180)
+                            invalid_coordinates = pc.or_(
+                                invalid_coordinates,
+                                _coordinate_mask(batch.column(name), lower, upper),
+                            )
+                    results["invalid_coordinates"] += _count_mask(invalid_coordinates)
+                    invalid = pc.or_(invalid, invalid_coordinates)
+                    negative_speed = pa.array([False] * batch.num_rows)
+                    for name in speed_columns:
+                        negative_speed = pc.or_(negative_speed, _negative_mask(batch.column(name)))
+                    results["negative_speed"] += _count_mask(negative_speed)
+                    invalid = pc.or_(invalid, negative_speed)
 
+                    # Column names/order are fixed within a file: a JSON tuple has
+                    # the same row-equality semantics without rebuilding row dicts.
+                    # Retain canonical nested values, null/NaN and default=str.
+                    values = batch.to_pydict()
+                    rows = zip(*(values[name] for name in sorted(values)), strict=True)
+                    incoming: dict[bytes, bool] = {}
+                    for row, row_invalid in zip(rows, invalid.to_pylist(), strict=True):
                         serialized = json.dumps(
-                            row,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                            default=str,
+                            row, sort_keys=True, separators=(",", ":"), default=str
                         ).encode("utf-8")
                         digest = hashlib.blake2b(serialized, digest_size=16).digest()
-                        cursor = connection.execute(
-                            "INSERT OR IGNORE INTO seen_records (digest) VALUES (?)",
-                            (digest,),
-                        )
-                        if cursor.rowcount == 0:
-                            results["duplicate_records"] += 1
-                            row_invalid = True
+                        incoming.setdefault(digest, row_invalid)
 
-                        invalid_coordinate = False
-                        for role, column in coordinate_columns.items():
-                            if column is None:
-                                continue
-                            value = _number(row.get(column))
-                            lower, upper = (
-                                (-90, 90) if role == "latitude" else (-180, 180)
-                            )
-                            if value is not None and (
-                                not math.isfinite(value) or not lower <= value <= upper
-                            ) or value is None and not _is_missing(row.get(column)):
-                                invalid_coordinate = True
-                        if invalid_coordinate:
-                            results["invalid_coordinates"] += 1
-                            row_invalid = True
-
-                        if any(
-                            (value := _number(row.get(column))) is not None and value < 0
-                            for column in speed_columns
-                        ):
-                            results["negative_speed"] += 1
-                            row_invalid = True
-
-                        if row_invalid:
-                            invalid_batch.append((total_rows,))
-
-                    connection.executemany(
-                        "INSERT OR IGNORE INTO invalid_rows (row_number) VALUES (?)",
-                        invalid_batch,
+                    connection.execute("DELETE FROM incoming")
+                    connection.executemany("INSERT INTO incoming VALUES (?, ?)", incoming.items())
+                    new_count, new_valid = connection.execute(
+                        "SELECT COUNT(*), COALESCE(SUM(i.invalid = 0), 0) "
+                        "FROM incoming i LEFT JOIN seen_records s ON s.digest = i.digest "
+                        "WHERE s.digest IS NULL"
+                    ).fetchone()
+                    results["duplicate_records"] += batch.num_rows - new_count
+                    valid_rows += new_valid
+                    connection.execute(
+                        "INSERT OR IGNORE INTO seen_records SELECT digest FROM incoming"
                     )
-                    connection.commit()
 
-                invalid_rows = connection.execute(
-                    "SELECT COUNT(*) FROM invalid_rows"
-                ).fetchone()[0]
+                invalid_rows = total_rows - valid_rows
             finally:
                 connection.close()
-    except (OSError, sqlite3.Error, ValueError) as exc:
+    except (OSError, sqlite3.Error, ValueError, pa.ArrowException) as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể hoàn tất kiểm tra dữ liệu đã chuẩn hóa.",
         ) from exc
+    finally:
+        parquet_file.close()
 
     return NormalizedDataValidationResponse(
         dataset_id=dataset_id,
