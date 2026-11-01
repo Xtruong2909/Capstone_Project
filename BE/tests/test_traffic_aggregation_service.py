@@ -40,6 +40,33 @@ def test_aggregate_time_series_rows_builds_one_minute_summary() -> None:
     assert bucket["traffic_density"] == 0.002
 
 
+def test_aggregate_time_series_rows_uses_explicit_flow_and_density_when_available() -> None:
+    rows = [
+        {
+            "track_id": 1,
+            "time": datetime(2026, 1, 1, 10, 0, 10, tzinfo=UTC),
+            "speed": 50.0,
+            "crossing_count": 2,
+            "roi_area_m2": 2000.0,
+        },
+        {
+            "track_id": 2,
+            "time": datetime(2026, 1, 1, 10, 0, 40, tzinfo=UTC),
+            "speed": 30.0,
+            "crossing_count": 1,
+            "roi_area_m2": 2000.0,
+        },
+    ]
+
+    points = aggregate_time_series_rows(rows, aggregation_interval=60, roi_identifier="MAIN_ROI")
+
+    assert len(points) == 1
+    bucket = points[0]
+    assert bucket["vehicle_count"] == 2
+    assert bucket["traffic_flow"] == 3.0
+    assert bucket["traffic_density"] == 0.001
+
+
 def test_aggregate_time_series_rows_supports_pneuma_relative_timestamps() -> None:
     rows = [
         {"track_id": 14, "timestamp": 0.0, "speed": 16.4298},

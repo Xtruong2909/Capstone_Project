@@ -230,6 +230,8 @@ def aggregate_time_series_rows(
             {
                 "track_ids": set(),
                 "speed_values": [],
+                "crossing_count_total": 0.0,
+                "roi_area_m2": None,
             },
         )
 
@@ -241,6 +243,26 @@ def aggregate_time_series_rows(
         if speed_value is not None:
             group["speed_values"].append(speed_value)
 
+        crossing_count = _coerce_float(
+            _first_non_empty_value(
+                row,
+                "crossing_count",
+                "crossings",
+                "counting_line_count",
+                "flow_count",
+                "passage_count",
+                "vehicle_passage_count",
+            )
+        )
+        if crossing_count is not None:
+            group["crossing_count_total"] += crossing_count
+
+        roi_area_m2 = _coerce_float(
+            _first_non_empty_value(row, "roi_area_m2", "area_m2", "roi_area", "area")
+        )
+        if roi_area_m2 is not None and group["roi_area_m2"] is None:
+            group["roi_area_m2"] = roi_area_m2
+
     aggregated: list[dict[str, Any]] = []
     for bucket_start, group in sorted(buckets.items()):
         unique_vehicle_count = len(group["track_ids"])
@@ -248,8 +270,17 @@ def aggregate_time_series_rows(
         if group["speed_values"]:
             mean_speed = sum(group["speed_values"]) / len(group["speed_values"])
 
+        # Estimate-based traffic metrics for trajectory datasets. These are proxy values
+        # when the raw dataset does not expose explicit detector counts or ROI area.
         traffic_flow = unique_vehicle_count / (aggregation_interval / 60.0)
+        if group["crossing_count_total"] > 0:
+            traffic_flow = group["crossing_count_total"] / (aggregation_interval / 60.0)
+
         traffic_density = unique_vehicle_count / DEFAULT_DENSITY_AREA_M2
+        roi_area_m2 = group["roi_area_m2"]
+        if roi_area_m2 is not None and roi_area_m2 > 0:
+            traffic_density = unique_vehicle_count / roi_area_m2
+
         aggregated.append(
             {
                 "time_bucket": bucket_start,
@@ -636,8 +667,8 @@ def get_traffic_chart_data(
         "aggregation_interval": aggregation_interval,
         "roi_identifier": roi_identifier,
         "time_labels": [item.time_bucket.isoformat() for item in rows],
-        "vehicle_count": [int(item.vehicle_count) for item in rows],
-        "average_speed": [float(item.mean_speed) for item in rows],
-        "traffic_density": [float(item.traffic_density) for item in rows],
-        "traffic_flow": [float(item.traffic_flow) for item in rows],
+        "vehicle_count": [int(item.vehicle_count) if item.vehicle_count is not None else None for item in rows],
+        "average_speed": [float(item.mean_speed) if item.mean_speed is not None else None for item in rows],
+        "traffic_density": [float(item.traffic_density) if item.traffic_density is not None else None for item in rows],
+        "traffic_flow": [float(item.traffic_flow) if item.traffic_flow is not None else None for item in rows],
     }
