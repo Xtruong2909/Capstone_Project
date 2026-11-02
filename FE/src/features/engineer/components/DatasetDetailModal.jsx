@@ -43,13 +43,13 @@ export default function DatasetDetailModal({
   onOpenPipelineStudio,
 }) {
   const navigate = useNavigate()
+  const [isResubmitting, setIsResubmitting] = useState(false)
   if (!item) return null
 
   const effectiveVersion = resolveEffectiveVersionTag(item, versionLineageMap)
   const effectiveRecordCount = resolveEffectiveRecordCount(item, recordCountsMap)
   const reviewNote = resolveEffectiveApprovalNote(item)
   const lineageInfo = versionLineageMap[item.dataset_id]
-  const [isResubmitting, setIsResubmitting] = useState(false)
 
   const handleResubmit = async () => {
     if (!item?.dataset_id || !item?.version_id) return
