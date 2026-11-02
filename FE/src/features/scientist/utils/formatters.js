@@ -14,6 +14,21 @@ export function formatNumber(value) {
   return value == null ? '-' : Number(value).toLocaleString('en-US')
 }
 
+export function formatDate(iso) {
+  if (!iso) return '-'
+  try {
+    return new Date(iso).toLocaleDateString('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
 export function extractErrorMessage(err, fallback) {
   const detail = err?.response?.data?.detail
   if (typeof detail === 'string') return detail

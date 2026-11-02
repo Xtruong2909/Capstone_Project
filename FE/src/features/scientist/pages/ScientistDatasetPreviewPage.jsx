@@ -101,7 +101,7 @@ export default function ScientistDatasetPreviewPage() {
             >
               {datasets.map((d) => (
                 <option key={d.version_id} value={`${d.dataset_id}::${d.version_id}`}>
-                  {d.dataset_name} ({d.version_tag}) — {d.dataset_code}
+                  {d.dataset_name} ({d.version_tag}) {d.location_name ? `• ${d.location_name}` : ''}
                 </option>
               ))}
             </select>
@@ -123,7 +123,6 @@ export default function ScientistDatasetPreviewPage() {
               <span className="sci-pill sci-pill--approved">APPROVED</span>
             </div>
             <p className="admin-card__subtitle">
-              {activeMeta?.dataset_code && `${activeMeta.dataset_code} • `}
               {activeMeta?.location_name && `${activeMeta.location_name} • `}
               {activeMeta?.source && `Source: ${activeMeta.source} • `}
               {preview?.original_filename && `File: ${preview.original_filename}`}
@@ -194,48 +193,62 @@ export default function ScientistDatasetPreviewPage() {
         {preview && (
           <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
             <div className="stat-card stat-card--blue">
-              <div className="stat-card__icon">
-                <Database size={20} />
-              </div>
-              <div className="stat-card__info">
-                <span className="stat-card__eyebrow">Total Records</span>
-                <strong>
-                  {totalRows != null
-                    ? formatNumber(totalRows)
-                    : `${formatNumber(pagination?.returned_rows ?? 0)}+ rows`}
-                </strong>
+              <Database size={96} className="stat-card__watermark" />
+              <div className="stat-card__top">
+                <div className="stat-card__info">
+                  <div className="stat-card__eyebrow">Total Records</div>
+                  <h3>
+                    {totalRows != null
+                      ? formatNumber(totalRows)
+                      : `${formatNumber(pagination?.returned_rows ?? 0)}+ rows`}
+                  </h3>
+                  <p>Trajectory points loaded</p>
+                </div>
+                <div className="stat-card__icon stat-card__icon--blue">
+                  <Database size={22} />
+                </div>
               </div>
             </div>
 
             <div className="stat-card stat-card--purple">
-              <div className="stat-card__icon">
-                <HardDrive size={20} />
-              </div>
-              <div className="stat-card__info">
-                <span className="stat-card__eyebrow">File Size</span>
-                <strong>{formatBytes(preview.file_size)}</strong>
+              <HardDrive size={96} className="stat-card__watermark" />
+              <div className="stat-card__top">
+                <div className="stat-card__info">
+                  <div className="stat-card__eyebrow">File Size</div>
+                  <h3>{formatBytes(preview.file_size)}</h3>
+                  <p>Storage size on disk</p>
+                </div>
+                <div className="stat-card__icon stat-card__icon--purple">
+                  <HardDrive size={22} />
+                </div>
               </div>
             </div>
 
             <div className="stat-card stat-card--green">
-              <div className="stat-card__icon">
-                <FileSpreadsheet size={20} />
-              </div>
-              <div className="stat-card__info">
-                <span className="stat-card__eyebrow">Format / Structure</span>
-                <strong>
-                  {preview.file_format?.toUpperCase()} ({preview.detected_structure})
-                </strong>
+              <FileSpreadsheet size={96} className="stat-card__watermark" />
+              <div className="stat-card__top">
+                <div className="stat-card__info">
+                  <div className="stat-card__eyebrow">Format & Structure</div>
+                  <h3>{preview.file_format?.toUpperCase()}</h3>
+                  <p>{preview.detected_structure || 'Tabular structured'}</p>
+                </div>
+                <div className="stat-card__icon stat-card__icon--green">
+                  <FileSpreadsheet size={22} />
+                </div>
               </div>
             </div>
 
             <div className="stat-card stat-card--amber">
-              <div className="stat-card__icon">
-                <Layers size={20} />
-              </div>
-              <div className="stat-card__info">
-                <span className="stat-card__eyebrow">Active Representation</span>
-                <strong style={{ textTransform: 'capitalize' }}>{preview.representation}</strong>
+              <Layers size={96} className="stat-card__watermark" />
+              <div className="stat-card__top">
+                <div className="stat-card__info">
+                  <div className="stat-card__eyebrow">Active Representation</div>
+                  <h3 style={{ textTransform: 'capitalize' }}>{preview.representation}</h3>
+                  <p>{preview.representation === 'normalized' ? 'Trajectories expanded' : 'Raw CSV records'}</p>
+                </div>
+                <div className="stat-card__icon stat-card__icon--amber">
+                  <Layers size={22} />
+                </div>
               </div>
             </div>
           </div>

@@ -8,8 +8,10 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  UserCheck,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import ScientistProfileModal from './components/ScientistProfileModal'
 import '../admin/AdminLayout.css'
 import './ScientistPages.css'
 
@@ -24,6 +26,7 @@ const NAV_ITEMS = [
 export default function ScientistLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
@@ -106,16 +109,21 @@ export default function ScientistLayout() {
             </span>
           </div>
 
+          {/* User Profile Card - Click to open Profile & Password Modal */}
           <div
             className="admin-user-profile"
-            title={`${user?.full_name || 'Data Scientist'} (${user?.email || ''})`}
+            onClick={() => setIsProfileModalOpen(true)}
+            style={{ cursor: 'pointer', transition: 'background 0.2s', borderRadius: '10px' }}
+            title="Bấm để xem thông tin tài khoản và đổi mật khẩu"
           >
             <div className="admin-avatar">
               {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
             </div>
             {!isCollapsed && (
               <div className="admin-user-info">
-                <span className="admin-user-name">{user?.full_name || 'Data Scientist'}</span>
+                <span className="admin-user-name" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  {user?.full_name || 'Data Scientist'}
+                </span>
                 <span className="admin-user-email">{user?.email || ''}</span>
               </div>
             )}
@@ -129,15 +137,33 @@ export default function ScientistLayout() {
       </aside>
 
       <div className="admin-main">
-        <header className="admin-header">
+        <header className="admin-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="admin-header__title">
             <h1>Data Scientist Workspace</h1>
           </div>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setIsProfileModalOpen(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', fontWeight: 600 }}
+            title="Quản lý tài khoản và đổi mật khẩu"
+          >
+            <UserCheck size={15} style={{ color: '#1668e3' }} />
+            <span>Tài khoản & Bảo mật</span>
+          </button>
         </header>
+
         <main className="admin-content">
           <Outlet />
         </main>
       </div>
+
+      {/* Profile & Security Modal */}
+      <ScientistProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </div>
   )
 }

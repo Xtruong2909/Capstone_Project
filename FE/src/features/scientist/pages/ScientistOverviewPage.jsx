@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Database, Layers, MapPin, Radio } from 'lucide-react'
+import { Database, Layers, MapPin, Radio, ChevronRight, Eye, Sparkles } from 'lucide-react'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 
 const WORKFLOW = [
@@ -15,117 +15,219 @@ export default function ScientistOverviewPage() {
   const uniqueDatasets = new Set(datasets.map((d) => d.dataset_id)).size
   const uniqueLocations = new Set(datasets.map((d) => d.location_name).filter(Boolean)).size
   const uniqueSources = new Set(datasets.map((d) => d.source).filter(Boolean)).size
-  const latest = datasets.slice(0, 5)
+  const latest = datasets.slice(0, 6)
 
   return (
     <div className="sci-page">
-      <section className="admin-hero-banner">
-        <div className="admin-hero-banner__content">
-          <span className="admin-hero-banner__eyebrow">Data Science Lab</span>
-          <h2 className="admin-hero-banner__title">Approved Traffic Datasets & ML Workspace</h2>
-          <p className="admin-hero-banner__subtitle">
-            Access preprocessed, validated UAV traffic trajectory data from Data Engineers approved by Admin.
-          </p>
-          <div className="admin-hero-banner__actions">
-            <Link to="/scientist/datasets" className="btn-hero-primary">Browse Approved Datasets</Link>
-          </div>
-        </div>
-      </section>
-
       {error && <div className="sci-state sci-state--error">{error}</div>}
 
+      {/* 4 Professional KPI Stat Cards */}
       <div className="stats-grid">
         <div className="stat-card stat-card--blue">
-          <div className="stat-card__icon"><Database size={20} /></div>
-          <div className="stat-card__info">
-            <span className="stat-card__eyebrow">Approved Datasets</span>
-            <strong>{isLoading ? '…' : uniqueDatasets}</strong>
+          <Database size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <div className="stat-card__eyebrow">Approved Datasets</div>
+              <h3>{isLoading ? '…' : uniqueDatasets}</h3>
+              <p>Active traffic datasets</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--blue">
+              <Database size={22} />
+            </div>
           </div>
         </div>
+
         <div className="stat-card stat-card--purple">
-          <div className="stat-card__icon"><Layers size={20} /></div>
-          <div className="stat-card__info">
-            <span className="stat-card__eyebrow">Approved Versions</span>
-            <strong>{isLoading ? '…' : datasets.length}</strong>
+          <Layers size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <div className="stat-card__eyebrow">Approved Versions</div>
+              <h3>{isLoading ? '…' : datasets.length}</h3>
+              <p>Verified by Admin</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--purple">
+              <Layers size={22} />
+            </div>
           </div>
         </div>
+
         <div className="stat-card stat-card--green">
-          <div className="stat-card__icon"><MapPin size={20} /></div>
-          <div className="stat-card__info">
-            <span className="stat-card__eyebrow">Locations</span>
-            <strong>{isLoading ? '…' : uniqueLocations}</strong>
+          <MapPin size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <div className="stat-card__eyebrow">Locations</div>
+              <h3>{isLoading ? '…' : uniqueLocations}</h3>
+              <p>Traffic survey areas</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--green">
+              <MapPin size={22} />
+            </div>
           </div>
         </div>
+
         <div className="stat-card stat-card--amber">
-          <div className="stat-card__icon"><Radio size={20} /></div>
-          <div className="stat-card__info">
-            <span className="stat-card__eyebrow">Data Sources</span>
-            <strong>{isLoading ? '…' : uniqueSources}</strong>
+          <Radio size={96} className="stat-card__watermark" />
+          <div className="stat-card__top">
+            <div className="stat-card__info">
+              <div className="stat-card__eyebrow">Data Sources</div>
+              <h3>{isLoading ? '…' : uniqueSources}</h3>
+              <p>UAV & drone feeds</p>
+            </div>
+            <div className="stat-card__icon stat-card__icon--amber">
+              <Radio size={22} />
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Main Content Split: Available Datasets & Workflow */}
       <div className="sci-split">
+        {/* Left: Available Approved Versions */}
         <section className="admin-card">
           <div className="admin-card__header">
             <div>
               <h2 className="admin-card__title">Available Approved Versions</h2>
-              <p className="admin-card__subtitle">Ready for preview and modeling</p>
+              <p className="admin-card__subtitle">Verified datasets ready for time-series extraction & AI modeling</p>
             </div>
+            <Link to="/scientist/datasets" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
+              View all
+            </Link>
           </div>
-          {isLoading && <div className="sci-skeleton" style={{ height: 160 }} />}
-          {!isLoading && datasets.length === 0 && (
-            <div className="sci-state" style={{ padding: '2rem 1rem' }}>
-              No approved datasets assigned yet. Contact your administrator to grant access.
+
+          {isLoading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem' }}>
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="sci-skeleton" style={{ height: 75 }} />
+              ))}
             </div>
           )}
+
+          {!isLoading && datasets.length === 0 && (
+            <div className="sci-state" style={{ padding: '2.5rem 1rem' }}>
+              <p style={{ margin: 0, fontWeight: 600 }}>No approved datasets assigned yet.</p>
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+                Contact your system administrator to grant dataset permissions.
+              </p>
+            </div>
+          )}
+
           {!isLoading && datasets.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', padding: '0.85rem' }}>
               {latest.map((d) => (
                 <Link
                   key={d.version_id}
                   to={`/scientist/datasets/${d.dataset_id}/versions/${d.version_id}`}
                   style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '0.85rem 0',
-                    borderBottom: '1px solid #f1f5f9',
+                    justifyContent: 'space-between',
+                    padding: '0.9rem 1.1rem',
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
                     textDecoration: 'none',
                     color: '#0f172a',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#93c5fd'
+                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(22, 104, 227, 0.1)'
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#e2e8f0'
+                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04)'
+                    e.currentTarget.style.transform = 'none'
                   }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <strong style={{ fontSize: '0.92rem' }}>{d.dataset_name}</strong>
-                      <span className="sci-pill sci-pill--version">{d.version_tag}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: '10px',
+                        background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                        color: '#1668e3',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Database size={20} />
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                      {d.location_name} • {d.source}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                          {d.dataset_name}
+                        </span>
+                        <span className="sci-pill sci-pill--version">{d.version_tag}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '0.78rem', color: '#64748b' }}>
+                        {d.location_name && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <MapPin size={12} /> {d.location_name}
+                          </span>
+                        )}
+                        {d.source && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Layers size={12} /> {d.source}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <span className="sci-pill sci-pill--approved">{d.approval_status}</span>
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: '#1668e3',
+                        padding: '0.35rem 0.65rem',
+                        borderRadius: '8px',
+                        background: '#eff6ff',
+                      }}
+                    >
+                      <Eye size={13} /> Preview <ChevronRight size={14} />
                     </span>
                   </div>
-                  <span className="sci-pill sci-pill--approved">{d.approval_status}</span>
                 </Link>
               ))}
             </div>
           )}
         </section>
 
+        {/* Right: Data Science Workflow */}
         <section className="admin-card">
           <div className="admin-card__header">
             <div>
-              <h2 className="admin-card__title">Data Science Workflow</h2>
+              <h2 className="admin-card__title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Sparkles size={17} style={{ color: '#1668e3' }} /> Data Science Workflow
+              </h2>
               <p className="admin-card__subtitle">End-to-end traffic forecasting pipeline</p>
             </div>
           </div>
-          <ol className="sci-flow">
-            {WORKFLOW.map(([title, text], i) => (
-              <li key={title}>
-                <span className="sci-flow__num">{i + 1}</span>
-                <span><b>{title}</b>{text}</span>
-              </li>
-            ))}
-          </ol>
+
+          <div style={{ padding: '0.5rem 1rem 1rem' }}>
+            <ol className="sci-flow">
+              {WORKFLOW.map(([title, text], i) => (
+                <li key={title}>
+                  <span className="sci-flow__num">{i + 1}</span>
+                  <div>
+                    <b>{title}</b>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', lineHeight: 1.45 }}>{text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
         </section>
       </div>
     </div>
