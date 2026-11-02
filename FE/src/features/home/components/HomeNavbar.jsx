@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Menu, X, LogIn } from 'lucide-react'
 import Logo from './Logo'
 import { NAV_LINKS } from '../homeContent'
+import './HomeNavbar.css'
 
 export default function HomeNavbar({ onSignIn }) {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -14,19 +18,67 @@ export default function HomeNavbar({ onSignIn }) {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // Đóng menu mobile khi chuyển route
+  useEffect(() => {
+    setOpen(false)
+  }, [location.pathname])
+
+  const handleSignIn = () => {
+    setOpen(false)
+    if (onSignIn) {
+      onSignIn()
+    } else {
+      navigate('/login')
+    }
+  }
+
+  const handleNavClick = (e, href) => {
+    setOpen(false)
+    if (location.pathname !== '/') {
+      e.preventDefault()
+      navigate('/' + href)
+      setTimeout(() => {
+        const id = href.replace('#', '')
+        const el = document.getElementById(id)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' })
+        }
+      }, 100)
+    }
+  }
+
+  const isSolid = scrolled || location.pathname !== '/'
+
   return (
-    <header className={`navbar ${scrolled ? 'navbar--scrolled' : ''}`}>
+    <header className={`navbar ${isSolid ? 'navbar--scrolled' : ''}`}>
       <div className="container navbar__inner">
         <Logo />
+
         <nav className={`navbar__links ${open ? 'is-open' : ''}`} aria-label="Primary">
           {NAV_LINKS.map((l) => (
-            <a key={l.href} href={l.href} onClick={() => setOpen(false)}>{l.label}</a>
+            <a
+              key={l.href}
+              href={location.pathname === '/' ? l.href : `/${l.href}`}
+              onClick={(e) => handleNavClick(e, l.href)}
+            >
+              {l.label}
+            </a>
           ))}
-          <button className="btn btn--primary navbar__cta-mobile" onClick={onSignIn}>Sign in</button>
+
+          {/* Nút đăng nhập chỉ xuất hiện bên trong menu drawer trên thiết bị di động */}
+          {open && (
+            <button className="btn btn--primary navbar__cta-mobile" onClick={handleSignIn}>
+              <LogIn size={16} /> Sign in
+            </button>
+          )}
         </nav>
-        <button id="nav-sign-in" className="btn btn--primary navbar__cta" onClick={onSignIn}>
+
+        {/* Nút đăng nhập chính trên máy tính để bàn */}
+        <button id="nav-sign-in" className="btn btn--primary navbar__cta" onClick={handleSignIn}>
           <LogIn size={16} /> Sign in
         </button>
+
+        {/* Nút toggle mở menu trên di động */}
         <button
           className="navbar__toggle"
           aria-label="Toggle menu"

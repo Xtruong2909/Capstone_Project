@@ -6,30 +6,36 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.core.config import settings
-
-# JWT Secret Key and token expiration configuration from centralized settings
-SECRET_KEY = settings.GOONG_REST_KEY or "urban_traffic_super_secret_jwt_key_2026"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 Hours default expiration
+from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 
 
 def hash_password(password: str) -> str:
-    """Hash password using PBKDF2-HMAC-SHA256 from Python standard library."""
+    """Hash password using PBKDF2-HMAC-SHA256."""
     salt = os.urandom(16)
     key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
     return f"{salt.hex()}:{key.hex()}"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plain password against PBKDF2 hashed password string."""
+    """Verify password against hash, with backward-compatibility for plaintext initial seed."""
+    if not hashed_password:
+        return False
+
+    # Support legacy/seed plaintext passwords (e.g., initial seed '123')
+    if hashed_password == plain_password:
+        return True
+
     try:
-        salt_hex, key_hex = hashed_password.split(":")
-        salt = bytes.fromhex(salt_hex)
-        expected_key = bytes.fromhex(key_hex)
-        key = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt, 100000)
-        return hmac.compare_digest(key, expected_key)
+        if ":" in hashed_password:
+            salt_hex, key_hex = hashed_password.split(":")
+            salt = bytes.fromhex(salt_hex)
+            expected_key = bytes.fromhex(key_hex)
+            key = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt, 100000)
+            return hmac.compare_digest(key, expected_key)
     except Exception:
         return False
+
+    return False
 
 
 def _base64url_encode(data: bytes) -> str:
@@ -45,7 +51,7 @@ def _base64url_decode(data: str) -> bytes:
 
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Create signed JWT Access Token using HMAC-SHA256."""
-    header = {"alg": "HS256", "typ": "JWT"}
+    header = {"alg": ALGORITHM, "typ": "JWT"}
     payload = data.copy()
     expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     payload["exp"] = int(expire.timestamp())

@@ -1,30 +1,29 @@
-import { useCallback, useState } from 'react'
-import HomeNavbar from './components/HomeNavbar'
 import HeroSection from './components/HeroSection'
 import FeaturesSection from './components/FeaturesSection'
 import WorkflowSection from './components/WorkflowSection'
+import ModelsSection from './components/ModelsSection'
 import DatasetsSection from './components/DatasetsSection'
 import { CtaSection, HomeFooter } from './components/CtaFooter'
-import LoginModal from './components/LoginModal'
+import BackToTop from './components/BackToTop'
+import { useNavigate } from 'react-router-dom'
 import './HomePage.css'
 
 export default function HomePage() {
-  const [loginOpen, setLoginOpen] = useState(false)
-  const openLogin = useCallback(() => setLoginOpen(true), [])
-  const closeLogin = useCallback(() => setLoginOpen(false), [])
+  const navigate = useNavigate()
+  const openLogin = () => navigate('/login')
 
   return (
     <>
-      <HomeNavbar onSignIn={openLogin} />
+      <BackToTop />
       <main>
         <HeroSection onSignIn={openLogin} />
         <FeaturesSection />
         <WorkflowSection />
+        <ModelsSection />
         <DatasetsSection />
         <CtaSection onSignIn={openLogin} />
       </main>
       <HomeFooter />
-      <LoginModal isOpen={loginOpen} onClose={closeLogin} />
     </>
   )
 }

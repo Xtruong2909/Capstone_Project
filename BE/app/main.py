@@ -1,40 +1,51 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.api.v1.api import api_router
-from app.core.config import settings
+from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
+from app.database.database import get_db
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    title=PROJECT_NAME,
+    version=VERSION,
+    openapi_url=f"{API_V1_STR}/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
+# CORS Middleware Configuration for Frontend Access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix=settings.API_V1_STR)
+# Register API v1 Routers
+app.include_router(api_router, prefix=API_V1_STR)
 
 
-@app.get("/", summary="Root Endpoint")
+@app.get("/", summary="Root API Endpoint")
 def root():
-    """Root welcome endpoint providing documentation links."""
     return {
-        "message": f"Welcome to {settings.PROJECT_NAME}",
+        "message": f"Welcome to {PROJECT_NAME}",
+        "version": VERSION,
         "docs": "/docs",
-        "health": f"{settings.API_V1_STR}/health",
+        "api_v1": API_V1_STR,
     }
 
 
-def start():
-    """Start Uvicorn server in development mode."""
-    import uvicorn
-
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+@app.get("/health/db", tags=["Health"], summary="Check Database Connection")
+def check_database(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "connected", "database": "PostgreSQL"}
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection failed",
+        ) from exc

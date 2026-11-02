@@ -1,8 +1,44 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, health, users
+from app.api.v1.endpoints import (
+    admin,
+    auth,
+    data_quality,
+    dataset_access,
+    dataset_mapping,
+    datasets,
+    traffic_aggregation,
+)
 
 api_router = APIRouter()
-api_router.include_router(health.router, tags=["Health Check"])
-api_router.include_router(auth.router, prefix="/auth", tags=["Authentication & Roles"])
-api_router.include_router(users.router, prefix="/users", tags=["User & Role Management (Admin)"])
+api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(admin.router, prefix="/admin", tags=["Administration"])
+api_router.include_router(
+    dataset_access.admin_router,
+    prefix="/admin/datasets",
+    tags=["Quản lý quyền truy cập Dataset"],
+)
+api_router.include_router(
+    dataset_access.router, prefix="/datasets", tags=["Quản lý quyền truy cập Dataset"]
+)
+api_router.include_router(
+    dataset_access.approved_router,
+    prefix="/datasets",
+    tags=["Data Scientist / Business User"],
+)
+api_router.include_router(datasets.router, prefix="/datasets", tags=["Data Engineer"])
+api_router.include_router(
+    dataset_mapping.router,
+    prefix="/datasets",
+    tags=["Dataset Column Mapping"],
+)
+api_router.include_router(
+    data_quality.router,
+    prefix="/datasets",
+    tags=["Data Quality"],
+)
+api_router.include_router(
+    traffic_aggregation.router,
+    prefix="/datasets",
+    tags=["Traffic Temporal Aggregation"],
+)

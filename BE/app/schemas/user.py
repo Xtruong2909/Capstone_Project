@@ -1,36 +1,7 @@
 from datetime import datetime
+from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
-
-from app.models.user import UserRole
-
-
-class UserBase(BaseModel):
-    email: EmailStr
-    full_name: str
-    role: UserRole = UserRole.BUSINESS_USER
-    is_active: bool = True
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserUpdate(BaseModel):
-    email: EmailStr | None = None
-    full_name: str | None = None
-    role: UserRole | None = None
-    is_active: bool | None = None
-    password: str | None = None
-
-
-class UserResponse(UserBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -38,12 +9,58 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PasswordChangeRequest(BaseModel):
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    full_name: str
+    role_id: str
+    is_active: bool
+    must_change_password: bool = False
+    created_at: datetime | None = None
+
+    @computed_field
+    @property
+    def role(self) -> str:
+        return self.role_id
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+    must_change_password: bool = False
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
 
 
-class TokenPayload(BaseModel):
-    sub: str | None = None
-    role: str | None = None
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(min_length=6, max_length=6)
+
+
+class ResetPasswordWithOtpRequest(BaseModel):
+    email: EmailStr
+    reset_token: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+    reset_token: str | None = None
+
+class ChangePasswordProfileRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
+    confirm_new_password: str = Field(min_length=6, max_length=128)
+
+    @model_validator(mode="after")
+    def passwords_must_match(self) -> "ChangePasswordProfileRequest":
+        if self.new_password != self.confirm_new_password:
+            raise ValueError("Mật khẩu mới và xác nhận mật khẩu không khớp")
+        return self

@@ -1,57 +1,155 @@
-from collections.abc import Callable
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db
 from app.core.security import decode_access_token
-from app.models.user import User, UserRole
+from app.crud.crud_user import get_user_by_id
+from app.database.database import get_db
+from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
-    token: str = Depends(oauth2_scheme),
 ) -> User:
-    """Dependency lấy thông tin User hiện tại từ JWT Token."""
+    """Retrieve and validate current authenticated user from JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Thông tin xác thực không hợp lệ hoặc token đã hết hạn",
+        detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    payload = decode_access_token(token)
-    if payload is None:
+    if not credentials:
         raise credentials_exception
 
-    user_id_str: str | None = payload.get("sub")
-    if user_id_str is None:
+    payload = decode_access_token(credentials.credentials)
+    if not payload:
+        raise credentials_exception
+    if payload.get("pwd_change_only"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ được phép đổi mật khẩu trước khi tiếp tục",
+        )
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
         raise credentials_exception
 
     try:
-        user_id = int(user_id_str)
+        user_id = UUID(user_id_str)
     except ValueError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None or not user.is_active:
+    user = get_user_by_id(db, user_id=user_id)
+    if not user:
+        raise credentials_exception
+
+    if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Tài khoản không tồn tại hoặc đã bị khóa",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user account",
+        )
+
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn phải đổi mật khẩu trước khi tiếp tục",
+        )
+
+    return user
+
+
+def get_user_requiring_password_change(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    """Validate the limited token issued to users who must change their password."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if not credentials:
+        raise credentials_exception
+
+    payload = decode_access_token(credentials.credentials)
+    if not payload or not payload.get("pwd_change_only"):
+        raise credentials_exception
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise credentials_exception
+
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        raise credentials_exception
+
+    user = get_user_by_id(db, user_id=user_id)
+    if not user:
+        raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản đã bị vô hiệu hóa hoặc khóa",
+        )
+    if not user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản không cần đổi mật khẩu",
         )
     return user
 
 
-def require_roles(*allowed_roles: UserRole) -> Callable:
-    """Dependency RBAC: Kiểm tra User hiện tại có thuộc vai trò được cấp phép hay không."""
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Ensure that the authenticated user has the 'admin' role."""
+    if current_user.role_id != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Yêu cầu quyền Administrator để thực hiện thao tác này",
+        )
+    return current_user
 
-    def role_checker(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role not in allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Quyền truy cập bị từ chối. Chức năng yêu cầu một trong các vai trò: {[r.value for r in allowed_roles]}",
-            )
-        return current_user
 
-    return role_checker
+def require_data_engineer(current_user: User = Depends(get_current_user)) -> User:
+    """Ensure that the authenticated user has the 'data_engineer' role."""
+    if current_user.role_id != "data_engineer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Yêu cầu quyền Data Engineer để tải dataset lên",
+        )
+    return current_user
+
+
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Retrieve current user if token is provided and valid, otherwise None."""
+    if not credentials:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if not payload:
+        return None
+    if payload.get("pwd_change_only"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ được phép đổi mật khẩu trước khi tiếp tục",
+        )
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        return None
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        return None
+    user = get_user_by_id(db, user_id=user_id)
+    if user and user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn phải đổi mật khẩu trước khi tiếp tục",
+        )
+    return user
