@@ -1,3 +1,6 @@
+import errno
+import os
+from io import UnsupportedOperation
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 from uuid import UUID, uuid4
@@ -11,7 +14,8 @@ from app.models.dataset import Dataset, DatasetVersion
 from app.schemas.dataset import DatasetUploadMetadata
 
 SUPPORTED_FORMATS = {".csv", ".json", ".xls", ".xlsx", ".parquet"}
-UPLOAD_CHUNK_SIZE = 1024 * 1024
+UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024
+SENDFILE_CHUNK_SIZE = 16 * 1024 * 1024
 
 
 class UnsupportedDatasetFormatError(ValueError):
@@ -28,6 +32,63 @@ class EmptyDatasetFileError(ValueError):
 
 class DatasetConflictError(ValueError):
     """Raised when dataset metadata conflicts with an existing dataset."""
+
+
+def _remaining_upload_bytes(source: BinaryIO) -> int | None:
+    """Measure the completed multipart spool without loading file contents."""
+    if not source.seekable():
+        return None
+    position = source.tell()
+    try:
+        source.seek(0, os.SEEK_END)
+        return source.tell() - position
+    finally:
+        source.seek(position)
+
+
+def _copy_upload(source: BinaryIO, destination: BinaryIO, size: int | None) -> int:
+    """Use bounded kernel copies on Linux, with a portable buffered fallback."""
+    copied = 0
+    if size is not None and size >= UPLOAD_CHUNK_SIZE and hasattr(os, "sendfile"):
+        try:
+            source_fd = source.fileno()
+            destination_fd = destination.fileno()
+        except (UnsupportedOperation, AttributeError):
+            pass
+        else:
+            offset = source.tell()
+            # The multipart parser has finished writing; flush Python buffers first.
+            source.flush()
+            destination.flush()
+            while copied < size:
+                try:
+                    sent = os.sendfile(
+                        destination_fd, source_fd, offset + copied,
+                        min(SENDFILE_CHUNK_SIZE, size - copied),
+                    )
+                except InterruptedError:
+                    continue
+                except OSError as exc:
+                    if exc.errno not in {
+                        errno.ENOSYS, errno.EINVAL, errno.EXDEV, errno.EOPNOTSUPP,
+                    }:
+                        raise
+                    break
+                if sent == 0:
+                    break
+                copied += sent
+            # Continue from the exact offset if the filesystem lacks sendfile support.
+            source.seek(offset + copied)
+            destination.seek(copied)
+
+    while chunk := source.read(UPLOAD_CHUNK_SIZE):
+        copied += len(chunk)
+        if copied > MAX_DATASET_UPLOAD_BYTES:
+            raise DatasetFileTooLargeError(
+                f"Kích thước file vượt quá giới hạn {MAX_DATASET_UPLOAD_BYTES} bytes"
+            )
+        destination.write(chunk)
+    return copied
 
 
 def _safe_original_filename(filename: str) -> str:
@@ -60,6 +121,14 @@ def create_dataset_upload(
             f"Tên dataset '{metadata.name}' đã tồn tại. Vui lòng chọn tên khác."
         )
 
+    size = _remaining_upload_bytes(file_stream)
+    if size is not None and size > MAX_DATASET_UPLOAD_BYTES:
+        raise DatasetFileTooLargeError(
+            f"Kích thước file vượt quá giới hạn {MAX_DATASET_UPLOAD_BYTES} bytes"
+        )
+    if size == 0:
+        raise EmptyDatasetFileError("File dataset không được để trống")
+
     dataset_id = uuid4()
     version_id = uuid4()
     stored_filename = f"{version_id}{extension}"
@@ -70,14 +139,7 @@ def create_dataset_upload(
     file_size_bytes = 0
     try:
         with absolute_path.open("xb") as destination:
-            while chunk := file_stream.read(UPLOAD_CHUNK_SIZE):
-                file_size_bytes += len(chunk)
-                if file_size_bytes > MAX_DATASET_UPLOAD_BYTES:
-                    raise DatasetFileTooLargeError(
-                        f"Kích thước file vượt quá giới hạn "
-                        f"{MAX_DATASET_UPLOAD_BYTES} bytes"
-                    )
-                destination.write(chunk)
+            file_size_bytes = _copy_upload(file_stream, destination, size)
 
         if file_size_bytes == 0:
             raise EmptyDatasetFileError("File dataset không được để trống")

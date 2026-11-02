@@ -1,6 +1,7 @@
 import json
 import math
 from pathlib import Path
+from time import perf_counter
 from uuid import uuid4
 
 import pyarrow as pa
@@ -185,3 +186,48 @@ def test_validation_rechecks_modified_file(tmp_path: Path, monkeypatch) -> None:
     assert validate_normalized_dataset_service(dataset_id=dataset_id).valid_rows == 1
     pq.write_table(pa.table({"speed": [-1]}), path)
     assert validate_normalized_dataset_service(dataset_id=dataset_id).invalid_rows == 1
+
+
+def test_fingerprints_preserve_equality_across_null_and_nan() -> None:
+    from app.services.validation_fingerprint import json_fingerprint, row_fingerprinter
+
+    table = pa.table({
+        "number": [0.0, -0.0, None, float("nan"), float("nan"), float("inf"), 0.0],
+        "text": ["", "", None, "é", "é", "null", ""],
+        "uint": pa.array([2**64 - 1] * 7, type=pa.uint64()),
+    })
+    encode = row_fingerprinter(table.schema)
+    rows = list(zip(*(column.to_pylist() for column in table.columns), strict=True))
+    for left in rows:
+        for right in rows:
+            assert (encode(left) == encode(right)) == (json_fingerprint(left) == json_fingerprint(right))
+
+
+def test_validation_benchmark(tmp_path: Path, monkeypatch) -> None:
+    from app.services.validation_fingerprint import json_fingerprint
+
+    dataset_id = uuid4()
+    path = tmp_path / "benchmark.parquet"
+    count = 200_000
+    table = pa.table({
+        "track_id": [i // 1000 for i in range(count)],
+        "type": ["car"] * count,
+        "lat": [37.12345] * count,
+        "lon": [23.12345] * count,
+        "speed": [12.345] * count,
+        "time": [float(i % 1000) / 25 for i in range(count)],
+    })
+    # Include duplicates across batches, including rows already invalid.
+    table = pa.concat_tables([table, table.slice(0, 1000)])
+    pq.write_table(table, path)
+    monkeypatch.setattr(normalized_data_validation_service, "_latest_staging_file", lambda _: path)
+    started = perf_counter()
+    optimized = validate_normalized_dataset_service(dataset_id=dataset_id)
+    optimized_seconds = perf_counter() - started
+    monkeypatch.setattr(normalized_data_validation_service, "row_fingerprinter", lambda _: json_fingerprint)
+    started = perf_counter()
+    original = validate_normalized_dataset_service(dataset_id=dataset_id)
+    original_seconds = perf_counter() - started
+    assert optimized == original
+    assert optimized.validation_results.duplicate_records == 1000
+    print(f"validate 201000 rows: JSON={original_seconds:.3f}s compact={optimized_seconds:.3f}s ratio={original_seconds / optimized_seconds:.2f}x")

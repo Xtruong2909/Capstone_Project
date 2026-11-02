@@ -6,7 +6,6 @@ import {
   HelpCircle,
   Car,
   Gauge,
-  Users,
   Activity,
   TrendingUp,
   Cpu,
@@ -18,10 +17,18 @@ const KPIS = [
   {
     icon: Activity,
     color: 'blue',
-    label: 'Observed Flow (08:04)',
+    label: 'Vehicle Count (08:04)',
+    value: '52 vehicles',
+    delta: '+2 vs prev min',
+    sub: 'Distinct pNEUMA track_id values',
+  },
+  {
+    icon: Gauge,
+    color: 'green',
+    label: 'Estimated Traffic Flow',
     value: '52 veh/min',
-    delta: '+3.8% vs prev min',
-    sub: 'Microscopic UAV count',
+    delta: '60-second aggregation',
+    sub: 'Vehicle count / interval (min)',
   },
   {
     icon: Target,
@@ -36,16 +43,8 @@ const KPIS = [
     color: 'purple',
     label: 'Average Speed',
     value: '38.4 km/h',
-    delta: 'Flow speed index',
+    delta: 'Mean source speed × 3.6',
     sub: 'Tracked vehicles',
-  },
-  {
-    icon: Users,
-    color: 'green',
-    label: 'Estimated Density',
-    value: '46.8 veh/km',
-    delta: 'Normal flow level',
-    sub: 'Spatial segment density',
   },
 ]
 
@@ -224,36 +223,36 @@ export default function DashboardMockup() {
             <thead>
               <tr>
                 <th>Timestamp</th>
-                <th>Observed Flow</th>
+                <th>Vehicle Count</th>
+                <th>Average Speed</th>
+                <th>Estimated Traffic Flow</th>
                 <th>Predicted (t+1)</th>
-                <th>Avg Speed</th>
-                <th>Density</th>
                 <th>Evaluation Status</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td>08:04:00 (Doc Example)</td>
-                <td><strong>52 veh/min</strong></td>
-                <td>50 veh/min</td>
+                <td><strong>52 vehicles</strong></td>
                 <td>38.4 km/h</td>
-                <td>46.8 veh/km</td>
+                <td>52 veh/min</td>
+                <td>50 veh/min</td>
                 <td><span className="pill pill--green">Δ -2 veh/min (Valid)</span></td>
               </tr>
               <tr>
                 <td>08:03:00</td>
+                <td>50 vehicles</td>
+                <td>39.1 km/h</td>
                 <td>50 veh/min</td>
                 <td>51 veh/min</td>
-                <td>39.1 km/h</td>
-                <td>44.5 veh/km</td>
                 <td><span className="pill pill--green">Δ +1 veh/min</span></td>
               </tr>
               <tr>
                 <td>08:02:00</td>
+                <td>48 vehicles</td>
+                <td>40.2 km/h</td>
                 <td>48 veh/min</td>
                 <td>47 veh/min</td>
-                <td>40.2 km/h</td>
-                <td>42.1 veh/km</td>
                 <td><span className="pill pill--green">Δ -1 veh/min</span></td>
               </tr>
             </tbody>

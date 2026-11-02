@@ -1,5 +1,5 @@
 export const ALLOWED_EXTENSIONS = ['.csv', '.json', '.xls', '.xlsx', '.parquet']
-export const MAX_UPLOAD_SIZE_BYTES = 1024 * 1024 * 1024 // 1 GB (1,073,741,824 bytes) client-side check
+export const MAX_UPLOAD_SIZE_BYTES = 2.5 * 1024 ** 3 // 2.5 GiB, matching the backend default
 export const LINEAGE_STORAGE_KEY = 'pneuma_de_version_lineage_v1'
 export const RECORD_CACHE_STORAGE_KEY = 'pneuma_de_record_counts_v1'
 

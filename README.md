@@ -26,7 +26,7 @@ Urban traffic congestion presents severe economic, environmental, and public saf
 
 This project delivers a **unified, web-based Urban Traffic Analytics Platform** that bridges the gap between spatial vehicle trajectories and time-series forecasting:
 1. **UAV Dataset Management & Validation**: Ingests, validates, cleans, and versions raw drone trajectory CSV datasets (e.g. selected pNEUMA subsets).
-2. **Spatial-Temporal Pattern Mining**: Computes vehicle flow (traffic count), speed, and estimated density across 1–3 selected road segments using PostGIS spatial indexing.
+2. **Spatial-Temporal Pattern Mining**: Computes per-minute distinct vehicle counts, speed, and estimated traffic flow across selected road segments using PostGIS spatial indexing.
 3. **Short-Term Flow Forecasting Engine**: Aggregates continuous trajectories into 1-minute and 5-minute time-series and predicts traffic flow for near-future horizons (**1, 3, and 5 minutes ahead**) using **Historical Average / Persistence (Baseline)** and **Random Forest Regression** (with **LSTM** as a deep learning extension).
 4. **Interactive GIS Visualization**: Provides interactive traffic trend charts, actual vs. predicted flow comparisons, and spatial analytics using **Goong Map API**.
 5. **Reproducible Experiment Management**: Centralized hyperparameter logging, benchmark evaluation (**MAE, RMSE** with chronological train/test split), and PDF/Excel reporting.
@@ -39,8 +39,8 @@ This project delivers a **unified, web-based Urban Traffic Analytics Platform** 
 | Module | Features & Capabilities |
 | :--- | :--- |
 | 🛸 **UAV Dataset Pipeline** | Multi-format upload (CSV, JSON), automated data-cleaning & quality validation (missing coordinates, negative speeds, invalid timestamps), dataset versioning & archiving (`PASSED` / `FAILED` status flags). |
-| 🗺️ **Interactive GIS Heatmaps** | Integration with **Goong Map SDK**, real-time density heatmaps, spatial Region of Interest (ROI) filtering, and dynamic trajectory overlays. |
-| 📊 **Traffic Pattern Analysis** | Quantitative analysis of vehicle counts (flow), average speeds, estimated traffic density, peak-hour detection, and bottleneck recognition. |
+| 🗺️ **Interactive GIS Visualization** | Integration with **Goong Map SDK**, spatial Region of Interest (ROI) filtering, and dynamic trajectory overlays. |
+| 📊 **Traffic Pattern Analysis** | Quantitative analysis of distinct vehicle counts, average speeds, and estimated traffic flow, with peak-hour detection and bottleneck recognition. |
 | 📈 **Short-Term Flow Forecasting** | Multi-model forecasting engine (**Historical Average Baseline** & **Random Forest Regression**, optional **LSTM**) with configurable time aggregation intervals (1, 5 minutes) predicting traffic flow 1, 3, and 5 minutes in advance. |
 | 🔬 **Experiment Tracking** | Reproducibility engine storing dataset versions, hyperparameters, and evaluation metrics (**MAE, RMSE**) for side-by-side model benchmarking. |
 | 📑 **Reporting & Export** | One-click export of analysis findings, forecasting benchmarks, and spatial heatmaps into formal **PDF & Excel** reports. |

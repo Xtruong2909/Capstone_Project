@@ -28,6 +28,7 @@ from app.schemas.dataset_normalization import (
     DatasetNormalizeResult,
     ProcessingReportResponse,
 )
+from app.services.normalization_batch import write_pneuma_parquet
 
 PNEUMA_HEADERS = (
     "track_id",
@@ -252,60 +253,20 @@ def normalize_dataset_structure_service(
                 all_pneuma_fields = base_fields + point_fields
                 normalized_columns = [rename_map.get(col.lower(), col) for col in all_pneuma_fields]
 
-                csv_reader = csv.reader(infile, delimiter=delimiter)
-                for row in csv_reader:
-                    if not row or not any(row):
-                        continue
-                    records_before += 1
-                    while row and not row[-1].strip():
-                        row.pop()
-
-                    if len(row) < len(PNEUMA_HEADERS):
-                        continue
-
-                    track_id = _parse_number(row[0], integer=True)
-                    vehicle_type = row[1].strip() or None
-                    traveled_d = _parse_number(row[2])
-                    avg_speed = _parse_number(row[3])
-
-                    track_data = {
-                        rename_map.get("track_id", "track_id"): track_id,
-                        rename_map.get("type", "type"): vehicle_type,
-                        rename_map.get("traveled_d", "traveled_d"): traveled_d,
-                        rename_map.get("avg_speed", "avg_speed"): avg_speed,
-                    }
-
-                    point_slices = [row[4:10]]
-                    for idx in range(10, len(row), 6):
-                        chunk = row[idx : idx + 6]
-                        if len(chunk) == 6:
-                            point_slices.append(chunk)
-
-                    for coords in point_slices:
-                        point_dict = {
-                            rename_map.get("lat", "lat"): _parse_number(coords[0]),
-                            rename_map.get("lon", "lon"): _parse_number(coords[1]),
-                            rename_map.get("speed", "speed"): _parse_number(coords[2]),
-                            rename_map.get("lon_acc", "lon_acc"): _parse_number(coords[3]),
-                            rename_map.get("lat_acc", "lat_acc"): _parse_number(coords[4]),
-                            rename_map.get("time", "time"): _parse_number(coords[5]),
-                        }
-                        batch.append({**track_data, **point_dict})
-                        records_after += 1
-
-                    if len(batch) >= 20000:
-                        table = pa.Table.from_pylist(batch)
-                        if parquet_writer is None:
-                            parquet_writer = pq.ParquetWriter(
-                                staging_file_path, table.schema, compression="snappy"
-                            )
-                        parquet_writer.write_table(table)
-                        batch.clear()
-
+                records_before, records_after = write_pneuma_parquet(
+                    csv.reader(infile, delimiter=delimiter),
+                    staging_file_path, rename_map, _parse_number,
+                )
             else:
                 normalized_columns = [rename_map.get(col.lower(), col) for col in raw_headers]
                 dict_reader = csv.DictReader(infile, fieldnames=raw_headers, delimiter=delimiter)
                 for row in dict_reader:
+                    if row is not None and all(
+                        str(value).strip().lower() == str(key).strip().lower()
+                        for key, value in row.items()
+                        if key is not None and value is not None
+                    ):
+                        continue
                     records_before += 1
                     mapped_row = {
                         rename_map.get(k.lower(), k): v for k, v in row.items() if k
@@ -379,6 +340,7 @@ def normalize_dataset_structure_service(
         "dataset_id": str(dataset_id),
         "source_version_id": str(source_version.id),
         "source_version_tag": source_version.version_tag,
+        "original_filename": source_version.original_filename,
         "staging_file_path": str(staging_file_path),
         "records_before": records_before,
         "records_after": records_after,
@@ -521,6 +483,7 @@ def export_normalized_dataset_service(
         file_path=output_file_path.relative_to(upload_root).as_posix(),
         file_size_bytes=file_size_bytes,
         total_records=records_after,
+        original_filename=staging_meta.get("original_filename"),
         records_before=records_before,
         user_id=user.id,
         cleaning_parameters={

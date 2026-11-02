@@ -31,7 +31,7 @@ export const FEATURES = [
     color: 'purple',
     tag: 'Group 02',
     title: 'Traffic Pattern Analysis',
-    desc: 'Compute real-time flow rate (veh/min), average velocities (km/h), and estimated spatial vehicle density across observed street corridors.',
+    desc: 'Compute per-minute distinct vehicle counts, mean speeds (km/h), and estimated traffic flow from pNEUMA trajectories.',
   },
   {
     icon: Clock,
@@ -73,7 +73,7 @@ export const FEATURES = [
     color: 'orange',
     tag: 'Advanced',
     title: 'Congestion Risk Early Warning',
-    desc: 'Identify sudden density surges and deceleration clusters in real time to signal impending local traffic congestion risks.',
+    desc: 'Identify sudden vehicle-count surges and deceleration clusters in real time to signal impending local traffic congestion risks.',
   },
 ]
 
