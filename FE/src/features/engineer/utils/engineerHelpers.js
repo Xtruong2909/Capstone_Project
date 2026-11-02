@@ -17,7 +17,9 @@ export function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB']
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   const val = bytes / Math.pow(1024, i)
-  return `${val >= 10 || i === 0 ? Math.round(val) : val.toFixed(1)} ${units[i]}`
+  const displayVal =
+    val >= 10 || i === 0 ? Math.round(val) : val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)
+  return `${displayVal} ${units[i]}`
 }
 
 export function formatStructureLabel(structure) {
