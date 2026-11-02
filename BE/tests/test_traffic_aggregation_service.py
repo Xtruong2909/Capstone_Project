@@ -36,11 +36,10 @@ def test_aggregate_time_series_rows_builds_one_minute_summary() -> None:
     assert bucket["roi_identifier"] == "MAIN_ROI"
     assert bucket["vehicle_count"] == 2
     assert bucket["traffic_flow"] == 2.0
-    assert bucket["mean_speed"] == 46.67
-    assert bucket["traffic_density"] == 0.002
+    assert bucket["mean_speed"] == 168.0
 
 
-def test_aggregate_time_series_rows_uses_explicit_flow_and_density_when_available() -> None:
+def test_aggregate_time_series_rows_uses_track_count_for_flow() -> None:
     rows = [
         {
             "track_id": 1,
@@ -63,8 +62,10 @@ def test_aggregate_time_series_rows_uses_explicit_flow_and_density_when_availabl
     assert len(points) == 1
     bucket = points[0]
     assert bucket["vehicle_count"] == 2
-    assert bucket["traffic_flow"] == 3.0
-    assert bucket["traffic_density"] == 0.001
+    assert bucket["traffic_flow"] == 2.0
+    assert "traffic_density" not in bucket
+    assert "roi_area_m2" not in bucket
+    assert "crossing_count_total" not in bucket
 
 
 def test_aggregate_time_series_rows_supports_pneuma_relative_timestamps() -> None:
@@ -124,7 +125,9 @@ def test_build_traffic_aggregation_uses_single_existing_bucket_lookup(monkeypatc
             return None
 
     dataset = SimpleNamespace(id=uuid4())
-    version = SimpleNamespace(id=uuid4())
+    version = SimpleNamespace(
+        id=uuid4(), dataset_id=dataset.id, original_filename="20181024_d1_0830_0900.csv"
+    )
     db = FakeDB()
 
     monkeypatch.setattr(
@@ -134,10 +137,10 @@ def test_build_traffic_aggregation_uses_single_existing_bucket_lookup(monkeypatc
     )
     monkeypatch.setattr(
         service,
-        "_read_rows_from_version",
+        "_iter_rows_from_version",
         lambda version: [
-            {"track_id": 1, "time": datetime(2026, 1, 1, 10, 0, 10, tzinfo=UTC), "speed": 50.0},
-            {"track_id": 2, "time": datetime(2026, 1, 1, 10, 1, 10, tzinfo=UTC), "speed": 60.0},
+            {"track_id": 1, "time": 10.0, "speed": 50.0},
+            {"track_id": 2, "time": 70.0, "speed": 60.0},
         ],
     )
 
@@ -150,3 +153,4 @@ def test_build_traffic_aggregation_uses_single_existing_bucket_lookup(monkeypatc
 
     assert result["records_created"] == 2
     assert db.query_calls == 1
+    assert db.saved[0].time_bucket.isoformat() == "2018-10-24T08:30:00+03:00"

@@ -19,7 +19,6 @@ from app.schemas.traffic_aggregation import (
     TrafficAggregationStatusResponse,
 )
 from app.services.traffic_aggregation_service import (
-    build_traffic_aggregation,
     get_traffic_aggregation_job_status,
     get_traffic_aggregation_status,
     get_traffic_chart_data,
@@ -63,10 +62,9 @@ def run_traffic_aggregation(
             "source": "traffic_aggregation",
             "estimated": True,
             "calculation_method": {
-                "vehicle_count": "distinct vehicle ids per minute in ROI",
-                "traffic_flow": "estimated as vehicle_count / (aggregation_interval / 60)",
-                "traffic_density": "estimated as vehicle_count / 1000.0 m² unless roi_area_m2 is available",
-                "average_speed": "mean of observed speed values in the same minute bucket",
+                "vehicle_count": "count of distinct track_id values in each minute bucket",
+                "traffic_flow": "Estimated Traffic Flow = vehicle_count / (aggregation_interval / 60)",
+                "average_speed": "mean(source speed in m/s) * 3.6; output in km/h",
             },
         },
         created_at=started_at,
@@ -194,14 +192,12 @@ def preview_traffic_dataset(
         total_count=preview["total_count"],
         estimated=True,
         calculation_metadata={
-            "vehicle_count": "distinct vehicle ids observed in the ROI for each minute bucket",
-            "traffic_flow": "estimated as vehicle_count / (aggregation_interval / 60)",
-            "traffic_density": "estimated as vehicle_count / 1000.0 m² unless roi_area_m2 is available",
-            "average_speed": "mean speed of observed rows in the same bucket",
+            "vehicle_count": "count of distinct track_id values in each minute bucket",
+            "traffic_flow": "Estimated Traffic Flow = vehicle_count / (aggregation_interval / 60)",
+            "average_speed": "mean(source speed in m/s) * 3.6; output in km/h",
             "units": {
-                "vehicle_count": "vehicles/minute",
+                "vehicle_count": "vehicles per aggregation interval",
                 "traffic_flow": "vehicles/minute",
-                "traffic_density": "vehicles/1000 m²",
                 "average_speed": "km/h",
             },
         },
@@ -232,110 +228,42 @@ def get_traffic_aggregation_calculation_summary(
         estimated=True,
         summary={
             "vehicle_count": {
-                "meaning": "count of distinct vehicle ids observed in the ROI during each minute bucket",
+                "meaning": "count of distinct track_id values observed during each minute bucket",
                 "aggregation_rule": "unique track_id count per bucket",
                 "example": "if 25 vehicles appear in one minute, vehicle_count = 25",
             },
             "average_speed": {
                 "meaning": "average speed of all observed speed samples in the same minute bucket",
-                "aggregation_rule": "mean(speed_values)",
-                "example": "if speeds are [40, 50, 60], average_speed = 50.0 km/h",
+                "aggregation_rule": "mean(source speed values in m/s) * 3.6",
+                "example": "if source speeds are [10, 15, 20] m/s, average_speed = 54.0 km/h",
             },
             "traffic_flow": {
-                "meaning": "estimated rate of vehicles within the aggregation window",
+                "meaning": "Estimated Traffic Flow based on distinct tracked vehicles per time bucket",
                 "aggregation_rule": "vehicle_count / (aggregation_interval / 60)",
                 "example": "if 30 vehicles in 1 minute => traffic_flow = 30.0 vehicles/minute",
             },
-            "traffic_density": {
-                "meaning": "estimated vehicle density within the ROI area proxy",
-                "aggregation_rule": "vehicle_count / 1000.0 unless roi_area_m2 is available",
-                "example": "if 30 vehicles and no explicit area => traffic_density = 0.03 vehicles/1000m²",
-            },
         },
         units={
-            "vehicle_count": "vehicles/minute",
+            "vehicle_count": "vehicles per aggregation interval",
             "average_speed": "km/h",
             "traffic_flow": "vehicles/minute",
-            "traffic_density": "vehicles/1000 m²",
         },
         formulas={
-            "vehicle_count": "count(distinct vehicle_id) in time_bucket",
-            "average_speed": "sum(speed_values) / count(speed_values)",
+            "vehicle_count": "count(distinct track_id) in time_bucket",
+            "average_speed": "(sum(source_speed_m_s) / count(source_speed_m_s)) * 3.6",
             "traffic_flow": "vehicle_count / (aggregation_interval / 60)",
-            "traffic_density": "vehicle_count / 1000.0 or vehicle_count / roi_area_m2 if available",
         },
         notes=[
-            "This is an estimate-based aggregation for trajectory data when the raw dataset does not provide explicit line-crossing counts or ROI area geometry.",
-            "The system does not fabricate scientific detector metrics when the source data are insufficient.",
+            "Estimated Traffic Flow is derived from distinct track_id counts and is not an explicit detector line-crossing measurement.",
             "The Data Scientist can inspect these formulas together with preview and chart data to validate the interpretation of the result.",
         ],
     )
 
 
 @router.get(
-    "/{dataset_id}/versions/{version_id}/aggregations/{aggregation_id}/visualization",
-    response_model=TrafficAggregationChartResponse,
-    summary="Trả dữ liệu cho 4 biểu đồ dựa trên aggregation đã lưu; mỗi điểm là mốc thời gian tổng hợp, null nghĩa là không thể tính metric đó",
-)
-def traffic_aggregation_visualization(
-    dataset_id: UUID,
-    version_id: UUID,
-    aggregation_id: UUID,
-    aggregation_interval: int = Query(default=60, ge=60, le=900),
-    roi_identifier: str = Query(default="MAIN_ROI", min_length=1, max_length=64),
-    start_time: datetime | None = Query(default=None),
-    end_time: datetime | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_dataset_scientist),
-) -> TrafficAggregationChartResponse:
-    _, version = crud_dataset.get_dataset_version(db, dataset_id, version_id)
-    if version is None:
-        raise HTTPException(status_code=404, detail="Dataset version was not found")
-
-    job = get_traffic_aggregation_job_status(db, dataset_id=dataset_id, job_id=aggregation_id)
-    if job.dataset_version_id != version_id:
-        raise HTTPException(status_code=400, detail="Aggregation job does not belong to the requested dataset version")
-
-    chart = get_traffic_chart_data(
-        db,
-        dataset_id=dataset_id,
-        version_id=version_id,
-        aggregation_interval=aggregation_interval,
-        roi_identifier=roi_identifier,
-        start_time=start_time,
-        end_time=end_time,
-    )
-    return TrafficAggregationChartResponse(
-        dataset_id=chart["dataset_id"],
-        dataset_version_id=chart["dataset_version_id"],
-        aggregation_interval=chart["aggregation_interval"],
-        roi_identifier=chart["roi_identifier"],
-        time_labels=chart["time_labels"],
-        vehicle_count=chart["vehicle_count"],
-        average_speed=chart["average_speed"],
-        traffic_density=chart["traffic_density"],
-        traffic_flow=chart["traffic_flow"],
-        estimated=True,
-        calculation_metadata={
-            "vehicle_count": "distinct vehicle ids observed in the ROI for each minute bucket",
-            "traffic_flow": "estimated as vehicle_count / (aggregation_interval / 60)",
-            "traffic_density": "estimated as vehicle_count / 1000.0 m² unless roi_area_m2 is available",
-            "average_speed": "mean speed of observed rows in the same bucket",
-            "null_meaning": "if a metric is null, the source data did not provide enough information to calculate it reliably",
-            "units": {
-                "vehicle_count": "vehicles/minute",
-                "traffic_flow": "vehicles/minute",
-                "traffic_density": "vehicles/1000 m²",
-                "average_speed": "km/h",
-            },
-        },
-    )
-
-
-@router.get(
     "/{dataset_id}/traffic/aggregation/chart-data",
     response_model=TrafficAggregationChartResponse,
-    summary="Trả dữ liệu cho 4 biểu đồ: Vehicle Count, Average Speed, Traffic Density và Traffic Flow",
+    summary="Trả dữ liệu cho 3 biểu đồ: Vehicle Count, Average Speed và Estimated Traffic Flow",
 )
 def traffic_aggregation_chart_data(
     dataset_id: UUID,
@@ -362,19 +290,15 @@ def traffic_aggregation_chart_data(
         time_labels=chart["time_labels"],
         vehicle_count=chart["vehicle_count"],
         average_speed=chart["average_speed"],
-        traffic_density=chart["traffic_density"],
         traffic_flow=chart["traffic_flow"],
         estimated=True,
         calculation_metadata={
-            "vehicle_count": "distinct vehicle ids observed in the ROI for each minute bucket",
-            "traffic_flow": "estimated as vehicle_count / (aggregation_interval / 60)",
-            "traffic_density": "estimated as vehicle_count / 1000.0 m² unless roi_area_m2 is available",
-            "average_speed": "mean speed of observed rows in the same bucket",
-            "null_meaning": "if a metric is null, the source data did not provide enough information to calculate it reliably",
+            "vehicle_count": "count of distinct track_id values in each minute bucket",
+            "traffic_flow": "Estimated Traffic Flow = vehicle_count / (aggregation_interval / 60)",
+            "average_speed": "mean(source speed in m/s) * 3.6; output in km/h",
             "units": {
-                "vehicle_count": "vehicles/minute",
+                "vehicle_count": "vehicles per aggregation interval",
                 "traffic_flow": "vehicles/minute",
-                "traffic_density": "vehicles/1000 m²",
                 "average_speed": "km/h",
             },
         },

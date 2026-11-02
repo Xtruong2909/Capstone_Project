@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import logging
 import time
-from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,16 +11,30 @@ from uuid import UUID
 
 import pyarrow.parquet as pq
 from fastapi import HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.crud import crud_dataset
-from app.database.database import SessionLocal
+from app.crud.crud_recording_metadata import resolve_original_filename
+from app.crud.crud_traffic_time import traffic_time_query
 from app.models.dataset import DatasetVersion
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
+from app.schemas.traffic_aggregation import TrafficAggregationRecord
+from app.services.recording_time_service import (
+    numeric_timestamp,
+    recording_start_from_filename,
+    recording_timestamp,
+)
 
-DEFAULT_DENSITY_AREA_M2 = 1000.0
+METERS_PER_SECOND_TO_KMH = 3.6
 logger = logging.getLogger(__name__)
+
+
+def _recording_start(db: Session, version: DatasetVersion) -> datetime | None:
+    filename = resolve_original_filename(
+        db, dataset_id=version.dataset_id, version_id=version.id,
+        original_filename=version.original_filename,
+    )
+    return recording_start_from_filename(filename)
 
 
 def _log_timing(stage: str, started_at: float, **extra: Any) -> None:
@@ -63,7 +76,7 @@ def _parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(float(value), tz=UTC)
+        return numeric_timestamp(value)
     if isinstance(value, str):
         cleaned = value.strip()
         if not cleaned:
@@ -135,16 +148,6 @@ def _coerce_int(value: Any) -> int | None:
     return None
 
 
-def _congestion_level(mean_speed: float) -> str:
-    if mean_speed < 20.0:
-        return "HEAVY"
-    if mean_speed < 40.0:
-        return "MODERATE"
-    if mean_speed < 60.0:
-        return "STABLE"
-    return "FREE_FLOW"
-
-
 def _is_header_row(row: dict[str, Any]) -> bool:
     if not row:
         return False
@@ -213,6 +216,7 @@ def aggregate_time_series_rows(
     *,
     aggregation_interval: int = 60,
     roi_identifier: str = "MAIN_ROI",
+    recording_start: datetime | None = None,
 ) -> list[dict[str, Any]]:
     if aggregation_interval <= 0:
         raise ValueError("aggregation_interval must be positive")
@@ -220,9 +224,17 @@ def aggregate_time_series_rows(
     buckets: dict[datetime, dict[str, Any]] = {}
     for row in rows:
         timestamp_value = _first_non_empty_value(row, "time", "timestamp", "timestamp_ms", "datetime")
-        timestamp = _parse_datetime(timestamp_value)
+        # pNEUMA time/timestamp values are elapsed seconds; timestamp_ms is milliseconds.
+        milliseconds = (
+            _first_non_empty_value(row, "time", "timestamp") is None
+            and _first_non_empty_value(row, "timestamp_ms") is not None
+        )
+        timestamp = numeric_timestamp(timestamp_value, milliseconds=milliseconds)
+        if timestamp is None:
+            timestamp = _parse_datetime(timestamp_value)
         if timestamp is None:
             continue
+        timestamp = recording_timestamp(timestamp, recording_start)
 
         bucket_start = _floor_to_interval(timestamp, aggregation_interval)
         group = buckets.setdefault(
@@ -230,8 +242,6 @@ def aggregate_time_series_rows(
             {
                 "track_ids": set(),
                 "speed_values": [],
-                "crossing_count_total": 0.0,
-                "roi_area_m2": None,
             },
         )
 
@@ -241,27 +251,9 @@ def aggregate_time_series_rows(
 
         speed_value = _coerce_float(_first_non_empty_value(row, "speed", "avg_speed"))
         if speed_value is not None:
-            group["speed_values"].append(speed_value)
-
-        crossing_count = _coerce_float(
-            _first_non_empty_value(
-                row,
-                "crossing_count",
-                "crossings",
-                "counting_line_count",
-                "flow_count",
-                "passage_count",
-                "vehicle_passage_count",
-            )
-        )
-        if crossing_count is not None:
-            group["crossing_count_total"] += crossing_count
-
-        roi_area_m2 = _coerce_float(
-            _first_non_empty_value(row, "roi_area_m2", "area_m2", "roi_area", "area")
-        )
-        if roi_area_m2 is not None and group["roi_area_m2"] is None:
-            group["roi_area_m2"] = roi_area_m2
+            # Source speed/avg_speed is m/s; persisted and API speeds are km/h.
+            # Convert only source samples, never already aggregated database values.
+            group["speed_values"].append(speed_value * METERS_PER_SECOND_TO_KMH)
 
     aggregated: list[dict[str, Any]] = []
     for bucket_start, group in sorted(buckets.items()):
@@ -270,16 +262,7 @@ def aggregate_time_series_rows(
         if group["speed_values"]:
             mean_speed = sum(group["speed_values"]) / len(group["speed_values"])
 
-        # Estimate-based traffic metrics for trajectory datasets. These are proxy values
-        # when the raw dataset does not expose explicit detector counts or ROI area.
         traffic_flow = unique_vehicle_count / (aggregation_interval / 60.0)
-        if group["crossing_count_total"] > 0:
-            traffic_flow = group["crossing_count_total"] / (aggregation_interval / 60.0)
-
-        traffic_density = unique_vehicle_count / DEFAULT_DENSITY_AREA_M2
-        roi_area_m2 = group["roi_area_m2"]
-        if roi_area_m2 is not None and roi_area_m2 > 0:
-            traffic_density = unique_vehicle_count / roi_area_m2
 
         aggregated.append(
             {
@@ -288,9 +271,7 @@ def aggregate_time_series_rows(
                 "roi_identifier": roi_identifier,
                 "vehicle_count": unique_vehicle_count,
                 "traffic_flow": round(traffic_flow, 2),
-                "traffic_density": round(traffic_density, 4),
                 "mean_speed": round(mean_speed, 2),
-                "congestion_level": _congestion_level(mean_speed),
             }
         )
     return aggregated
@@ -304,9 +285,7 @@ def _to_db_row(dataset_version_id: UUID, bucket: dict[str, Any]) -> TrafficTimeS
         roi_identifier=bucket["roi_identifier"],
         vehicle_count=bucket["vehicle_count"],
         traffic_flow=bucket["traffic_flow"],
-        traffic_density=bucket["traffic_density"],
         mean_speed=bucket["mean_speed"],
-        congestion_level=bucket["congestion_level"],
     )
 
 
@@ -341,10 +320,12 @@ def build_traffic_aggregation(
 
     resolve_started = time.perf_counter()
     rows_iterator = _iter_rows_from_version(version)
+    recording_start = _recording_start(db, version)
     buckets = aggregate_time_series_rows(
         rows_iterator,
         aggregation_interval=aggregation_interval,
         roi_identifier=roi_identifier,
+        recording_start=recording_start,
     )
     _log_timing("read_and_aggregate_rows", resolve_started, dataset_id=str(dataset.id), version_id=str(version.id))
 
@@ -360,7 +341,7 @@ def build_traffic_aggregation(
     else:
         query_started = time.perf_counter()
         existing_bucket_times = {
-            row[0]
+            recording_timestamp(row[0], recording_start)
             for row in (
                 db.query(TrafficTimeSeries.time_bucket)
                 .filter(
@@ -597,24 +578,29 @@ def preview_traffic_aggregation(
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version was not found")
 
+    recording_start = _recording_start(db, version)
     query = (
-        db.query(TrafficTimeSeries)
+        traffic_time_query(
+            db, recording_start=recording_start, start_time=start_time,
+            end_time=end_time, descending=True,
+        )
         .filter(
             TrafficTimeSeries.dataset_version_id == version.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         )
-        .order_by(TrafficTimeSeries.time_bucket.desc())
     )
-    if start_time is not None:
-        query = query.filter(TrafficTimeSeries.time_bucket >= start_time)
-    if end_time is not None:
-        query = query.filter(TrafficTimeSeries.time_bucket <= end_time)
 
     total_count = query.count()
     items = query.offset((page - 1) * page_size).limit(page_size + 1).all()
     has_more = len(items) > page_size
-    page_items = items[:page_size]
+    # Serialize copies: never mutate ORM rows during a GET request.
+    page_items = [
+        TrafficAggregationRecord.model_validate(item).model_copy(
+            update={"time_bucket": recording_timestamp(item.time_bucket, recording_start)}
+        )
+        for item in items[:page_size]
+    ]
     return {
         "dataset_id": dataset_id,
         "dataset_version_id": version.id,
@@ -646,19 +632,17 @@ def get_traffic_chart_data(
     if version is None:
         raise HTTPException(status_code=404, detail="Dataset version was not found")
 
+    recording_start = _recording_start(db, version)
     query = (
-        db.query(TrafficTimeSeries)
+        traffic_time_query(
+            db, recording_start=recording_start, start_time=start_time, end_time=end_time,
+        )
         .filter(
             TrafficTimeSeries.dataset_version_id == version.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         )
-        .order_by(TrafficTimeSeries.time_bucket.asc())
     )
-    if start_time is not None:
-        query = query.filter(TrafficTimeSeries.time_bucket >= start_time)
-    if end_time is not None:
-        query = query.filter(TrafficTimeSeries.time_bucket <= end_time)
 
     rows = query.all()
     return {
@@ -666,9 +650,10 @@ def get_traffic_chart_data(
         "dataset_version_id": version.id,
         "aggregation_interval": aggregation_interval,
         "roi_identifier": roi_identifier,
-        "time_labels": [item.time_bucket.isoformat() for item in rows],
+        "time_labels": [
+            recording_timestamp(item.time_bucket, recording_start).isoformat() for item in rows
+        ],
         "vehicle_count": [int(item.vehicle_count) if item.vehicle_count is not None else None for item in rows],
         "average_speed": [float(item.mean_speed) if item.mean_speed is not None else None for item in rows],
-        "traffic_density": [float(item.traffic_density) if item.traffic_density is not None else None for item in rows],
         "traffic_flow": [float(item.traffic_flow) if item.traffic_flow is not None else None for item in rows],
     }

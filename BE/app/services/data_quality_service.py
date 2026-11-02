@@ -44,6 +44,7 @@ from app.services.dataset_preview_service import (
     PNEUMA_POINT_FIELDS,
     _resolve_file_path,
 )
+from app.services.quality_point_batch import clean_point_block
 
 logger = logging.getLogger(__name__)
 MAX_COLUMNS = 512
@@ -962,9 +963,22 @@ def _run_check(
                                     row_number, field_name, field_name, value, number=number
                                 )
                     point_start = 4
+                    validated_until = 0
                     for point_index in range(point_count):
                         if point_index and point_index % PROGRESS_POINT_BATCH_SIZE == 0:
                             publish_progress()
+                        if point_index < validated_until:
+                            continue
+                        if point_index % PROGRESS_POINT_BATCH_SIZE == 0:
+                            block_end = min(point_count, point_index + PROGRESS_POINT_BATCH_SIZE)
+                            if clean_point_block(
+                                values, point_start + point_index * 6,
+                                point_start + block_end * 6, rules_by_field,
+                            ):
+                                for field_name in PNEUMA_POINT_FIELDS:
+                                    total_values_by_column[field_name] += block_end - point_index
+                                validated_until = block_end
+                                continue
                         start = point_start + point_index * len(PNEUMA_POINT_FIELDS)
                         point_values = values[start : start + len(PNEUMA_POINT_FIELDS)]
                         if len(point_values) < len(PNEUMA_POINT_FIELDS):

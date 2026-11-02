@@ -37,6 +37,9 @@ Signed-in users can change their password with one request to
 `confirm_new_password`. Forgot-password OTP endpoints remain separate and do not require the old password.
 
 For an existing database, apply the migration in `migrations/20261014_add_must_change_password.sql`.
+For an existing database, also apply `migrations/20261102_remove_congestion_level.sql` to remove
+the obsolete traffic classification column. Applying it permanently discards stored classification
+labels; new databases initialized from `init_db.sql` do not create that column.
 
 ## Dataset upload (Data Engineer)
 

@@ -20,9 +20,7 @@ class TrafficAggregationRecord(BaseModel):
     roi_identifier: str
     vehicle_count: int
     traffic_flow: float | None = None
-    traffic_density: float | None = None
     mean_speed: float | None = None
-    congestion_level: str | None = None
     created_at: datetime
     estimated: bool = True
 
@@ -86,14 +84,12 @@ class TrafficAggregationPreviewResponse(BaseModel):
     total_count: int
     estimated: bool = True
     calculation_metadata: dict[str, object] = {
-        "vehicle_count": "distinct vehicles observed in the ROI for this minute",
-        "traffic_flow": "estimated as vehicle_count / (aggregation_interval / 60)",
-        "traffic_density": "estimated as vehicle_count / 1000.0 m² unless roi_area_m2 is provided",
-        "average_speed": "mean speed from observed rows in the same bucket",
+        "vehicle_count": "count of distinct track_id values in each minute bucket",
+        "traffic_flow": "Estimated Traffic Flow = vehicle_count / (aggregation_interval / 60)",
+        "average_speed": "mean(source speed in m/s) * 3.6; output in km/h",
         "units": {
-            "vehicle_count": "vehicles/minute",
+            "vehicle_count": "vehicles per aggregation interval",
             "traffic_flow": "vehicles/minute",
-            "traffic_density": "vehicles/1000 m²",
             "average_speed": "km/h",
         },
     }
@@ -107,19 +103,15 @@ class TrafficAggregationChartResponse(BaseModel):
     time_labels: list[str]
     vehicle_count: list[int]
     average_speed: list[float | None]
-    traffic_density: list[float | None]
     traffic_flow: list[float | None]
     estimated: bool = True
     calculation_metadata: dict[str, object] = {
-        "vehicle_count": "distinct vehicles observed in the ROI for each minute bucket",
-        "traffic_flow": "estimated vehicle rate based on vehicle_count when no explicit line-crossing counter exists",
-        "traffic_density": "estimated using default area proxy of 1000 m² unless roi_area_m2 is available",
-        "average_speed": "mean of observed speeds in the same bucket",
-        "null_meaning": "if a metric is null, the source data did not provide enough information to compute it reliably",
+        "vehicle_count": "count of distinct track_id values in each minute bucket",
+        "traffic_flow": "Estimated Traffic Flow = vehicle_count / (aggregation_interval / 60)",
+        "average_speed": "mean(source speed in m/s) * 3.6; output in km/h",
         "units": {
-            "vehicle_count": "vehicles/minute",
+            "vehicle_count": "vehicles per aggregation interval",
             "traffic_flow": "vehicles/minute",
-            "traffic_density": "vehicles/1000 m²",
             "average_speed": "km/h",
         },
     }

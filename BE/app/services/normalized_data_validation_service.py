@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 import math
@@ -18,6 +17,7 @@ from app.schemas.dataset_normalization import (
     NormalizedDataValidationCounts,
     NormalizedDataValidationResponse,
 )
+from app.services.validation_fingerprint import row_fingerprinter
 
 logger = logging.getLogger(__name__)
 COORDINATE_ALIASES = {
@@ -31,12 +31,17 @@ VALIDATION_BATCH_SIZE = 65_536
 
 def _missing_mask(column: pa.Array) -> pa.Array:
     if pa.types.is_dictionary(column.type):
-        return _missing_mask(column.dictionary_decode())
+        return pc.fill_null(pc.take(_missing_mask(column.dictionary), column.indices), True)
     if pa.types.is_floating(column.type):
         return pc.or_(pc.is_null(column), pc.fill_null(pc.is_nan(column), False))
     if pa.types.is_string(column.type) or pa.types.is_large_string(column.type):
-        # Preserve Python strip/lower semantics, including Unicode whitespace.
-        return pa.array([_is_missing(value) for value in column.to_pylist()])
+        # Check each distinct label once, preserving Python Unicode semantics.
+        encoded = pc.dictionary_encode(column)
+        flags = pa.array(
+            [_is_missing(value) for value in encoded.dictionary.to_pylist()],
+            type=pa.bool_(), from_pandas=False,
+        )
+        return pc.fill_null(pc.take(flags, encoded.indices), True)
     return pc.is_null(column)
 
 
@@ -61,7 +66,7 @@ def _coordinate_mask(column: pa.Array, lower: int, upper: int) -> pa.Array:
 
 def _negative_mask(column: pa.Array) -> pa.Array:
     if pa.types.is_unsigned_integer(column.type):
-        return pa.array([False] * len(column))
+        return pa.repeat(False, len(column))
     if pa.types.is_integer(column.type) or pa.types.is_floating(column.type):
         return pc.fill_null(pc.less(column, 0), False)
     return pa.array(
@@ -137,6 +142,9 @@ def validate_normalized_dataset_service(
     try:
         parquet_file = pq.ParquetFile(staging_file)
         columns = parquet_file.schema_arrow.names
+        fingerprint = row_fingerprinter(
+            pa.schema([parquet_file.schema_arrow.field(name) for name in sorted(columns)])
+        )
     except (OSError, ValueError, pq.ArrowException) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -181,13 +189,13 @@ def validate_normalized_dataset_service(
 
                 for batch in parquet_file.iter_batches(batch_size=VALIDATION_BATCH_SIZE):
                     total_rows += batch.num_rows
-                    invalid = pa.array([False] * batch.num_rows)
+                    invalid = pa.repeat(False, batch.num_rows)
                     for column in batch.columns:
                         missing = _missing_mask(column)
                         results["missing_values"] += _count_mask(missing)
                         invalid = pc.or_(invalid, missing)
 
-                    invalid_coordinates = pa.array([False] * batch.num_rows)
+                    invalid_coordinates = pa.repeat(False, batch.num_rows)
                     for role, name in coordinate_columns.items():
                         if name is not None:
                             lower, upper = (-90, 90) if role == "latitude" else (-180, 180)
@@ -197,23 +205,19 @@ def validate_normalized_dataset_service(
                             )
                     results["invalid_coordinates"] += _count_mask(invalid_coordinates)
                     invalid = pc.or_(invalid, invalid_coordinates)
-                    negative_speed = pa.array([False] * batch.num_rows)
+                    negative_speed = pa.repeat(False, batch.num_rows)
                     for name in speed_columns:
                         negative_speed = pc.or_(negative_speed, _negative_mask(batch.column(name)))
                     results["negative_speed"] += _count_mask(negative_speed)
                     invalid = pc.or_(invalid, negative_speed)
 
-                    # Column names/order are fixed within a file: a JSON tuple has
-                    # the same row-equality semantics without rebuilding row dicts.
-                    # Retain canonical nested values, null/NaN and default=str.
+                    # A single encoder per file keeps cross-batch equality stable.
+                    # Flat numeric/text data avoids JSON formatting every number.
                     values = batch.to_pydict()
                     rows = zip(*(values[name] for name in sorted(values)), strict=True)
                     incoming: dict[bytes, bool] = {}
                     for row, row_invalid in zip(rows, invalid.to_pylist(), strict=True):
-                        serialized = json.dumps(
-                            row, sort_keys=True, separators=(",", ":"), default=str
-                        ).encode("utf-8")
-                        digest = hashlib.blake2b(serialized, digest_size=16).digest()
+                        digest = fingerprint(row)
                         incoming.setdefault(digest, row_invalid)
 
                     connection.execute("DELETE FROM incoming")

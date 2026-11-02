@@ -5,6 +5,7 @@ from app.models.dataset import DataCleaningHistory  # Import model đã có sẵ
 from app.models.audit import AuditLog
 from app.models.dataset import Dataset, DatasetColumnMapping, DatasetVersion
 from app.schemas.dataset import DatasetUploadMetadata
+from app.crud.crud_recording_metadata import resolve_original_filename
 
 
 def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
@@ -170,7 +171,21 @@ def create_normalized_version(
     records_before: int,
     user_id: UUID,
     cleaning_parameters: dict,
+    original_filename: str | None = None,
 ) -> tuple[DatasetVersion, DataCleaningHistory]:
+    # Older staging metadata has no filename; recover it from the source version.
+    if original_filename is None and cleaning_parameters.get("source_version_id"):
+        source_id = UUID(str(cleaning_parameters["source_version_id"]))
+        source = db.query(DatasetVersion).filter(
+            DatasetVersion.id == UUID(str(cleaning_parameters["source_version_id"])),
+            DatasetVersion.dataset_id == dataset_id,
+        ).first()
+        if source is not None:
+            original_filename = source.original_filename
+        original_filename = resolve_original_filename(
+            db, dataset_id=dataset_id, version_id=source_id,
+            original_filename=original_filename,
+        )
     # 1. Tạo DatasetVersion mới (ở trạng thái PENDING chờ Admin duyệt)
     new_version = DatasetVersion(
         id=new_version_id,
@@ -178,6 +193,7 @@ def create_normalized_version(
         version_tag=version_tag,
         file_format=file_format,
         data_file_path=file_path,
+        original_filename=original_filename,
         csv_file_path=file_path if file_format == "CSV" else None,
         parquet_file_path=file_path if file_format == "PARQUET" else None,
         file_size_bytes=file_size_bytes,

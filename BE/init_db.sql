@@ -171,7 +171,6 @@ CREATE TABLE traffic_time_series (
     traffic_flow DECIMAL(10, 2) CONSTRAINT ck_traffic_flow CHECK (traffic_flow >= 0 AND traffic_flow < 'Infinity'), -- passages/min; NULL until counting line is defined
     traffic_density DECIMAL(10, 4) CONSTRAINT ck_traffic_density CHECK (traffic_density >= 0 AND traffic_density < 'Infinity'), -- NULL until method and units are defined
     mean_speed DECIMAL(6, 2) CONSTRAINT ck_traffic_speed CHECK (mean_speed >= 0 AND mean_speed < 'Infinity'), -- km/h; m/s sources require x3.6
-    congestion_level VARCHAR(32), -- NULL until a classification rule is defined
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_traffic_bucket UNIQUE(dataset_version_id, roi_identifier, time_bucket)
 );

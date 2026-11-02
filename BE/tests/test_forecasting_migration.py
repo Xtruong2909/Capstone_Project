@@ -18,6 +18,9 @@ pytestmark = pytest.mark.skipif(
     os.getenv("RUN_FORECAST_POSTGRES") != "1", reason="PostgreSQL integration opt-in"
 )
 MIGRATION = Path(__file__).parents[1] / "migrations/20261028_traffic_forecasting.sql"
+CONGESTION_LEVEL_MIGRATION = (
+    Path(__file__).parents[1] / "migrations/20261102_remove_congestion_level.sql"
+)
 
 
 @pytest.fixture
@@ -62,8 +65,9 @@ def connection():
 def apply_migration(connection) -> None:
     # Keep the production script's SQL intact; transaction ownership belongs to
     # the fixture so even a successful migration cannot commit test objects.
-    sql = MIGRATION.read_text(encoding="utf-8").replace("\nBEGIN;", "").replace("\nCOMMIT;", "")
-    connection.exec_driver_sql(sql)
+    for migration in (MIGRATION, CONGESTION_LEVEL_MIGRATION):
+        sql = migration.read_text(encoding="utf-8").replace("\nBEGIN;", "").replace("\nCOMMIT;", "")
+        connection.exec_driver_sql(sql)
 
 
 def test_preserves_valid_rows_and_enforces_constraints(connection) -> None:
@@ -77,6 +81,11 @@ def test_preserves_valid_rows_and_enforces_constraints(connection) -> None:
         (dataset_id,),
     )
     apply_migration(connection)
+    assert not connection.exec_driver_sql(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 'traffic_time_series' "
+        "AND column_name = 'congestion_level')"
+    ).scalar()
     assert (
         connection.exec_driver_sql("SELECT forecast_horizon_minutes FROM experiments").scalar() == 3
     )

@@ -83,7 +83,6 @@ class TrafficTimeSeries(Base):
     traffic_flow = Column(
         Numeric(10, 2), nullable=True, comment="Counting-line passages per minute"
     )
-    traffic_density = Column(Numeric(10, 4), nullable=True)
+    traffic_density = Column(Numeric(10, 4), nullable=True    )
     mean_speed = Column(Numeric(6, 2), nullable=True, comment="km/h")
-    congestion_level = Column(String(32), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

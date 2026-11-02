@@ -1,6 +1,7 @@
 import csv
 import json
 from pathlib import Path
+from time import perf_counter
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -17,6 +18,63 @@ from app.services.data_quality_service import (
     _parse_timestamp,
     _run_check,
 )
+from app.services.quality_point_batch import clean_point_block
+
+
+@pytest.mark.parametrize("bad_value", ["", "null", "NaN", "inf", "-1", "fast"])
+def test_point_batch_never_skips_invalid_speed(bad_value: str) -> None:
+    values = ["37", "23", bad_value, "0", "0", "1"]
+    assert not clean_point_block(values, 0, 6, {})
+
+
+def test_point_batch_handles_csv_whitespace() -> None:
+    assert clean_point_block([" 37 ", " 23 ", " 10 ", "0", "0", "1"], 0, 6, {})
+
+
+def test_large_trajectory_fast_path_matches_scalar_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "large-wide.csv"
+    points = ";".join(f" 37; 23; 10; 0; 0; {i}" for i in range(2048))
+    # Exercise both fully valid blocks and dirty blocks, duplicates and outliers.
+    rows = [f"{i};car;10;5;{points}" for i in range(100)]
+    rows.extend([rows[0], "101;car;10;5;91;23;-1;0;0;-1;37;23;20;0;0;1"])
+    path.write_text(
+        "track_id;type;traveled_d;avg_speed;lat;lon;speed;lon_acc;lat_acc;time\n"
+        + "\n".join(rows) + "\n", encoding="utf-8",
+    )
+    reports, issues, durations = [], [], []
+    accepted_blocks = 0
+
+    def measured_block(*args: object) -> bool:
+        nonlocal accepted_blocks
+        valid = clean_point_block(*args)
+        accepted_blocks += int(valid)
+        return valid
+
+    for fast in (False, True):
+        monkeypatch.setattr(
+            data_quality_service, "clean_point_block",
+            measured_block if fast else lambda *args: False,
+        )
+        started = perf_counter()
+        check, session = _run_file_check(
+            monkeypatch, path, outlier_rules=[_outlier_rule("speed")],
+        )
+        durations.append(perf_counter() - started)
+        assert check.status == "completed"
+        reports.append({
+            k: v for k, v in check.report.items()
+            if k not in {"dataset_id", "dataset_version_id", "generated_at"}
+        })
+        issues.append([
+            (item.row_number, item.issue_type, item.column_name, item.message, item.observed_value)
+            for item in session.issues
+        ])
+    assert reports[0] == reports[1]
+    assert issues[0] == issues[1]
+    assert accepted_blocks >= 200
+    print(f"scalar={durations[0]:.3f}s batch={durations[1]:.3f}s ratio={durations[0]/durations[1]:.2f}x")
 
 
 class FakeQuery:
