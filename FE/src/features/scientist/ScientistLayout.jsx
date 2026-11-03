@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FlaskConical,
   LayoutDashboard,
@@ -19,13 +19,20 @@ const STORAGE_KEY = 'sidebar_collapsed_scientist'
 
 const NAV_ITEMS = [
   { to: '/scientist', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet },
-  { to: '/scientist/preview', label: 'Dataset Detail & Preview', icon: Table2 },
+  { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet, end: true },
+  {
+    to: '/scientist/preview',
+    label: 'Dataset Detail & Preview',
+    icon: Table2,
+    // Detail route (/scientist/datasets/:id/versions/:id) also belongs to this tab
+    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+/,
+  },
 ]
 
 export default function ScientistLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -87,13 +94,16 @@ export default function ScientistLayout() {
         </div>
 
         <nav className="admin-sidebar__nav">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          {NAV_ITEMS.map(({ to, label, icon: Icon, end, extraActivePattern }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               title={label}
-              className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => {
+                const active = isActive || (extraActivePattern?.test(location.pathname) ?? false)
+                return `admin-nav-item ${active ? 'active' : ''}`
+              }}
             >
               <Icon size={19} style={{ flexShrink: 0 }} />
               <span>{label}</span>
