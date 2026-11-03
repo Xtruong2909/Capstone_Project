@@ -5,6 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.v1.api import api_router
+from app.api.v1.endpoints.feature_engineering import router as feature_engineering_router
 from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
 from app.database.database import get_db
 
@@ -27,6 +28,7 @@ app.add_middleware(
 
 # Register API v1 Routers
 app.include_router(api_router, prefix=API_V1_STR)
+app.include_router(feature_engineering_router, prefix="/api")
 
 
 @app.get("/", summary="Root API Endpoint")
