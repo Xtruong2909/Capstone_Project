@@ -26,6 +26,8 @@ import ScientistLayout from './features/scientist/ScientistLayout'
 import ScientistOverviewPage from './features/scientist/pages/ScientistOverviewPage'
 import ScientistApprovedDatasetsPage from './features/scientist/pages/ScientistApprovedDatasetsPage'
 import ScientistDatasetPreviewPage from './features/scientist/pages/ScientistDatasetPreviewPage'
+import ScientistTrainingPage from './features/scientist/pages/ScientistTrainingPage'
+import ScientistPredictionPage from './features/scientist/pages/ScientistPredictionPage'
 
 // Other role workspaces
 import RoleDashboardPage from './features/roles/RoleDashboardPage'
@@ -69,6 +71,8 @@ export default function App() {
           <Route path="datasets" element={<ScientistApprovedDatasetsPage />} />
           <Route path="preview" element={<ScientistDatasetPreviewPage />} />
           <Route path="datasets/:datasetId/versions/:versionId" element={<ScientistDatasetPreviewPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId/train" element={<ScientistTrainingPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId/predict" element={<ScientistPredictionPage />} />
         </Route>
       </Route>
 

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   ChevronLeft,
@@ -12,6 +12,9 @@ import {
   Search,
   RefreshCw,
   Info,
+  Eye,
+  FlaskConical,
+  TrendingUp,
 } from 'lucide-react'
 import { useApprovedDatasets, useDatasetPreview } from '../../../hooks/useScientistData'
 import { formatBytes, formatNumber } from '../utils/formatters'
@@ -128,10 +131,34 @@ export default function ScientistDatasetPreviewPage() {
               {preview?.original_filename && `File: ${preview.original_filename}`}
             </p>
           </div>
+
+          {effectiveDatasetId && effectiveVersionId && (
+            <div className="sci-mode-switch">
+              <Link
+                to={`/scientist/datasets/${effectiveDatasetId}/versions/${effectiveVersionId}`}
+                className="sci-mode-switch__btn active"
+              >
+                <Eye size={14} /> Data Preview
+              </Link>
+              <Link
+                to={`/scientist/datasets/${effectiveDatasetId}/versions/${effectiveVersionId}/train`}
+                className="sci-mode-switch__btn sci-mode-switch__btn--train"
+              >
+                <FlaskConical size={14} /> Training
+              </Link>
+              <Link
+                to={`/scientist/datasets/${effectiveDatasetId}/versions/${effectiveVersionId}/predict`}
+                className="sci-mode-switch__btn sci-mode-switch__btn--predict"
+              >
+                <TrendingUp size={14} /> Prediction
+              </Link>
+            </div>
+          )}
         </div>
 
-        {/* Parameters Bar (matching Swagger parameter controls) */}
-        <div className="sci-params-bar">
+        <div className="sci-card-body">
+          {/* Parameters Bar (matching Swagger parameter controls) */}
+          <div className="sci-params-bar">
           <div className="sci-params-bar__group">
             <span className="sci-params-bar__label">Representation:</span>
             <div className="sci-tabs">
@@ -393,6 +420,7 @@ export default function ScientistDatasetPreviewPage() {
             </div>
           </>
         )}
+        </div>
       </section>
     </div>
   )

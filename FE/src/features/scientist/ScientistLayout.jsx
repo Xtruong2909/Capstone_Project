@@ -19,13 +19,17 @@ const STORAGE_KEY = 'sidebar_collapsed_scientist'
 
 const NAV_ITEMS = [
   { to: '/scientist', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet, end: true },
+  { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet,
+    end: true,
+    // Training / Prediction pages are opened from the approved dataset list
+    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/(train|predict)\/?$/,
+  },
   {
     to: '/scientist/preview',
     label: 'Dataset Detail & Preview',
     icon: Table2,
     // Detail route (/scientist/datasets/:id/versions/:id) also belongs to this tab
-    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+/,
+    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/?$/,
   },
 ]
 
