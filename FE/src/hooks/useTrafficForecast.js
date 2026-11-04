@@ -243,4 +243,72 @@ export function useOneMinuteVehicleAggregation(datasetId) {
   }
 }
 
+/**
+ * POST /api/feature-engineering/training hook for the Training page.
+ * Automatically ensures 60s temporal aggregation exists if initial sample_count is 0.
+ */
+export function useTrainingFeatureEngineering(datasetId, versionId) {
+  const [featureData, setFeatureData] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setFeatureData(null)
+    setIsLoading(false)
+    setError(null)
+  }, [datasetId, versionId])
+
+  const generateTrainingFeatures = useCallback(
+    async (roiIdentifier = 'MAIN_ROI') => {
+      if (!versionId) return null
+      setIsLoading(true)
+      setError(null)
+
+      try {
+        let data = await trafficForecastService.prepareTrainingFeatures(versionId, roiIdentifier)
+
+        // If no samples were returned because 60s aggregation hasn't been generated yet,
+        // automatically run the 60s aggregation job and re-fetch training features.
+        if (data.sample_count === 0 && datasetId) {
+          const status = await trafficForecastService.getAggregationStatus(datasetId, {
+            aggregationInterval: 60,
+            roiIdentifier,
+          })
+          if (!status?.is_ready) {
+            const started = await trafficForecastService.startAggregation(datasetId, {
+              aggregationInterval: 60,
+              roiIdentifier,
+              replaceExisting: false,
+            })
+            let currentJob = started
+            while (!FINISHED_JOB_STATES.includes(currentJob.status)) {
+              await new Promise((resolve) => setTimeout(resolve, 600))
+              currentJob = await trafficForecastService.getAggregationJob(datasetId, started.job_id)
+            }
+            if (currentJob.status === 'completed') {
+              data = await trafficForecastService.prepareTrainingFeatures(versionId, roiIdentifier)
+            }
+          }
+        }
+
+        setFeatureData(data)
+        return data
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Không thể trích xuất đặc trưng huấn luyện (Training Features).'))
+        return null
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [datasetId, versionId]
+  )
+
+  return {
+    featureData,
+    isLoading,
+    error,
+    generateTrainingFeatures,
+  }
+}
+
 

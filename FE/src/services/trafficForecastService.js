@@ -1,5 +1,13 @@
 import apiClient from './apiClient'
 
+/**
+ * Feature-engineering endpoints are mounted under `/api` (NOT `/api/v1`),
+ * so we override the baseURL of the shared client for those calls.
+ */
+const FEATURE_API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+).replace(/\/v1\/?$/, '')
+
 const aggregationUrl = (datasetId, suffix = '') =>
   `/datasets/${datasetId}/traffic/aggregation${suffix}`
 
@@ -63,6 +71,33 @@ export const trafficForecastService = {
     if (startTime) params.start_time = startTime
     if (endTime) params.end_time = endTime
     const response = await apiClient.get(aggregationUrl(datasetId, '/chart-data'), { params })
+    return response.data
+  },
+
+  // ---------------------------------------------------------- Feature Engineering
+  /** POST /api/feature-engineering/training - prepare complete lag X and target Y samples. */
+  async prepareTrainingFeatures(datasetVersionId, roiIdentifier = 'MAIN_ROI') {
+    const response = await apiClient.post(
+      '/feature-engineering/training',
+      {
+        dataset_version_id: datasetVersionId,
+        roi_identifier: roiIdentifier,
+      },
+      { baseURL: FEATURE_API_BASE_URL }
+    )
+    return response.data
+  },
+
+  /** POST /api/feature-engineering/prediction - prepare latest lag X and forecast timestamps. */
+  async preparePredictionFeatures(datasetVersionId, roiIdentifier = 'MAIN_ROI') {
+    const response = await apiClient.post(
+      '/feature-engineering/prediction',
+      {
+        dataset_version_id: datasetVersionId,
+        roi_identifier: roiIdentifier,
+      },
+      { baseURL: FEATURE_API_BASE_URL }
+    )
     return response.data
   },
 }

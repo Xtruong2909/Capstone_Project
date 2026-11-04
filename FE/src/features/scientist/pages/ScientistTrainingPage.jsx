@@ -1,9 +1,13 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { Eye, BarChart3, Loader2, FlaskConical, CheckCircle2 } from 'lucide-react'
 import { useApprovedDatasets, useDatasetPreview } from '../../../hooks/useScientistData'
-import { useOneMinuteVehicleAggregation } from '../../../hooks/useTrafficForecast'
+import {
+  useOneMinuteVehicleAggregation,
+  useTrainingFeatureEngineering,
+} from '../../../hooks/useTrafficForecast'
 import DatasetInfoPanel from '../components/DatasetInfoPanel'
 import BarChart from '../components/BarChart'
+import TrainingFeaturePanel from '../components/TrainingFeaturePanel'
 import { formatDate, formatNumber } from '../utils/formatters'
 
 export default function ScientistTrainingPage() {
@@ -21,6 +25,13 @@ export default function ScientistTrainingPage() {
   const { chart, statusInfo, isCalculating, progress, error, aggregateOneMinute } =
     useOneMinuteVehicleAggregation(datasetId)
 
+  const {
+    featureData,
+    isLoading: isGeneratingFeatures,
+    error: featureError,
+    generateTrainingFeatures,
+  } = useTrainingFeatureEngineering(datasetId, versionId)
+
   const handleReviewDataset = () => {
     navigate(`/scientist/datasets/${datasetId}/versions/${versionId}`)
   }
@@ -36,7 +47,7 @@ export default function ScientistTrainingPage() {
         isLoading={isLoadingList}
       />
 
-      {/* Training Actions + 1-Minute Vehicle Aggregation Bar Chart */}
+      {/* Section 1: Training Actions + 1-Minute Vehicle Aggregation Bar Chart */}
       <section className="admin-card">
         <div className="admin-card__header">
           <div className="admin-card__header-left">
@@ -145,6 +156,14 @@ export default function ScientistTrainingPage() {
           )}
         </div>
       </section>
+
+      {/* Section 2: Feature Engineering - Training Samples (POST /api/feature-engineering/training) */}
+      <TrainingFeaturePanel
+        featureData={featureData}
+        isLoading={isGeneratingFeatures}
+        error={featureError}
+        onGenerate={generateTrainingFeatures}
+      />
     </div>
   )
 }
