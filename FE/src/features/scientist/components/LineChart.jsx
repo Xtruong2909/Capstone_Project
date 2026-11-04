@@ -194,5 +194,5 @@ function formatTick(label) {
   if (!label) return ''
   const d = new Date(label)
   if (Number.isNaN(d.getTime())) return String(label)
-  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }

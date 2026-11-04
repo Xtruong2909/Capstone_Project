@@ -128,7 +128,7 @@ export default function ScientistLayout() {
             className="admin-user-profile"
             onClick={() => setIsProfileModalOpen(true)}
             style={{ cursor: 'pointer', transition: 'background 0.2s', borderRadius: '10px' }}
-            title="Bấm để xem thông tin tài khoản và đổi mật khẩu"
+            title="Click to view account profile and change password"
           >
             <div className="admin-avatar">
               {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
@@ -161,10 +161,10 @@ export default function ScientistLayout() {
             className="btn-secondary"
             onClick={() => setIsProfileModalOpen(true)}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', fontWeight: 600 }}
-            title="Quản lý tài khoản và đổi mật khẩu"
+            title="Manage account profile and change password"
           >
             <UserCheck size={15} style={{ color: '#1668e3' }} />
-            <span>Tài khoản & Bảo mật</span>
+            <span>Account & Security</span>
           </button>
         </header>
 

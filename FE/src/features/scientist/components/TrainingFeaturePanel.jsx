@@ -19,7 +19,7 @@ function formatShortTime(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 function formatFlow(val) {
@@ -70,7 +70,7 @@ export default function TrainingFeaturePanel({
               Feature Engineering · Training Samples (X / Y)
             </h2>
             <p className="admin-card__subtitle">
-              Trích xuất đặc trưng trễ (5 lags đầu vào X) và nhãn dự báo đa bước (+1, +3, +5 phút đầu ra Y) bằng phương pháp cửa sổ trượt.
+              Extract 5 observed lag features (X) and multi-horizon forecast targets (+1, +3, +5 min Y) using a sliding window.
             </p>
           </div>
         </div>
@@ -100,7 +100,7 @@ export default function TrainingFeaturePanel({
               <Play size={16} />
             )}
             <span>
-              {isLoading ? 'Đang trích xuất X/Y...' : 'Trích xuất đặc trưng huấn luyện'}
+              {isLoading ? 'Extracting X / Y...' : 'Extract Training Features'}
             </span>
           </button>
         </form>
@@ -111,7 +111,7 @@ export default function TrainingFeaturePanel({
           <div className="sci-state">
             <div className="sci-spinner" />
             <div style={{ fontWeight: 700, color: '#0f172a' }}>
-              Đang chuẩn bị tập mẫu huấn luyện (Lag Features X &amp; Targets Y)...
+              Preparing supervised training samples (Lag Features X &amp; Targets Y)...
             </div>
           </div>
         )}
@@ -126,11 +126,11 @@ export default function TrainingFeaturePanel({
           <div className="sci-state">
             <Cpu size={34} style={{ marginBottom: '0.5rem', color: '#94a3b8' }} />
             <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
-              Chưa trích xuất đặc trưng huấn luyện
+              No training features extracted yet
             </div>
             <div style={{ fontSize: '0.84rem' }}>
-              Nhấn nút <strong>&ldquo;Trích xuất đặc trưng huấn luyện&rdquo;</strong> để gọi API{' '}
-              <code>POST /api/feature-engineering/training</code> và tạo ma trận mẫu X / Y.
+              Click <strong>&ldquo;Extract Training Features&rdquo;</strong> to call{' '}
+              <code>POST /api/feature-engineering/training</code> and build the X / Y sample matrix.
             </div>
           </div>
         )}
@@ -140,15 +140,15 @@ export default function TrainingFeaturePanel({
             {/* Configuration Summary Bar */}
             <div className="sci-fe-config-grid">
               <div className="sci-fe-config-item">
-                <small>Tổng số mẫu (Samples)</small>
+                <small>Total Samples</small>
                 <strong>
                   <CheckCircle2 size={15} style={{ color: '#16a34a' }} />
-                  {formatNumber(sampleCount)} mẫu hoàn chỉnh
+                  {formatNumber(sampleCount)} complete samples
                 </strong>
               </div>
 
               <div className="sci-fe-config-item">
-                <small>Phương pháp &amp; Khung giờ</small>
+                <small>Method &amp; Interval</small>
                 <strong>
                   <Layers size={15} style={{ color: '#1668e3' }} />
                   {config?.method || 'sliding_window'} · {config?.aggregation_interval ?? 60}s
@@ -156,7 +156,7 @@ export default function TrainingFeaturePanel({
               </div>
 
               <div className="sci-fe-config-item">
-                <small>Biến mục tiêu (Target)</small>
+                <small>Target Column</small>
                 <strong>
                   <Target size={15} style={{ color: '#7c3aed' }} />
                   {config?.target_column || 'traffic_flow'} (ROI: {featureData.roi_identifier})
@@ -164,12 +164,12 @@ export default function TrainingFeaturePanel({
               </div>
 
               <div className="sci-fe-config-item">
-                <small>Đầu vào X ({config?.lag_count ?? 5} Lags)</small>
+                <small>Input Features X ({config?.lag_count ?? 5} Lags)</small>
                 <strong>{featureOrder.join(' → ')}</strong>
               </div>
 
               <div className="sci-fe-config-item">
-                <small>Đầu ra Y (Horizons)</small>
+                <small>Output Targets Y (Horizons)</small>
                 <strong>
                   {(config?.forecast_horizons || [1, 3, 5]).map((h) => `+${h}m`).join(', ')} (
                   {targetOrder.join(', ')})
@@ -179,7 +179,7 @@ export default function TrainingFeaturePanel({
 
             {sampleCount === 0 ? (
               <div className="sci-warning">
-                Dataset chưa có đủ chuỗi 10 phút liên tục hợp lệ (từ t-4 đến t+5) để tạo mẫu huấn luyện hoàn chỉnh.
+                Insufficient continuous 10-minute observations (from t-4 to t+5) to build complete training samples.
               </div>
             ) : (
               <>
@@ -189,15 +189,15 @@ export default function TrainingFeaturePanel({
                     <div className="sci-fe-window__header">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <span className="sci-pill sci-pill--version">
-                          Mẫu #{selectedIdx + 1} / {sampleCount}
+                          Sample #{selectedIdx + 1} / {sampleCount}
                         </span>
                         <span className="sci-fe-window__title">
-                          Cửa sổ trượt (Sliding Window) tại mốc hiện tại{' '}
+                          Sliding Window at current time bucket{' '}
                           <strong>t = {formatShortTime(activeSample.time_bucket)}</strong>
                         </span>
                       </div>
                       <span className="sci-fe-window__range">
-                        <Clock size={13} /> Chuỗi lịch sử: {formatDate(activeSample.history_start_time)} →{' '}
+                        <Clock size={13} /> History window: {formatDate(activeSample.history_start_time)} →{' '}
                         {formatDate(activeSample.time_bucket)}
                       </span>
                     </div>
@@ -206,7 +206,7 @@ export default function TrainingFeaturePanel({
                       {/* Left: Input Features X */}
                       <div className="sci-fe-vector sci-fe-vector--x">
                         <div className="sci-fe-vector__label">
-                          <span>Vector đầu vào X (Observed Lags: mới nhất → cũ nhất)</span>
+                          <span>Input Vector X (Observed Lags: newest → oldest)</span>
                           <code>x = [{activeSample.x.map(formatFlow).join(', ')}]</code>
                         </div>
                         <div className="sci-fe-vector__Row">
@@ -231,7 +231,7 @@ export default function TrainingFeaturePanel({
                       {/* Right: Target Labels Y */}
                       <div className="sci-fe-vector sci-fe-vector--y">
                         <div className="sci-fe-vector__label">
-                          <span>Vector nhãn mục tiêu Y (Future Horizons)</span>
+                          <span>Target Vector Y (Future Forecast Horizons)</span>
                           <code>y = [{activeSample.y.map(formatFlow).join(', ')}]</code>
                         </div>
                         <div className="sci-fe-vector__Row">
@@ -288,7 +288,7 @@ export default function TrainingFeaturePanel({
                             className={isSelected ? 'sci-row-selected' : ''}
                             onClick={() => setSelectedIdx(globalIdx)}
                             style={{ cursor: 'pointer' }}
-                            title="Nhấn để xem chi tiết cửa sổ trượt của mẫu này"
+                            title="Click to inspect the sliding window for this sample"
                           >
                             <td style={{ textAlign: 'center', color: '#64748b', fontWeight: 700 }}>
                               {globalIdx + 1}
@@ -321,12 +321,12 @@ export default function TrainingFeaturePanel({
                 {samples.length > PAGE_SIZE && (
                   <div className="sci-pager">
                     <span>
-                      Hiển thị mẫu{' '}
+                      Showing samples{' '}
                       <strong>
                         {(page - 1) * PAGE_SIZE + 1}–
                         {Math.min(page * PAGE_SIZE, samples.length)}
                       </strong>{' '}
-                      trên tổng số <strong>{formatNumber(samples.length)}</strong> mẫu
+                      of <strong>{formatNumber(samples.length)}</strong>
                     </span>
                     <div className="sci-pager__controls">
                       <button
@@ -335,10 +335,10 @@ export default function TrainingFeaturePanel({
                         disabled={page <= 1}
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                       >
-                        <ChevronLeft size={14} /> Trước
+                        <ChevronLeft size={14} /> Prev
                       </button>
                       <span style={{ fontWeight: 600, padding: '0 0.4rem' }}>
-                        Trang {page} / {totalPages}
+                        Page {page} / {totalPages}
                       </span>
                       <button
                         type="button"
@@ -346,7 +346,7 @@ export default function TrainingFeaturePanel({
                         disabled={page >= totalPages}
                         onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       >
-                        Sau <ChevronRight size={14} />
+                        Next <ChevronRight size={14} />
                       </button>
                     </div>
                   </div>
@@ -359,4 +359,3 @@ export default function TrainingFeaturePanel({
     </section>
   )
 }
-

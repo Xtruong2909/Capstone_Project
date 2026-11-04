@@ -55,9 +55,9 @@ export default function ScientistTrainingPage() {
               <FlaskConical size={18} />
             </div>
             <div>
-              <h2 className="admin-card__title">Training · Tổng hợp phương tiện (1 phút)</h2>
+              <h2 className="admin-card__title">Training · 1-Minute Vehicle Aggregation</h2>
               <p className="admin-card__subtitle">
-                Xem chi tiết dữ liệu hoặc tổng hợp số lượng phương tiện trong từng khung 1 phút để phục vụ huấn luyện.
+                Review dataset records or aggregate vehicle counts into 1-minute buckets for model training.
               </p>
             </div>
           </div>
@@ -85,8 +85,8 @@ export default function ScientistTrainingPage() {
               )}
               <span>
                 {isCalculating
-                  ? 'Đang tính toán...'
-                  : 'Tổng hợp phương tiện trong 1 phút'}
+                  ? 'Calculating...'
+                  : 'Aggregate Vehicles (1 Min)'}
               </span>
             </button>
           </div>
@@ -99,7 +99,7 @@ export default function ScientistTrainingPage() {
               <div className="sci-job__row">
                 <span className="sci-pill sci-job__status">
                   <Loader2 size={12} className="sci-spin" />
-                  Đang tính toán tổng hợp phương tiện theo khung 1 phút...
+                  Calculating 1-minute vehicle aggregation...
                 </span>
                 <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{progress}%</span>
               </div>
@@ -121,10 +121,10 @@ export default function ScientistTrainingPage() {
             <div className="sci-state">
               <BarChart3 size={34} style={{ marginBottom: '0.5rem', color: '#94a3b8' }} />
               <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
-                Chưa tổng hợp phương tiện
+                No vehicle aggregation generated yet
               </div>
               <div style={{ fontSize: '0.84rem' }}>
-                Nhấn nút <strong>&ldquo;Tổng hợp phương tiện trong 1 phút&rdquo;</strong> ở góc trên để tính toán và hiển thị biểu đồ cột.
+                Click <strong>&ldquo;Aggregate Vehicles (1 Min)&rdquo;</strong> above to compute and display the interactive bar chart.
               </div>
             </div>
           )}
@@ -135,14 +135,14 @@ export default function ScientistTrainingPage() {
               {statusInfo && (
                 <div className="sci-status-box">
                   <span className="sci-pill sci-pill--approved">
-                    <CheckCircle2 size={12} /> Đã tổng hợp (60s / 1 phút)
+                    <CheckCircle2 size={12} /> Aggregated (60s / 1 min)
                   </span>
                   <span className="sci-status-box__item">
-                    Tổng số khung: <strong>{formatNumber(statusInfo.records_count)}</strong> phút
+                    Total buckets: <strong>{formatNumber(statusInfo.records_count)}</strong> min
                   </span>
                   {statusInfo.last_generated_at && (
                     <span className="sci-status-box__item">
-                      Cập nhật lúc: <strong>{formatDate(statusInfo.last_generated_at)}</strong>
+                      Last generated: <strong>{formatDate(statusInfo.last_generated_at)}</strong>
                     </span>
                   )}
                 </div>

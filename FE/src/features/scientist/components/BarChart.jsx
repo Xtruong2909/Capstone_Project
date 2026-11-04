@@ -9,7 +9,7 @@ function formatTimeLabel(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 /**
@@ -17,17 +17,17 @@ function formatTimeLabel(iso) {
  * Numbers above bars are ONLY displayed when hovering over a bar.
  */
 export default function BarChart({
-  title = 'Biểu đồ tổng hợp phương tiện theo từng phút (1-Minute Vehicle Count)',
-  subtitle = 'Rê chuột vào từng cột để xem số lượng phương tiện trong khung 1 phút tương ứng',
+  title = '1-Minute Vehicle Count Aggregation',
+  subtitle = 'Hover over any bar to inspect the vehicle count for that 1-minute bucket',
   labels = [],
   values = [],
-  unit = 'phương tiện / phút',
+  unit = 'vehicles / min',
 }) {
   const [hoveredIdx, setHoveredIdx] = useState(null)
   const barGradId = useId()
   const barHoverGradId = useId()
 
-  const { bars, yTicks, xTickIndices, totalVehicles, maxVal, avgVal, hasData } = useMemo(() => {
+  const { bars, yTicks, xTickIndices, maxVal, avgVal, hasData } = useMemo(() => {
     const validNums = values.filter((v) => typeof v === 'number' && Number.isFinite(v))
     if (validNums.length === 0) return { hasData: false }
 
@@ -54,7 +54,7 @@ export default function BarChart({
         index: i,
         value: val,
         label: labels[i],
-        timeText: formatTimeLabel(labels[i]) || `Phút ${i + 1}`,
+        timeText: formatTimeLabel(labels[i]) || `Min ${i + 1}`,
         slotX: PAD.left + i * slotW,
         slotW,
         x: centerX - barW / 2,
@@ -83,7 +83,6 @@ export default function BarChart({
       bars: computedBars,
       yTicks: ticks,
       xTickIndices: xIdx,
-      totalVehicles: total,
       maxVal: rawMax,
       avgVal: avg,
       hasData: true,
@@ -101,13 +100,13 @@ export default function BarChart({
         {hasData && (
           <div className="sci-barchart-card__stats">
             <span className="sci-pill sci-pill--version">
-              {bars.length} khung (1 phút)
+              {bars.length} buckets (1 min)
             </span>
             <span className="sci-pill sci-pill--format">
-              TB: {avgVal.toFixed(1)} {unit}
+              Avg: {avgVal.toFixed(1)} {unit}
             </span>
             <span className="sci-pill sci-pill--approved">
-              Cao nhất: {formatNumber(maxVal)}
+              Max: {formatNumber(maxVal)}
             </span>
           </div>
         )}
@@ -115,7 +114,7 @@ export default function BarChart({
 
       {!hasData ? (
         <div className="sci-chart__empty" style={{ height: 240 }}>
-          Không có dữ liệu phương tiện cho dataset này.
+          No vehicle count data available for this dataset.
         </div>
       ) : (
         <div className="sci-barchart-wrap">
@@ -269,4 +268,3 @@ export default function BarChart({
     </div>
   )
 }
-

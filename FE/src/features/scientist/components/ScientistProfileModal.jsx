@@ -45,7 +45,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
       const data = await authService.getCurrentUser()
       setUserProfile(data)
     } catch (err) {
-      setProfileError(extractErrorMessage(err, 'Không thể tải thông tin tài khoản.'))
+      setProfileError(extractErrorMessage(err, 'Unable to load account profile.'))
     } finally {
       setIsLoadingProfile(false)
     }
@@ -72,19 +72,19 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
 
     // Validation
     if (!currentPassword.trim()) {
-      setPasswordError('Vui lòng nhập mật khẩu hiện tại.')
+      setPasswordError('Please enter your current password.')
       return
     }
     if (newPassword.length < 6) {
-      setPasswordError('Mật khẩu mới phải có tối thiểu 6 ký tự.')
+      setPasswordError('New password must be at least 6 characters long.')
       return
     }
     if (newPassword !== confirmNewPassword) {
-      setPasswordError('Mật khẩu mới và xác nhận mật khẩu không khớp.')
+      setPasswordError('New password and confirmation do not match.')
       return
     }
     if (newPassword === currentPassword) {
-      setPasswordError('Mật khẩu mới phải khác mật khẩu hiện tại.')
+      setPasswordError('New password must be different from your current password.')
       return
     }
 
@@ -95,12 +95,12 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
         new_password: newPassword,
         confirm_new_password: confirmNewPassword,
       })
-      setPasswordSuccess(res.message || 'Đổi mật khẩu thành công! Mật khẩu mới đã có hiệu lực.')
+      setPasswordSuccess(res.message || 'Password updated successfully! Your new password is now active.')
       setCurrentPassword('')
       setNewPassword('')
       setConfirmNewPassword('')
     } catch (err) {
-      setPasswordError(extractErrorMessage(err, 'Đổi mật khẩu thất bại. Vui lòng kiểm tra lại.'))
+      setPasswordError(extractErrorMessage(err, 'Failed to update password. Please verify your credentials.'))
     } finally {
       setIsSubmittingPassword(false)
     }
@@ -167,10 +167,10 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
-                Hồ sơ & Bảo mật tài khoản
+                Account Profile & Security
               </h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
-                Quản lý thông tin cá nhân và thay đổi mật khẩu
+                Manage your personal account details and update your password
               </p>
             </div>
           </div>
@@ -223,7 +223,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               transition: 'all 0.15s',
             }}
           >
-            <User size={16} /> Thông tin cá nhân
+            <User size={16} /> Personal Information
           </button>
 
           <button
@@ -244,19 +244,19 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               transition: 'all 0.15s',
             }}
           >
-            <KeyRound size={16} /> Đổi mật khẩu
+            <KeyRound size={16} /> Change Password
           </button>
         </div>
 
         {/* Modal Body */}
         <div style={{ padding: '1.5rem', overflowY: 'auto', maxHeight: 'calc(80vh - 120px)' }}>
-          {/* TAB 1: THÔNG TIN CÁ NHÂN (GET /api/v1/auth/me) */}
+          {/* TAB 1: PERSONAL INFORMATION (GET /api/v1/auth/me) */}
           {activeTab === 'info' && (
             <div>
               {isLoadingProfile && (
                 <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b' }}>
                   <div className="sci-spinner" />
-                  <p style={{ margin: 0, fontSize: '0.85rem' }}>Đang tải thông tin tài khoản...</p>
+                  <p style={{ margin: 0, fontSize: '0.85rem' }}>Loading account information...</p>
                 </div>
               )}
 
@@ -270,7 +270,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                     onClick={fetchProfile}
                     style={{ display: 'block', margin: '0.6rem auto 0' }}
                   >
-                    Thử lại
+                    Retry
                   </button>
                 </div>
               )}
@@ -326,7 +326,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       type="button"
                       className="btn-secondary"
                       onClick={fetchProfile}
-                      title="Làm mới dữ liệu từ server"
+                      title="Refresh profile from server"
                       style={{ padding: '0.4rem 0.65rem' }}
                     >
                       <RefreshCw size={13} />
@@ -351,7 +351,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <Mail size={13} /> Địa chỉ Email
+                        <Mail size={13} /> Email Address
                       </span>
                       <strong style={{ color: '#0f172a', wordBreak: 'break-all' }}>{userProfile.email}</strong>
                     </div>
@@ -365,13 +365,13 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <ShieldCheck size={13} /> Trạng thái tài khoản
+                        <ShieldCheck size={13} /> Account Status
                       </span>
                       <span
                         className="sci-pill sci-pill--approved"
                         style={{ display: 'inline-flex', marginTop: '0.1rem' }}
                       >
-                        <CheckCircle2 size={12} /> {userProfile.is_active ? 'Đang hoạt động' : 'Tạm khóa'}
+                        <CheckCircle2 size={12} /> {userProfile.is_active ? 'Active' : 'Suspended'}
                       </span>
                     </div>
 
@@ -384,7 +384,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <Calendar size={13} /> Ngày tạo tài khoản
+                        <Calendar size={13} /> Account Created
                       </span>
                       <strong style={{ color: '#0f172a' }}>{formatDate(userProfile.created_at)}</strong>
                     </div>
@@ -398,10 +398,10 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <Lock size={13} /> Yêu cầu đổi mật khẩu
+                        <Lock size={13} /> Password Change Required
                       </span>
                       <strong style={{ color: userProfile.must_change_password ? '#b45309' : '#15803d' }}>
-                        {userProfile.must_change_password ? 'Bắt buộc' : 'Không'}
+                        {userProfile.must_change_password ? 'Required' : 'No'}
                       </strong>
                     </div>
                   </div>
@@ -418,14 +418,14 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       lineHeight: 1.45,
                     }}
                   >
-                    💡 <strong>Lưu ý:</strong> Thông tin tài khoản và phân quyền Data Scientist được quản lý tập trung bởi Quản trị viên (Admin). Nếu cần điều chỉnh email hoặc phân quyền, vui lòng liên hệ Admin hệ thống.
+                    💡 <strong>Note:</strong> Account details and Data Scientist permissions are centrally managed by the System Administrator. If you need to update your email or role permissions, please contact an Admin.
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 2: ĐỔI MẬT KHẨU (POST /api/v1/auth/profile/change-password) */}
+          {/* TAB 2: CHANGE PASSWORD (POST /api/v1/auth/profile/change-password) */}
           {activeTab === 'password' && (
             <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               {passwordSuccess && (
@@ -466,16 +466,16 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                 </div>
               )}
 
-              {/* Mật khẩu hiện tại */}
+              {/* Current Password */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  Mật khẩu hiện tại <span style={{ color: '#ef4444' }}>*</span>
+                  Current Password <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showCurrentPassword ? 'text' : 'password'}
                     className="admin-input"
-                    placeholder="Nhập mật khẩu bạn đang sử dụng..."
+                    placeholder="Enter your current password..."
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     required
@@ -501,16 +501,16 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              {/* Mật khẩu mới */}
+              {/* New Password */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  Mật khẩu mới <span style={{ color: '#ef4444' }}>*</span>
+                  New Password <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showNewPassword ? 'text' : 'password'}
                     className="admin-input"
-                    placeholder="Tối thiểu 6 ký tự, phải khác mật khẩu cũ..."
+                    placeholder="At least 6 characters, different from current password..."
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
@@ -537,16 +537,16 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              {/* Xác nhận mật khẩu mới */}
+              {/* Confirm New Password */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  Xác nhận mật khẩu mới <span style={{ color: '#ef4444' }}>*</span>
+                  Confirm New Password <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     className="admin-input"
-                    placeholder="Nhập lại chính xác mật khẩu mới..."
+                    placeholder="Re-enter your new password..."
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                     required
@@ -575,7 +575,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmittingPassword}>
-                  Hủy bỏ
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -586,11 +586,11 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   {isSubmittingPassword ? (
                     <>
                       <div className="sci-spinner" style={{ width: 14, height: 14, borderWidth: 2, margin: 0 }} />
-                      Đang cập nhật...
+                      Updating...
                     </>
                   ) : (
                     <>
-                      <KeyRound size={15} /> Cập nhật mật khẩu
+                      <KeyRound size={15} /> Update Password
                     </>
                   )}
                 </button>

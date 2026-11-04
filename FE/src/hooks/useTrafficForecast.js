@@ -227,7 +227,7 @@ export function useOneMinuteVehicleAggregation(datasetId) {
       setStatusInfo(aggStatus)
       setProgress(100)
     } catch (err) {
-      setError(extractErrorMessage(err, err?.message || 'Không thể tổng hợp dữ liệu phương tiện.'))
+      setError(extractErrorMessage(err, err?.message || 'Failed to aggregate vehicle counts.'))
     } finally {
       setIsCalculating(false)
     }
@@ -294,7 +294,7 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
         setFeatureData(data)
         return data
       } catch (err) {
-        setError(extractErrorMessage(err, 'Không thể trích xuất đặc trưng huấn luyện (Training Features).'))
+        setError(extractErrorMessage(err, 'Failed to extract training features.'))
         return null
       } finally {
         setIsLoading(false)

@@ -170,7 +170,7 @@ export default function ScientistDatasetPreviewPage() {
                       setRepresentation('normalized')
                       setPage(1)
                     }}
-                    title="Bung điểm quỹ đạo và chuẩn hóa cột"
+                    title="Expand trajectory points and normalize columns"
                   >
                     Normalized
                   </button>
@@ -181,7 +181,7 @@ export default function ScientistDatasetPreviewPage() {
                       setRepresentation('raw')
                       setPage(1)
                     }}
-                    title="Dữ liệu nguyên bản ban đầu"
+                    title="Original raw records"
                   >
                     Raw
                   </button>
