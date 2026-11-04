@@ -159,66 +159,68 @@ export default function ScientistDatasetPreviewPage() {
         <div className="sci-card-body">
           {/* Parameters Bar (matching Swagger parameter controls) */}
           <div className="sci-params-bar">
-          <div className="sci-params-bar__group">
-            <span className="sci-params-bar__label">Representation:</span>
-            <div className="sci-tabs">
+            <div className="sci-params-bar__controls">
+              <div className="sci-params-bar__group">
+                <span className="sci-params-bar__label">Representation:</span>
+                <div className="sci-tabs">
+                  <button
+                    type="button"
+                    className={representation === 'normalized' ? 'active' : ''}
+                    onClick={() => {
+                      setRepresentation('normalized')
+                      setPage(1)
+                    }}
+                    title="Bung điểm quỹ đạo và chuẩn hóa cột"
+                  >
+                    Normalized
+                  </button>
+                  <button
+                    type="button"
+                    className={representation === 'raw' ? 'active' : ''}
+                    onClick={() => {
+                      setRepresentation('raw')
+                      setPage(1)
+                    }}
+                    title="Dữ liệu nguyên bản ban đầu"
+                  >
+                    Raw
+                  </button>
+                </div>
+              </div>
+
+              <div className="sci-params-bar__group">
+                <span className="sci-params-bar__label">Page Size:</span>
+                <select
+                  className="sci-dataset-select"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setPage(1)
+                  }}
+                >
+                  <option value={10}>10 rows / page</option>
+                  <option value={20}>20 rows / page (default)</option>
+                  <option value={50}>50 rows / page</option>
+                  <option value={100}>100 rows / page (max)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="sci-params-bar__actions">
               <button
                 type="button"
-                className={representation === 'normalized' ? 'active' : ''}
-                onClick={() => {
-                  setRepresentation('normalized')
-                  setPage(1)
-                }}
-                title="Bung điểm quỹ đạo và chuẩn hóa cột"
+                className="btn-secondary"
+                onClick={() => setPage((p) => p)}
+                title="Refresh preview data"
               >
-                Normalized
-              </button>
-              <button
-                type="button"
-                className={representation === 'raw' ? 'active' : ''}
-                onClick={() => {
-                  setRepresentation('raw')
-                  setPage(1)
-                }}
-                title="Dữ liệu nguyên bản ban đầu"
-              >
-                Raw
+                <RefreshCw size={13} /> Refresh
               </button>
             </div>
           </div>
 
-          <div className="sci-params-bar__group">
-            <span className="sci-params-bar__label">Page Size:</span>
-            <select
-              className="sci-dataset-select"
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value))
-                setPage(1)
-              }}
-            >
-              <option value={10}>10 rows / page</option>
-              <option value={20}>20 rows / page (default)</option>
-              <option value={50}>50 rows / page</option>
-              <option value={100}>100 rows / page (max)</option>
-            </select>
-          </div>
-
-          <div className="sci-params-bar__group" style={{ marginLeft: 'auto' }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setPage((p) => p)}
-              title="Refresh preview data"
-            >
-              <RefreshCw size={13} /> Refresh
-            </button>
-          </div>
-        </div>
-
-        {/* Metadata KPI Summary Cards */}
-        {preview && (
-          <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
+          {/* Metadata KPI Summary Cards */}
+          {preview && (
+            <div className="stats-grid" style={{ marginBottom: 0 }}>
             <div className="stat-card stat-card--blue">
               <Database size={96} className="stat-card__watermark" />
               <div className="stat-card__top">
@@ -353,12 +355,9 @@ export default function ScientistDatasetPreviewPage() {
               <table className="sci-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '40px', textAlign: 'center' }}>#</th>
+                    <th style={{ width: '48px', textAlign: 'center' }}>#</th>
                     {preview.columns.map((c) => (
-                      <th key={c.name}>
-                        {c.name}
-                        <small>{c.type}</small>
-                      </th>
+                      <th key={c.name}>{c.name}</th>
                     ))}
                   </tr>
                 </thead>

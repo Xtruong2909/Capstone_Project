@@ -168,3 +168,79 @@ export function useAggregationExplorer(datasetId, { aggregationInterval, roiIden
   return { chart, preview, isLoading, error, reload }
 }
 
+/**
+ * One-click 1-minute vehicle aggregation flow for the Training page:
+ * starts the 60s aggregation job, polls until completed, and loads chart data.
+ */
+export function useOneMinuteVehicleAggregation(datasetId) {
+  const [chart, setChart] = useState(null)
+  const [statusInfo, setStatusInfo] = useState(null)
+  const [isCalculating, setIsCalculating] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setChart(null)
+    setStatusInfo(null)
+    setIsCalculating(false)
+    setProgress(0)
+    setError(null)
+  }, [datasetId])
+
+  const aggregateOneMinute = useCallback(async () => {
+    if (!datasetId) return
+    setIsCalculating(true)
+    setProgress(10)
+    setError(null)
+
+    try {
+      const started = await trafficForecastService.startAggregation(datasetId, {
+        aggregationInterval: 60,
+        roiIdentifier: 'MAIN_ROI',
+        replaceExisting: false,
+      })
+
+      let currentJob = started
+      while (!FINISHED_JOB_STATES.includes(currentJob.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 600))
+        currentJob = await trafficForecastService.getAggregationJob(datasetId, started.job_id)
+        setProgress(Math.max(25, currentJob.progress_percent ?? 50))
+      }
+
+      if (currentJob.status === 'failed') {
+        throw new Error(currentJob.error_message || 'Aggregation job failed.')
+      }
+
+      setProgress(90)
+      const [chartData, aggStatus] = await Promise.all([
+        trafficForecastService.getAggregationChartData(datasetId, {
+          aggregationInterval: 60,
+          roiIdentifier: 'MAIN_ROI',
+        }),
+        trafficForecastService.getAggregationStatus(datasetId, {
+          aggregationInterval: 60,
+          roiIdentifier: 'MAIN_ROI',
+        }),
+      ])
+
+      setChart(chartData)
+      setStatusInfo(aggStatus)
+      setProgress(100)
+    } catch (err) {
+      setError(extractErrorMessage(err, err?.message || 'Không thể tổng hợp dữ liệu phương tiện.'))
+    } finally {
+      setIsCalculating(false)
+    }
+  }, [datasetId])
+
+  return {
+    chart,
+    statusInfo,
+    isCalculating,
+    progress,
+    error,
+    aggregateOneMinute,
+  }
+}
+
+
