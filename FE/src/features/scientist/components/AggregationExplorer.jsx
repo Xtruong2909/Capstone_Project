@@ -6,78 +6,47 @@ import {
   RefreshCw,
   TrendingUp,
   Table2,
-  Calendar,
-  X,
 } from 'lucide-react'
 import { useAggregationExplorer } from '../../../hooks/useTrafficForecast'
 import LineChart from './LineChart'
 import { formatDate, formatNumber } from '../utils/formatters'
 
-const INTERVAL_OPTIONS = [60, 120, 180, 300, 600, 900]
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const DEFAULT_ROI = 'MAIN_ROI'
 
-/** datetime-local value -> ISO string for the API (undefined if empty) */
-const toIso = (value) => (value ? new Date(value).toISOString() : undefined)
-
 /**
  * Charts (GET .../chart-data) + aggregated table (GET .../preview).
- * If `aggregationInterval` / `roiIdentifier` props are given they control the data
- * (and the matching inputs are hidden); otherwise the component owns those filters.
+ * Uses 1-minute MAIN_ROI data by default; callers can override these parameters.
  * `refreshKey` changes force a reload (e.g. after an aggregation job finishes).
  */
 export default function AggregationExplorer({
   datasetId,
   versionId,
-  aggregationInterval: intervalProp,
-  roiIdentifier: roiProp,
+  aggregationInterval = 60,
+  roiIdentifier = DEFAULT_ROI,
   refreshKey = 0,
+  showCharts = true,
   title = 'Traffic Time-Series Charts',
   subtitle = 'Vehicle Count, Average Speed, and Estimated Traffic Flow across time buckets.',
 }) {
-  const [intervalState, setIntervalState] = useState(60)
-  const [roiInput, setRoiInput] = useState(DEFAULT_ROI)
-  const [roiState, setRoiState] = useState(DEFAULT_ROI)
-  const [startInput, setStartInput] = useState('')
-  const [endInput, setEndInput] = useState('')
-  const [range, setRange] = useState({ startTime: undefined, endTime: undefined })
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-
-  const aggregationInterval = intervalProp ?? intervalState
-  const roiIdentifier = roiProp ?? roiState
 
   const { chart, preview, isLoading, error, reload } = useAggregationExplorer(datasetId, {
     aggregationInterval,
     roiIdentifier,
-    startTime: range.startTime,
-    endTime: range.endTime,
     page,
     pageSize,
     refreshKey,
   })
 
-  const applyFilters = (e) => {
-    e.preventDefault()
-    if (roiProp === undefined) setRoiState(roiInput.trim() || DEFAULT_ROI)
-    setRange({ startTime: toIso(startInput), endTime: toIso(endInput) })
-    setPage(1)
-  }
-
-  const clearRange = () => {
-    setStartInput('')
-    setEndInput('')
-    setRange({ startTime: undefined, endTime: undefined })
-    setPage(1)
-  }
-
   const totalPages = preview ? Math.max(1, Math.ceil(preview.total_count / pageSize)) : 1
   const units = chart?.calculation_metadata?.units || {}
-  const hasRangeFilter = Boolean(startInput || endInput || range.startTime || range.endTime)
 
   return (
     <>
-      {/* Card 1: Filter Bar + 3 Time-Series Charts */}
+      {/* Card 1: 3 Time-Series Charts */}
+      {showCharts && (
       <section className="admin-card">
         <div className="admin-card__header">
           <div className="admin-card__header-left">
@@ -91,9 +60,6 @@ export default function AggregationExplorer({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span className="sci-pill sci-pill--format">
-              Interval: {aggregationInterval}s · ROI: {roiIdentifier}
-            </span>
             <button
               type="button"
               className="btn-secondary"
@@ -107,76 +73,6 @@ export default function AggregationExplorer({
         </div>
 
         <div className="sci-card-body">
-          {/* Filter Bar */}
-          <form className="sci-params-bar" onSubmit={applyFilters}>
-            <div className="sci-params-bar__controls">
-              {intervalProp === undefined && (
-                <div className="sci-params-bar__group">
-                  <span className="sci-params-bar__label">Interval:</span>
-                  <select
-                    className="sci-dataset-select"
-                    value={intervalState}
-                    onChange={(e) => {
-                      setIntervalState(Number(e.target.value))
-                      setPage(1)
-                    }}
-                  >
-                    {INTERVAL_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s} s ({s / 60} min)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {roiProp === undefined && (
-                <div className="sci-params-bar__group">
-                  <span className="sci-params-bar__label">ROI:</span>
-                  <input
-                    className="admin-input"
-                    style={{ width: 140 }}
-                    value={roiInput}
-                    maxLength={64}
-                    onChange={(e) => setRoiInput(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div className="sci-params-bar__group">
-                <Calendar size={14} style={{ color: '#64748b' }} />
-                <span className="sci-params-bar__label">From:</span>
-                <input
-                  type="datetime-local"
-                  className="admin-input"
-                  value={startInput}
-                  onChange={(e) => setStartInput(e.target.value)}
-                />
-              </div>
-
-              <div className="sci-params-bar__group">
-                <span className="sci-params-bar__label">To:</span>
-                <input
-                  type="datetime-local"
-                  className="admin-input"
-                  value={endInput}
-                  onChange={(e) => setEndInput(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="sci-params-bar__actions">
-              {hasRangeFilter && (
-                <button type="button" className="btn-secondary" onClick={clearRange}>
-                  <X size={14} /> Clear
-                </button>
-              )}
-              <button type="submit" className="btn-action btn-action--primary">
-                Apply Filter
-              </button>
-            </div>
-          </form>
-
           {error ? (
             <div className="sci-state sci-state--error">
               <p style={{ margin: 0, fontWeight: 700 }}>{error}</p>
@@ -221,9 +117,10 @@ export default function AggregationExplorer({
           )}
         </div>
       </section>
+      )}
 
       {/* Card 2: Aggregated Data Table */}
-      {!error && (
+      {(!error || !showCharts) && (
         <section className="admin-card">
           <div className="admin-card__header">
             <div className="admin-card__header-left">
@@ -246,7 +143,16 @@ export default function AggregationExplorer({
           </div>
 
           <div className="sci-card-body">
-            {preview && preview.items.length === 0 ? (
+            {error ? (
+              <div className="sci-state sci-state--error" role="alert">
+                <p>{error}</p>
+                <button type="button" className="btn-secondary" onClick={reload}>
+                  <RefreshCw size={14} /> Retry
+                </button>
+              </div>
+            ) : isLoading ? (
+              <div className="sci-state" role="status">Loading aggregated traffic records...</div>
+            ) : preview && preview.items.length === 0 ? (
               <div className="sci-state">No aggregated rows found for the selected filters.</div>
             ) : (
               <div className="sci-table-wrap">
@@ -258,8 +164,6 @@ export default function AggregationExplorer({
                       <th>Vehicle Count</th>
                       <th>Average Speed (km/h)</th>
                       <th>Traffic Flow (veh/min)</th>
-                      <th>Interval</th>
-                      <th>ROI</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -273,10 +177,6 @@ export default function AggregationExplorer({
                         <td>{row.mean_speed != null ? row.mean_speed.toFixed(2) : '—'}</td>
                         <td style={{ fontWeight: 700, color: '#ea580c' }}>
                           {row.traffic_flow != null ? row.traffic_flow.toFixed(2) : '—'}
-                        </td>
-                        <td>{row.aggregation_interval}s</td>
-                        <td>
-                          <span className="sci-pill sci-pill--format">{row.roi_identifier}</span>
                         </td>
                       </tr>
                     ))}

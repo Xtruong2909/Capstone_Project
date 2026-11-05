@@ -6,10 +6,7 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
-  Layers,
   Clock,
-  Target,
 } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatters'
 
@@ -36,8 +33,9 @@ export default function TrainingFeaturePanel({
   isLoading,
   error,
   onGenerate,
+  roiInput,
+  onRoiChange,
 }) {
-  const [roiInput, setRoiInput] = useState('MAIN_ROI')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [page, setPage] = useState(1)
 
@@ -83,7 +81,7 @@ export default function TrainingFeaturePanel({
               style={{ width: 130, height: 38, boxSizing: 'border-box' }}
               value={roiInput}
               maxLength={64}
-              onChange={(e) => setRoiInput(e.target.value)}
+              onChange={(e) => onRoiChange(e.target.value)}
               disabled={isLoading}
               placeholder="MAIN_ROI"
             />
@@ -129,54 +127,13 @@ export default function TrainingFeaturePanel({
               No training features extracted yet
             </div>
             <div style={{ fontSize: '0.84rem' }}>
-              Click <strong>&ldquo;Extract Training Features&rdquo;</strong> to call{' '}
-              <code>POST /api/feature-engineering/training</code> and build the X / Y sample matrix.
+              Click <strong>&ldquo;Extract Training Features&rdquo;</strong> to build the X / Y sample matrix.
             </div>
           </div>
         )}
 
         {!isLoading && !error && featureData && (
           <>
-            {/* Configuration Summary Bar */}
-            <div className="sci-fe-config-grid">
-              <div className="sci-fe-config-item">
-                <small>Total Samples</small>
-                <strong>
-                  <CheckCircle2 size={15} style={{ color: '#16a34a' }} />
-                  {formatNumber(sampleCount)} complete samples
-                </strong>
-              </div>
-
-              <div className="sci-fe-config-item">
-                <small>Method &amp; Interval</small>
-                <strong>
-                  <Layers size={15} style={{ color: '#1668e3' }} />
-                  {config?.method || 'sliding_window'} · {config?.aggregation_interval ?? 60}s
-                </strong>
-              </div>
-
-              <div className="sci-fe-config-item">
-                <small>Target Column</small>
-                <strong>
-                  <Target size={15} style={{ color: '#7c3aed' }} />
-                  {config?.target_column || 'traffic_flow'} (ROI: {featureData.roi_identifier})
-                </strong>
-              </div>
-
-              <div className="sci-fe-config-item">
-                <small>Input Features X ({config?.lag_count ?? 5} Lags)</small>
-                <strong>{featureOrder.join(' → ')}</strong>
-              </div>
-
-              <div className="sci-fe-config-item">
-                <small>Output Targets Y (Horizons)</small>
-                <strong>
-                  {(config?.forecast_horizons || [1, 3, 5]).map((h) => `+${h}m`).join(', ')} (
-                  {targetOrder.join(', ')})
-                </strong>
-              </div>
-            </div>
-
             {sampleCount === 0 ? (
               <div className="sci-warning">
                 Insufficient continuous 10-minute observations (from t-4 to t+5) to build complete training samples.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trafficForecastService } from '../services/trafficForecastService'
+import { trainingFeatureState } from '../services/trainingFeatureState'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
 
 const JOB_POLL_INTERVAL_MS = 2000
@@ -175,20 +176,51 @@ export function useAggregationExplorer(datasetId, { aggregationInterval, roiIden
 export function useOneMinuteVehicleAggregation(datasetId) {
   const [chart, setChart] = useState(null)
   const [statusInfo, setStatusInfo] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isCalculating, setIsCalculating] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState(null)
+  const requestRef = useRef(0)
 
   useEffect(() => {
+    const requestId = ++requestRef.current
     setChart(null)
     setStatusInfo(null)
+    setIsLoading(Boolean(datasetId))
     setIsCalculating(false)
     setProgress(0)
     setError(null)
+
+    const restoreResults = async () => {
+      try {
+        const options = { aggregationInterval: 60, roiIdentifier: 'MAIN_ROI' }
+        const status = await trafficForecastService.getAggregationStatus(datasetId, options)
+        if (requestId !== requestRef.current) return
+        if (status.is_ready) {
+          const savedChart = await trafficForecastService.getAggregationChartData(datasetId, options)
+          if (requestId !== requestRef.current) return
+          setChart(savedChart)
+          setProgress(100)
+        }
+        setStatusInfo(status)
+      } catch (err) {
+        if (requestId !== requestRef.current) return
+        setError(extractErrorMessage(err, 'Failed to load saved vehicle aggregation.'))
+      } finally {
+        if (requestId === requestRef.current) setIsLoading(false)
+      }
+    }
+
+    if (datasetId) restoreResults()
+    return () => {
+      requestRef.current += 1
+    }
   }, [datasetId])
 
   const aggregateOneMinute = useCallback(async () => {
     if (!datasetId) return
+    const requestId = ++requestRef.current
+    setIsLoading(false)
     setIsCalculating(true)
     setProgress(10)
     setError(null)
@@ -200,10 +232,13 @@ export function useOneMinuteVehicleAggregation(datasetId) {
         replaceExisting: false,
       })
 
+      if (requestId !== requestRef.current) return
       let currentJob = started
       while (!FINISHED_JOB_STATES.includes(currentJob.status)) {
         await new Promise((resolve) => setTimeout(resolve, 600))
+        if (requestId !== requestRef.current) return
         currentJob = await trafficForecastService.getAggregationJob(datasetId, started.job_id)
+        if (requestId !== requestRef.current) return
         setProgress(Math.max(25, currentJob.progress_percent ?? 50))
       }
 
@@ -223,19 +258,22 @@ export function useOneMinuteVehicleAggregation(datasetId) {
         }),
       ])
 
+      if (requestId !== requestRef.current) return
       setChart(chartData)
       setStatusInfo(aggStatus)
       setProgress(100)
     } catch (err) {
+      if (requestId !== requestRef.current) return
       setError(extractErrorMessage(err, err?.message || 'Failed to aggregate vehicle counts.'))
     } finally {
-      setIsCalculating(false)
+      if (requestId === requestRef.current) setIsCalculating(false)
     }
   }, [datasetId])
 
   return {
     chart,
     statusInfo,
+    isLoading,
     isCalculating,
     progress,
     error,
@@ -249,23 +287,45 @@ export function useOneMinuteVehicleAggregation(datasetId) {
  */
 export function useTrainingFeatureEngineering(datasetId, versionId) {
   const [featureData, setFeatureData] = useState(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [roiInput, setRoiInput] = useState('MAIN_ROI')
+  const requestRef = useRef(0)
 
   useEffect(() => {
+    const requestId = ++requestRef.current
+    const savedRoi = trainingFeatureState.read(datasetId, versionId)
     setFeatureData(null)
-    setIsLoading(false)
+    setRoiInput(savedRoi || 'MAIN_ROI')
+    setIsLoading(Boolean(savedRoi))
     setError(null)
+    if (savedRoi) {
+      trafficForecastService.prepareTrainingFeatures(versionId, savedRoi)
+        .then((data) => {
+          if (requestId === requestRef.current) setFeatureData(data)
+        })
+        .catch((err) => {
+          if (requestId === requestRef.current) {
+            setError(extractErrorMessage(err, 'Failed to restore training features. Please retry.'))
+          }
+        })
+        .finally(() => {
+          if (requestId === requestRef.current) setIsLoading(false)
+        })
+    }
+    return () => { requestRef.current += 1 }
   }, [datasetId, versionId])
 
   const generateTrainingFeatures = useCallback(
     async (roiIdentifier = 'MAIN_ROI') => {
       if (!versionId) return null
+      const requestId = ++requestRef.current
       setIsLoading(true)
       setError(null)
 
       try {
         let data = await trafficForecastService.prepareTrainingFeatures(versionId, roiIdentifier)
+        if (requestId !== requestRef.current) return null
 
         // If no samples were returned because 60s aggregation hasn't been generated yet,
         // automatically run the 60s aggregation job and re-fetch training features.
@@ -274,16 +334,23 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
             aggregationInterval: 60,
             roiIdentifier,
           })
+          if (requestId !== requestRef.current) return null
           if (!status?.is_ready) {
             const started = await trafficForecastService.startAggregation(datasetId, {
               aggregationInterval: 60,
               roiIdentifier,
               replaceExisting: false,
             })
+            if (requestId !== requestRef.current) return null
             let currentJob = started
             while (!FINISHED_JOB_STATES.includes(currentJob.status)) {
               await new Promise((resolve) => setTimeout(resolve, 600))
+              if (requestId !== requestRef.current) return null
               currentJob = await trafficForecastService.getAggregationJob(datasetId, started.job_id)
+              if (requestId !== requestRef.current) return null
+            }
+            if (currentJob.status === 'failed') {
+              throw new Error(currentJob.error_message || 'Aggregation job failed.')
             }
             if (currentJob.status === 'completed') {
               data = await trafficForecastService.prepareTrainingFeatures(versionId, roiIdentifier)
@@ -291,13 +358,17 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
           }
         }
 
+        if (requestId !== requestRef.current) return null
+        trainingFeatureState.save(datasetId, versionId, roiIdentifier)
+        setRoiInput(roiIdentifier)
         setFeatureData(data)
         return data
       } catch (err) {
+        if (requestId !== requestRef.current) return null
         setError(extractErrorMessage(err, 'Failed to extract training features.'))
         return null
       } finally {
-        setIsLoading(false)
+        if (requestId === requestRef.current) setIsLoading(false)
       }
     },
     [datasetId, versionId]
@@ -305,6 +376,8 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
 
   return {
     featureData,
+    roiInput,
+    setRoiInput,
     isLoading,
     error,
     generateTrainingFeatures,

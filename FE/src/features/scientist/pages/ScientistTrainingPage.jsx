@@ -7,6 +7,7 @@ import {
 } from '../../../hooks/useTrafficForecast'
 import DatasetInfoPanel from '../components/DatasetInfoPanel'
 import BarChart from '../components/BarChart'
+import AggregationExplorer from '../components/AggregationExplorer'
 import TrainingFeaturePanel from '../components/TrainingFeaturePanel'
 import { formatDate, formatNumber } from '../utils/formatters'
 
@@ -22,11 +23,13 @@ export default function ScientistTrainingPage() {
     representation: 'normalized',
   })
 
-  const { chart, statusInfo, isCalculating, progress, error, aggregateOneMinute } =
+  const { chart, statusInfo, isLoading, isCalculating, progress, error, aggregateOneMinute } =
     useOneMinuteVehicleAggregation(datasetId)
 
   const {
     featureData,
+    roiInput,
+    setRoiInput,
     isLoading: isGeneratingFeatures,
     error: featureError,
     generateTrainingFeatures,
@@ -76,7 +79,7 @@ export default function ScientistTrainingPage() {
               type="button"
               className="btn-action btn-action--primary sci-train-btn"
               onClick={aggregateOneMinute}
-              disabled={isCalculating}
+              disabled={isLoading || isCalculating}
             >
               {isCalculating ? (
                 <Loader2 size={16} className="sci-spin" />
@@ -93,6 +96,12 @@ export default function ScientistTrainingPage() {
         </div>
 
         <div className="sci-card-body">
+          {isLoading && (
+            <div className="sci-state" role="status">
+              <Loader2 size={20} className="sci-spin" /> Loading saved vehicle aggregation...
+            </div>
+          )}
+
           {/* Calculating state */}
           {isCalculating && (
             <div className="sci-job">
@@ -116,8 +125,8 @@ export default function ScientistTrainingPage() {
             </div>
           )}
 
-          {/* Empty prompt before user clicks the aggregate button */}
-          {!isCalculating && !error && !chart && (
+          {/* Show the empty prompt only after checking saved results. */}
+          {!isLoading && !isCalculating && !error && !chart && (
             <div className="sci-state">
               <BarChart3 size={34} style={{ marginBottom: '0.5rem', color: '#94a3b8' }} />
               <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
@@ -129,8 +138,8 @@ export default function ScientistTrainingPage() {
             </div>
           )}
 
-          {/* Bar chart result after clicking the button */}
-          {!isCalculating && chart && (
+          {/* Saved or newly generated aggregation results. */}
+          {!isLoading && !isCalculating && chart && (
             <>
               {statusInfo && (
                 <div className="sci-status-box">
@@ -157,9 +166,23 @@ export default function ScientistTrainingPage() {
         </div>
       </section>
 
-      {/* Section 2: Feature Engineering - Training Samples (POST /api/feature-engineering/training) */}
+      {!isLoading && !isCalculating && chart && (
+        <AggregationExplorer
+          key={`${datasetId}:${versionId}`}
+          datasetId={datasetId}
+          versionId={versionId}
+          aggregationInterval={60}
+          roiIdentifier="MAIN_ROI"
+          title="Training · 1-Minute Traffic Charts"
+        />
+      )}
+
+      {/* Feature Engineering - Training Samples (POST /api/feature-engineering/training) */}
       <TrainingFeaturePanel
+        key={`${datasetId}:${versionId}`}
         featureData={featureData}
+        roiInput={roiInput}
+        onRoiChange={setRoiInput}
         isLoading={isGeneratingFeatures}
         error={featureError}
         onGenerate={generateTrainingFeatures}

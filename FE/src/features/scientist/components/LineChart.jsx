@@ -1,4 +1,5 @@
 import { useId, useMemo } from 'react'
+import { useChartHover } from '../../../hooks/useChartHover'
 
 const WIDTH = 560
 const HEIGHT = 195
@@ -95,6 +96,15 @@ export default function LineChart({ title, unit, labels = [], values = [], color
     }
   }, [labels, values])
 
+  const { activePoint, hoverHandlers } = useChartHover(points, {
+    left: PAD.left, right: WIDTH - PAD.right, top: PAD.top, bottom: HEIGHT - PAD.bottom,
+  })
+  const tooltipWidth = 232
+  const tooltipX = activePoint
+    ? Math.max(PAD.left, Math.min(activePoint.x - tooltipWidth / 2, WIDTH - PAD.right - tooltipWidth))
+    : 0
+  const tooltipY = activePoint?.y < 85 ? HEIGHT - PAD.bottom - 84 : PAD.top
+
   return (
     <div className="sci-chart">
       <div className="sci-chart__head">
@@ -112,7 +122,13 @@ export default function LineChart({ title, unit, labels = [], values = [], color
       {!hasData ? (
         <div className="sci-chart__empty">No data points for selected range</div>
       ) : (
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={title}>
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          role="img"
+          aria-label={`${title}. Use left and right arrow keys to inspect values.`}
+          tabIndex={0}
+          {...hoverHandlers}
+        >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.22" />
@@ -173,9 +189,34 @@ export default function LineChart({ title, unit, labels = [], values = [], color
                 stroke={color}
                 strokeWidth="2"
               >
-                <title>{`${formatTick(pt.label)}: ${pt.v.toFixed(2)}`}</title>
+                <title>{`${formatTick(pt.label)}: ${pt.v.toLocaleString('en-GB', { maximumFractionDigits: 2 })}`}</title>
               </circle>
             ))}
+          {activePoint && (
+            <g pointerEvents="none">
+              <line
+                x1={activePoint.x} x2={activePoint.x}
+                y1={PAD.top} y2={HEIGHT - PAD.bottom}
+                stroke={color} strokeWidth="1.5" strokeDasharray="4 3"
+              />
+              <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#fff" stroke={color} strokeWidth="2.5" />
+              <g transform={`translate(${tooltipX}, ${tooltipY})`}>
+                <rect x="0" y="3" width={tooltipWidth} height="84" rx="10" fill="#0f172a" opacity="0.08" />
+                <rect width={tooltipWidth} height="84" rx="10" fill="#fff" stroke="#dbe4f0" />
+                <text x="14" y="22" fontSize="12" fontWeight="500" fill="#64748b">
+                  {formatTooltipTime(activePoint.label)}
+                </text>
+                <text x="14" y="49" fontSize="22" fontWeight="700" fill={color}>
+                  {activePoint.v.toLocaleString('en-GB', { maximumFractionDigits: 2 })}
+                </text>
+                {unit && (
+                  <text x="14" y="69" fontSize="11" fill="#64748b">
+                    {unit}
+                  </text>
+                )}
+              </g>
+            </g>
+          )}
         </svg>
       )}
 
@@ -188,6 +229,15 @@ export default function LineChart({ title, unit, labels = [], values = [], color
       )}
     </div>
   )
+}
+
+function formatTooltipTime(label) {
+  if (!label) return ''
+  const date = new Date(label)
+  if (Number.isNaN(date.getTime())) return String(label)
+  return date.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 }
 
 function formatTick(label) {
