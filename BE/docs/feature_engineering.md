@@ -16,10 +16,13 @@ existing `/api/v1` prefix. Both accept the same request:
 
 ```json
 {
-  "dataset_version_id": "88606239-73b3-401f-96c7-7eaeea164d99",
-  "roi_identifier": "MAIN_ROI"
+  "dataset_version_id": "88606239-73b3-401f-96c7-7eaeea164d99"
 }
 ```
+
+The optional `roi_identifier` is hidden from the request schema in Swagger and
+defaults to `MAIN_ROI`. Existing clients may still send an explicit ROI;
+validation and response ROI fields remain unchanged.
 
 Configuration is fixed and returned under `configuration`:
 
