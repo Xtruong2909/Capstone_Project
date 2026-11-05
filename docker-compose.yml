@@ -1,4 +1,3 @@
-
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -34,6 +33,7 @@ services:
       - "8000:8000"
     volumes:
       - ./BE/app:/app/app
+      - ./BE/tests:/app/tests
       - dataset_uploads:/app/uploads/datasets
     depends_on:
       postgres:
@@ -50,10 +50,9 @@ services:
     depends_on:
       - backend
     volumes:
-    - ./FE:/app
-    - /app/node_modules
+      - ./FE:/app
+      - /app/node_modules
 
 volumes:
   postgres_data:
   dataset_uploads:
-  
