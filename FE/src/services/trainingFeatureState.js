@@ -1,7 +1,9 @@
+import { authStorage } from './authStorage'
+
 // Remember only the successful extraction's ROI; reload samples through the API.
 // This avoids storing potentially large sample matrices in browser storage.
 function storageKey(datasetId, versionId) {
-  const user = JSON.parse(localStorage.getItem('user_info') || 'null')
+  const { user } = authStorage.read()
   if (!user?.id || !datasetId || !versionId) return null
   return `training-features:v1:${user.id}:${datasetId}:${versionId}`
 }
