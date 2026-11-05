@@ -8,7 +8,7 @@ import {
   ChevronRight,
   Clock,
 } from 'lucide-react'
-import { formatDate, formatNumber } from '../utils/formatters'
+import { formatNumber } from '../utils/formatters'
 
 const PAGE_SIZE = 15
 
@@ -33,8 +33,6 @@ export default function TrainingFeaturePanel({
   isLoading,
   error,
   onGenerate,
-  roiInput,
-  onRoiChange,
 }) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [page, setPage] = useState(1)
@@ -43,7 +41,7 @@ export default function TrainingFeaturePanel({
     e.preventDefault()
     setSelectedIdx(0)
     setPage(1)
-    onGenerate(roiInput.trim() || 'MAIN_ROI')
+    onGenerate('MAIN_ROI')
   }
 
   const samples = featureData?.samples || []
@@ -74,19 +72,6 @@ export default function TrainingFeaturePanel({
         </div>
 
         <form className="sci-train-actions" onSubmit={handleRun}>
-          <div className="sci-params-bar__group">
-            <span className="sci-params-bar__label">ROI:</span>
-            <input
-              className="admin-input"
-              style={{ width: 130, height: 38, boxSizing: 'border-box' }}
-              value={roiInput}
-              maxLength={64}
-              onChange={(e) => onRoiChange(e.target.value)}
-              disabled={isLoading}
-              placeholder="MAIN_ROI"
-            />
-          </div>
-
           <button
             type="submit"
             className="btn-action btn-action--primary sci-train-btn"
@@ -98,7 +83,7 @@ export default function TrainingFeaturePanel({
               <Play size={16} />
             )}
             <span>
-              {isLoading ? 'Extracting X / Y...' : 'Extract Training Features'}
+              {isLoading ? 'Extracting Lag Features...' : 'Extract Lag Features'}
             </span>
           </button>
         </form>
@@ -124,10 +109,10 @@ export default function TrainingFeaturePanel({
           <div className="sci-state">
             <Cpu size={34} style={{ marginBottom: '0.5rem', color: '#94a3b8' }} />
             <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
-              No training features extracted yet
+              No lag features extracted yet
             </div>
             <div style={{ fontSize: '0.84rem' }}>
-              Click <strong>&ldquo;Extract Training Features&rdquo;</strong> to build the X / Y sample matrix.
+              Click <strong>&ldquo;Extract Lag Features&rdquo;</strong> to build the X / Y sample matrix.
             </div>
           </div>
         )}
@@ -154,8 +139,8 @@ export default function TrainingFeaturePanel({
                         </span>
                       </div>
                       <span className="sci-fe-window__range">
-                        <Clock size={13} /> History window: {formatDate(activeSample.history_start_time)} →{' '}
-                        {formatDate(activeSample.time_bucket)}
+                        <Clock size={13} /> History window: {formatShortTime(activeSample.history_start_time)} →{' '}
+                        {formatShortTime(activeSample.time_bucket)}
                       </span>
                     </div>
 

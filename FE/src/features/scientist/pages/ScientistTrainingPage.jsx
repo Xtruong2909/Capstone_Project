@@ -28,8 +28,6 @@ export default function ScientistTrainingPage() {
 
   const {
     featureData,
-    roiInput,
-    setRoiInput,
     isLoading: isGeneratingFeatures,
     error: featureError,
     generateTrainingFeatures,
@@ -181,8 +179,6 @@ export default function ScientistTrainingPage() {
       <TrainingFeaturePanel
         key={`${datasetId}:${versionId}`}
         featureData={featureData}
-        roiInput={roiInput}
-        onRoiChange={setRoiInput}
         isLoading={isGeneratingFeatures}
         error={featureError}
         onGenerate={generateTrainingFeatures}
