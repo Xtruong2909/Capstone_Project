@@ -166,7 +166,7 @@ export default function ScientistTrainingPage() {
 
       {!isLoading && !isCalculating && chart && (
         <AggregationExplorer
-          key={`${datasetId}:${versionId}`}
+          key={`aggregation:${datasetId}:${versionId}`}
           datasetId={datasetId}
           versionId={versionId}
           aggregationInterval={60}
@@ -177,7 +177,7 @@ export default function ScientistTrainingPage() {
 
       {/* Feature Engineering - Training Samples (POST /api/feature-engineering/training) */}
       <TrainingFeaturePanel
-        key={`${datasetId}:${versionId}`}
+        key={`features:${datasetId}:${versionId}`}
         featureData={featureData}
         isLoading={isGeneratingFeatures}
         error={featureError}

@@ -13,6 +13,7 @@ import {
 import { useAggregationExplorer } from '../../../hooks/useTrafficForecast'
 import LineChart from './LineChart'
 import { formatNumber } from '../utils/formatters'
+import './AggregationExplorer.css'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const DEFAULT_ROI = 'MAIN_ROI'
@@ -74,6 +75,7 @@ export default function AggregationExplorer({
         <div className="sci-pager__controls">
           <select
             className="sci-dataset-select"
+            aria-label="Rows per page"
             value={pageSize}
             onChange={(e) => {
               setPageSize(Number(e.target.value))
@@ -284,7 +286,7 @@ export default function AggregationExplorer({
 
       {/* Card 3 (Always Visible Directly): 2-Column Table (Time & Traffic Flow) */}
       {(!error || !showCharts) && (
-        <section className="admin-card">
+        <section className="admin-card sci-flow-card">
           <div className="admin-card__header">
             <div className="admin-card__header-left">
               <div className="admin-card__icon-box admin-card__icon-box--blue">
@@ -320,21 +322,19 @@ export default function AggregationExplorer({
             ) : preview && preview.items.length === 0 ? (
               <div className="sci-state">No aggregated rows found for the selected filters.</div>
             ) : (
-              <div className="sci-table-wrap">
-                <table className="sci-table">
+              <div className="sci-table-wrap sci-flow-table-wrap" tabIndex={0} role="region" aria-label="Traffic flow records" >
+                <table className="sci-table sci-flow-table">
                   <thead>
                     <tr>
-                      <th>Time</th>
-                      <th>Traffic Flow</th>
+                      <th scope="col">Time</th>
+                      <th scope="col">Traffic Flow</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(preview?.items || []).map((row) => (
                       <tr key={row.id}>
-                        <td style={{ fontWeight: 600 }}>{formatTimeOnly(row.time_bucket)}</td>
-                        <td style={{ fontWeight: 700, color: '#ea580c' }}>
-                          {formatTrafficFlow(row.traffic_flow)}
-                        </td>
+                        <td className="sci-flow-table__time">{formatTimeOnly(row.time_bucket)}</td>
+                        <td className="sci-flow-table__value">{formatTrafficFlow(row.traffic_flow)}</td>
                       </tr>
                     ))}
                   </tbody>

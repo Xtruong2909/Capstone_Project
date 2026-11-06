@@ -31,6 +31,7 @@ export default function ScientistPredictionPage() {
       />
 
       <AggregationExplorer
+        key={`aggregation:${datasetId}:${versionId}`}
         datasetId={datasetId}
         versionId={versionId}
         title="Prediction · Traffic Flow & Speed Forecast Insight"
