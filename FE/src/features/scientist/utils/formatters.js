@@ -17,7 +17,7 @@ export function formatNumber(value) {
 export function formatDate(iso) {
   if (!iso) return '-'
   try {
-    return new Date(iso).toLocaleDateString('vi-VN', {
+    return new Date(iso).toLocaleDateString('en-GB', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

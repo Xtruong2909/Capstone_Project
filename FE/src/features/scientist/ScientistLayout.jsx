@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FlaskConical,
   LayoutDashboard,
@@ -19,13 +19,24 @@ const STORAGE_KEY = 'sidebar_collapsed_scientist'
 
 const NAV_ITEMS = [
   { to: '/scientist', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet },
-  { to: '/scientist/preview', label: 'Dataset Detail & Preview', icon: Table2 },
+  { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet,
+    end: true,
+    // Training / Prediction pages are opened from the approved dataset list
+    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/(train|predict)\/?$/,
+  },
+  {
+    to: '/scientist/preview',
+    label: 'Dataset Detail & Preview',
+    icon: Table2,
+    // Detail route (/scientist/datasets/:id/versions/:id) also belongs to this tab
+    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/?$/,
+  },
 ]
 
 export default function ScientistLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -87,13 +98,16 @@ export default function ScientistLayout() {
         </div>
 
         <nav className="admin-sidebar__nav">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+          {NAV_ITEMS.map(({ to, label, icon: Icon, end, extraActivePattern }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               title={label}
-              className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => {
+                const active = isActive || (extraActivePattern?.test(location.pathname) ?? false)
+                return `admin-nav-item ${active ? 'active' : ''}`
+              }}
             >
               <Icon size={19} style={{ flexShrink: 0 }} />
               <span>{label}</span>
@@ -114,7 +128,7 @@ export default function ScientistLayout() {
             className="admin-user-profile"
             onClick={() => setIsProfileModalOpen(true)}
             style={{ cursor: 'pointer', transition: 'background 0.2s', borderRadius: '10px' }}
-            title="Bấm để xem thông tin tài khoản và đổi mật khẩu"
+            title="Click to view account profile and change password"
           >
             <div className="admin-avatar">
               {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
@@ -147,10 +161,10 @@ export default function ScientistLayout() {
             className="btn-secondary"
             onClick={() => setIsProfileModalOpen(true)}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', fontWeight: 600 }}
-            title="Quản lý tài khoản và đổi mật khẩu"
+            title="Manage account profile and change password"
           >
             <UserCheck size={15} style={{ color: '#1668e3' }} />
-            <span>Tài khoản & Bảo mật</span>
+            <span>Account & Security</span>
           </button>
         </header>
 

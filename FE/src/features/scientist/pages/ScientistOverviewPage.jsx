@@ -1,5 +1,15 @@
-import { Link } from 'react-router-dom'
-import { Database, Layers, MapPin, Radio, ChevronRight, Eye, Sparkles } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import {
+  Database,
+  Layers,
+  MapPin,
+  Radio,
+  Eye,
+  Sparkles,
+  FlaskConical,
+  TrendingUp,
+  ShieldCheck,
+} from 'lucide-react'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 
 const WORKFLOW = [
@@ -11,6 +21,13 @@ const WORKFLOW = [
 
 export default function ScientistOverviewPage() {
   const { datasets, isLoading, error } = useApprovedDatasets('')
+  const navigate = useNavigate()
+
+  const goTo = (e, path) => {
+    e.preventDefault()
+    e.stopPropagation()
+    navigate(path)
+  }
 
   const uniqueDatasets = new Set(datasets.map((d) => d.dataset_id)).size
   const uniqueLocations = new Set(datasets.map((d) => d.location_name).filter(Boolean)).size
@@ -95,7 +112,7 @@ export default function ScientistOverviewPage() {
           </div>
 
           {isLoading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem 1.25rem' }}>
               {[1, 2, 3].map((n) => (
                 <div key={n} className="sci-skeleton" style={{ height: 75 }} />
               ))}
@@ -103,7 +120,7 @@ export default function ScientistOverviewPage() {
           )}
 
           {!isLoading && datasets.length === 0 && (
-            <div className="sci-state" style={{ padding: '2.5rem 1rem' }}>
+            <div className="sci-state" style={{ margin: '1rem 1.25rem', padding: '2.5rem 1rem' }}>
               <p style={{ margin: 0, fontWeight: 600 }}>No approved datasets assigned yet.</p>
               <p style={{ margin: '0.3rem 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
                 Contact your system administrator to grant dataset permissions.
@@ -112,94 +129,79 @@ export default function ScientistOverviewPage() {
           )}
 
           {!isLoading && datasets.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', padding: '0.85rem' }}>
-              {latest.map((d) => (
-                <Link
-                  key={d.version_id}
-                  to={`/scientist/datasets/${d.dataset_id}/versions/${d.version_id}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.9rem 1.1rem',
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                    textDecoration: 'none',
-                    color: '#0f172a',
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#93c5fd'
-                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(22, 104, 227, 0.1)'
-                    e.currentTarget.style.transform = 'translateY(-2px)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#e2e8f0'
-                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04)'
-                    e.currentTarget.style.transform = 'none'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
-                    <div
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                        color: '#1668e3',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Database size={20} />
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                          {d.dataset_name}
-                        </span>
-                        <span className="sci-pill sci-pill--version">{d.version_tag}</span>
+            <div className="sci-overview-list">
+              {latest.map((d) => {
+                const basePath = `/scientist/datasets/${d.dataset_id}/versions/${d.version_id}`
+                return (
+                  <Link key={d.version_id} to={basePath} className="sci-overview-row">
+                    <div className="sci-overview-row__left">
+                      <div className="sci-overview-row__avatar">
+                        <Database size={20} />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '0.78rem', color: '#64748b' }}>
-                        {d.location_name && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <MapPin size={12} /> {d.location_name}
+
+                      <div className="sci-overview-row__info">
+                        <div className="sci-overview-row__title-line">
+                          <span className="sci-overview-row__name" title={d.dataset_name}>
+                            {d.dataset_name}
                           </span>
-                        )}
-                        {d.source && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <Layers size={12} /> {d.source}
+                          <span className="sci-pill sci-pill--version">{d.version_tag}</span>
+                          <span className="sci-pill sci-pill--approved">
+                            <ShieldCheck size={11} /> {d.approval_status}
                           </span>
-                        )}
+                        </div>
+
+                        <div
+                          className="sci-overview-row__meta"
+                          title={[d.location_name, d.source].filter(Boolean).join(' • ')}
+                        >
+                          {d.location_name && (
+                            <span className="sci-overview-row__meta-item">
+                              <MapPin size={12} />
+                              <span>{d.location_name}</span>
+                            </span>
+                          )}
+                          {d.source && (
+                            <span className="sci-overview-row__meta-item">
+                              <Layers size={12} />
+                              <span>{d.source}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                    <span className="sci-pill sci-pill--approved">{d.approval_status}</span>
-                    <span
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        color: '#1668e3',
-                        padding: '0.35rem 0.65rem',
-                        borderRadius: '8px',
-                        background: '#eff6ff',
-                      }}
-                    >
-                      <Eye size={13} /> Preview <ChevronRight size={14} />
-                    </span>
-                  </div>
-                </Link>
-              ))}
+                    <div className="sci-icon-actions">
+                      <button
+                        type="button"
+                        className="sci-action-chip"
+                        title="Open Training Pipeline"
+                        onClick={(e) => goTo(e, `${basePath}/train`)}
+                      >
+                        <FlaskConical size={14} />
+                        <span>Train</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="sci-action-chip"
+                        title="Open Prediction Insight"
+                        onClick={(e) => goTo(e, `${basePath}/predict`)}
+                      >
+                        <TrendingUp size={14} />
+                        <span>Predict</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="sci-action-chip sci-action-chip--primary"
+                        title="Open Dataset Detail & Preview"
+                        onClick={(e) => goTo(e, basePath)}
+                      >
+                        <Eye size={14} />
+                        <span>Preview</span>
+                      </button>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </section>
@@ -215,7 +217,7 @@ export default function ScientistOverviewPage() {
             </div>
           </div>
 
-          <div style={{ padding: '0.5rem 1rem 1rem' }}>
+          <div style={{ padding: '1rem 1.25rem 1.25rem' }}>
             <ol className="sci-flow">
               {WORKFLOW.map(([title, text], i) => (
                 <li key={title}>

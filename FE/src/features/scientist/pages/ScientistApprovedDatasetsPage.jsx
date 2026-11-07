@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, RefreshCw, FileSearch, LayoutGrid, List, Eye, ShieldCheck, MapPin, Database } from 'lucide-react'
+import { Search, RefreshCw, FileSearch, LayoutGrid, List, Eye, ShieldCheck, MapPin, Database, FlaskConical, TrendingUp } from 'lucide-react'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import DatasetCard from '../components/DatasetCard'
 
@@ -11,8 +11,10 @@ export default function ScientistApprovedDatasetsPage() {
   const [viewMode, setViewMode] = useState('grid') // 'grid' | 'table'
   const { datasets, isLoading, error, reload } = useApprovedDatasets(search)
 
-  const openPreview = (item) =>
-    navigate(`/scientist/datasets/${item.dataset_id}/versions/${item.version_id}`)
+  const datasetPath = (item) => `/scientist/datasets/${item.dataset_id}/versions/${item.version_id}`
+  const openPreview = (item) => navigate(datasetPath(item))
+  const openTraining = (item) => navigate(`${datasetPath(item)}/train`)
+  const openPrediction = (item) => navigate(`${datasetPath(item)}/predict`)
 
   return (
     <div className="sci-page">
@@ -132,7 +134,13 @@ export default function ScientistApprovedDatasetsPage() {
       {!isLoading && !error && datasets.length > 0 && viewMode === 'grid' && (
         <div className="sci-grid">
           {datasets.map((item) => (
-            <DatasetCard key={item.version_id} item={item} onPreview={openPreview} />
+            <DatasetCard
+              key={item.version_id}
+              item={item}
+              onPreview={openPreview}
+              onTrain={openTraining}
+              onPredict={openPrediction}
+            />
           ))}
         </div>
       )}
@@ -178,14 +186,36 @@ export default function ScientistApprovedDatasetsPage() {
                         <ShieldCheck size={12} /> {item.approval_status}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="btn-action btn-action--primary"
-                        onClick={() => openPreview(item)}
-                      >
-                        <Eye size={14} /> Preview
-                      </button>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div className="sci-icon-actions" style={{ justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          className="sci-action-chip"
+                          onClick={() => openTraining(item)}
+                          title="Open Training Pipeline"
+                        >
+                          <FlaskConical size={14} />
+                          <span>Train</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="sci-action-chip"
+                          onClick={() => openPrediction(item)}
+                          title="Open Prediction Insight"
+                        >
+                          <TrendingUp size={14} />
+                          <span>Predict</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="sci-action-chip sci-action-chip--primary"
+                          onClick={() => openPreview(item)}
+                          title="Open Dataset Detail & Preview"
+                        >
+                          <Eye size={14} />
+                          <span>Preview</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
