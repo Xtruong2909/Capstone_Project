@@ -165,11 +165,14 @@ def test_router_access_and_no_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(service, "require_dataset_scientist", access)
     payload = TrainTestSplitRequest.model_validate(request_data())
     db = MagicMock()
+    saved_id = uuid4()
+    monkeypatch.setattr(service.crud_model_training, "save_split", MagicMock(return_value=SimpleNamespace(id=saved_id)))
     result = split_training(payload, db, MagicMock())
+    assert result.split_id == saved_id
     assert result.train_count == 3
     assert access.call_args.kwargs["dataset_id"] == version.dataset_id
     rebuild.assert_not_called()
-    db.commit.assert_not_called()
+    db.commit.assert_called_once()
     access.side_effect = HTTPException(403, "Access denied")
     with pytest.raises(HTTPException) as error:
         split_training(payload, db, MagicMock())

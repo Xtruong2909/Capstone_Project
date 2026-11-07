@@ -1,13 +1,17 @@
+from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import Text, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.dataset import Dataset, DatasetVersion
 from app.models.experiment import Experiment
+from app.models.model_training import ModelTrainingExperiment, ModelTrainingSplit
 from app.models.user import Role, User
 from app.schemas.admin import UserCreate, UserRoleId
+from app.services.audit_log_service import record_audit_event
 
 
 def get_admin_stats(db: Session) -> dict:
@@ -77,24 +81,52 @@ def get_all_roles(db: Session) -> list[Role]:
     return db.query(Role).order_by(Role.id).all()
 
 
-def get_audit_logs(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
-    """Retrieve audit logs with associated user email."""
-    logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
-    result = []
-    for log in logs:
-        user_email = log.user.email if log.user else None
-        result.append({
-            "id": log.id,
-            "user_id": log.user_id,
-            "user_email": user_email,
-            "action": log.action,
-            "resource_type": log.resource_type,
-            "resource_id": log.resource_id,
-            "details": log.details,
-            "ip_address": log.ip_address,
-            "created_at": log.created_at,
-        })
-    return result
+def get_audit_logs(
+    db: Session,
+    *,
+    skip: int = 0,
+    limit: int = 50,
+    user_id: UUID | None = None,
+    action: str | None = None,
+    module: str | None = None,
+    status: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    search: str | None = None,
+) -> tuple[int, list[AuditLog]]:
+    """Return a stable, filtered audit-log page and its matching total."""
+    query = db.query(AuditLog)
+    if user_id is not None:
+        query = query.filter(AuditLog.user_id == user_id)
+    if action:
+        query = query.filter(func.lower(AuditLog.action) == action.lower())
+    if module:
+        query = query.filter(func.lower(AuditLog.module) == module.lower())
+    if status:
+        query = query.filter(AuditLog.status == status)
+    if start_date is not None:
+        query = query.filter(AuditLog.created_at >= start_date)
+    if end_date is not None:
+        query = query.filter(AuditLog.created_at <= end_date)
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(or_(
+            AuditLog.username.ilike(search_pattern),
+            AuditLog.action.ilike(search_pattern),
+            AuditLog.module.ilike(search_pattern),
+            AuditLog.description.ilike(search_pattern),
+            AuditLog.resource_id.ilike(search_pattern),
+            cast(AuditLog.details, Text).ilike(search_pattern),
+        ))
+
+    total = query.count()
+    logs = (
+        query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return total, logs
 
 
 def create_audit_log(
@@ -105,20 +137,25 @@ def create_audit_log(
     resource_id: str | None = None,
     details: dict | None = None,
     ip_address: str | None = None,
-) -> AuditLog:
-    """Record an audit trail entry."""
-    log = AuditLog(
+) -> None:
+    """Compatibility wrapper for existing callers; logging is isolated from business DB work."""
+    actor = db.get(User, user_id) if user_id is not None else None
+    module = {
+        "USER": "User Management",
+        "DATASET_VERSION": "Dataset",
+        "DATASET": "Dataset",
+    }.get(resource_type.upper(), resource_type.replace("_", " ").title())
+    record_audit_event(
+        user=actor,
         user_id=user_id,
         action=action,
-        resource_type=resource_type,
+        module=module,
+        status="SUCCESS",
+        description=action.replace("_", " ").title(),
         resource_id=resource_id,
-        details=details,
         ip_address=ip_address,
+        details=details,
     )
-    db.add(log)
-    db.commit()
-    db.refresh(log)
-    return log
 
 
 def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
@@ -171,29 +208,37 @@ def approve_or_reject_dataset_version(
 
 
 def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
-    """Retrieve ML forecasting experiments and compute summary metrics."""
-    total_experiments = db.query(Experiment).count()
-    running_count = db.query(Experiment).filter(Experiment.status == "RUNNING").count()
-    completed_count = db.query(Experiment).filter(Experiment.status == "COMPLETED").count()
-    failed_count = db.query(Experiment).filter(Experiment.status == "FAILED").count()
+    """Return legacy forecasting and persisted Data Scientist training runs."""
+    legacy_total = db.query(Experiment).count()
+    training_total = db.query(ModelTrainingExperiment).count()
+    total_experiments = legacy_total + training_total
+
+    def count_status(model: type, value: str) -> int:
+        return db.query(model).filter(model.status == value).count()
 
     stats = {
         "total_experiments": total_experiments,
-        "running_count": running_count,
-        "completed_count": completed_count,
-        "failed_count": failed_count,
+        "pending_count": count_status(ModelTrainingExperiment, "PENDING"),
+        "running_count": (
+            count_status(Experiment, "RUNNING") + count_status(ModelTrainingExperiment, "RUNNING")
+        ),
+        "completed_count": (
+            count_status(Experiment, "COMPLETED") + count_status(ModelTrainingExperiment, "COMPLETED")
+        ),
+        "failed_count": (
+            count_status(Experiment, "FAILED") + count_status(ModelTrainingExperiment, "FAILED")
+        ),
     }
 
-    # Retrieve experiments with details
-    experiments_query = (
+    legacy_query = (
         db.query(Experiment)
         .order_by(Experiment.created_at.desc())
         .limit(limit)
         .all()
     )
 
-    experiments = []
-    for exp in experiments_query:
+    experiments: list[dict] = []
+    for exp in legacy_query:
         metrics_dict = None
         if exp.evaluation_metric:
             metrics_dict = {
@@ -214,9 +259,55 @@ def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
             "dataset_name": exp.dataset_version.dataset.name if exp.dataset_version and exp.dataset_version.dataset else None,
             "metrics": metrics_dict,
             "created_at": exp.created_at,
+            "experiment_type": "FORECASTING",
+            "logs": [],
         })
+
+    training_query = (
+        db.query(
+            ModelTrainingExperiment,
+            User.full_name.label("creator_name"),
+            DatasetVersion.version_tag.label("dataset_version_tag"),
+            Dataset.name.label("dataset_name"),
+        )
+        .join(ModelTrainingSplit, ModelTrainingExperiment.split_id == ModelTrainingSplit.id)
+        .join(DatasetVersion, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
+        .join(Dataset, DatasetVersion.dataset_id == Dataset.id)
+        .outerjoin(User, ModelTrainingExperiment.created_by == User.id)
+        .order_by(ModelTrainingExperiment.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    for exp, creator_name, version_tag, dataset_name in training_query:
+        random_forest_h1 = (
+            (exp.performance_by_horizon or {}).get("1", {}).get("random_forest", {})
+        )
+        experiments.append({
+            "id": exp.id,
+            "name": exp.name,
+            "model_type": (exp.configuration or {}).get("model", "RANDOM_FOREST"),
+            "target_variable": "traffic_flow",
+            "temporal_aggregation_sec": 60,
+            "status": exp.status,
+            "execution_time_sec": exp.execution_time_sec,
+            "creator_name": creator_name,
+            "dataset_version_tag": version_tag,
+            "dataset_name": dataset_name,
+            "metrics": {
+                "mae": random_forest_h1["mae"],
+                "rmse": random_forest_h1["rmse"],
+            } if "mae" in random_forest_h1 and "rmse" in random_forest_h1 else None,
+            "created_at": exp.created_at,
+            "experiment_type": "MODEL_TRAINING",
+            "split_id": exp.split_id,
+            "hyperparameters": (exp.configuration or {}).get("hyperparameters"),
+            "evaluation_mode": (exp.evaluation or {}).get("evaluation_mode"),
+            "logs": exp.logs or [],
+        })
+
+    experiments.sort(key=lambda item: item["created_at"], reverse=True)
 
     return {
         "stats": stats,
-        "experiments": experiments,
+        "experiments": experiments[:limit],
     }

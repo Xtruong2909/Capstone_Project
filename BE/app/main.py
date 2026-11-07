@@ -1,14 +1,19 @@
-from fastapi import Depends, FastAPI, HTTPException
+import logging
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.feature_engineering import router as feature_engineering_router
+from app.api.v1.endpoints.model_training import router as model_training_router
 from app.api.v1.endpoints.train_test_split import router as train_test_split_router
 from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
 from app.database.database import get_db
+from app.services.audit_log_service import record_audit_event
 
 app = FastAPI(
     title=PROJECT_NAME,
@@ -31,6 +36,25 @@ app.add_middleware(
 app.include_router(api_router, prefix=API_V1_STR)
 app.include_router(feature_engineering_router, prefix="/api")
 app.include_router(train_test_split_router, prefix="/api")
+app.include_router(model_training_router, prefix="/api")
+
+
+@app.exception_handler(Exception)
+async def audit_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+    logging.getLogger(__name__).error(
+        "Unhandled API error",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    record_audit_event(
+        action="SYSTEM_ERROR",
+        module="System",
+        status="FAILED",
+        description="Unhandled system error",
+        ip_address=request.client.host if request.client else None,
+        resource_id=request.url.path,
+        details={"method": request.method, "error_type": type(exc).__name__},
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
 @app.get("/", summary="Root API Endpoint")

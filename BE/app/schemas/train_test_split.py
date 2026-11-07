@@ -75,6 +75,7 @@ class TrainTestSplitRequest(BaseModel):
 
 
 class TrainTestSplitResponse(BaseModel):
+    split_id: UUID | None = None
     dataset_version_id: UUID
     roi_identifier: str
     recording_session_id: str

@@ -7,7 +7,6 @@ from app.api.v1.endpoints import (
     dataset_access,
     dataset_mapping,
     datasets,
-    experiments,
     traffic_aggregation,
 )
 
@@ -43,4 +42,3 @@ api_router.include_router(
     prefix="/datasets",
     tags=["Traffic Temporal Aggregation"],
 )
-api_router.include_router(experiments.router, prefix="/experiments")

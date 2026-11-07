@@ -1,6 +1,7 @@
 import smtplib
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Request as HttpRequest
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_user_requiring_password_change
@@ -20,6 +21,7 @@ from app.schemas.user import (
     VerifyOtpRequest,
 )
 from app.services import otp_service
+from app.services.audit_log_service import record_audit_event
 from app.services.email_service import EmailConfigurationError, send_otp_email
 
 router = APIRouter()
@@ -44,16 +46,37 @@ def _send_otp(email: str) -> None:
 
 
 @router.post("/login", response_model=Token, summary="Đăng nhập tài khoản")
-def login(request: LoginRequest, db: Session = Depends(get_db)) -> Token:
+def login(
+    request: LoginRequest,
+    client_request: HttpRequest,
+    db: Session = Depends(get_db),
+) -> Token:
     """Xác thực tài khoản bằng Email & Mật khẩu, trả về JWT Access Token kèm thông tin User."""
     user = crud_user.authenticate_user(db, email=request.email, password=request.password)
+    client_ip = client_request.client.host if client_request.client else None
     if not user:
+        record_audit_event(
+            action="LOGIN_FAILED",
+            module="Authentication",
+            status="FAILED",
+            description="Login failed",
+            username=request.email,
+            ip_address=client_ip,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email hoặc mật khẩu không chính xác",
         )
 
     if not user.is_active:
+        record_audit_event(
+            action="LOGIN_FAILED",
+            module="Authentication",
+            status="FAILED",
+            description="Login failed for an inactive account",
+            user=user,
+            ip_address=client_ip,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tài khoản đã bị vô hiệu hóa hoặc khóa",
@@ -67,6 +90,15 @@ def login(request: LoginRequest, db: Session = Depends(get_db)) -> Token:
     if user.must_change_password:
         token_data["pwd_change_only"] = True
     access_token = create_access_token(data=token_data)
+    if user.role_id != "admin":
+        record_audit_event(
+            action="LOGIN",
+            module="Authentication",
+            status="SUCCESS",
+            description="Login successful",
+            user=user,
+            ip_address=client_ip,
+        )
 
     return Token(
         access_token=access_token,

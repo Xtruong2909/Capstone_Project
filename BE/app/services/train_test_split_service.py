@@ -1,14 +1,18 @@
-"""Split supplied FE samples only. No regeneration, fitting or persistence."""
+"""Split supplied FE samples and persist the immutable training input."""
 
+import hashlib
+import json
 from datetime import UTC
 from decimal import Decimal
 
 from fastapi import HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.dataset_access import require_dataset_scientist
-from app.crud import crud_dataset_access
+from app.crud import crud_dataset_access, crud_model_training
 from app.models.user import User
+from app.schemas.model_training import TrainingSplit
 from app.schemas.train_test_split import SplitSample, TrainTestSplitRequest, TrainTestSplitResponse
 
 
@@ -77,4 +81,16 @@ def prepare_training_split(
     if version is None:
         raise HTTPException(404, "Dataset version not found")
     require_dataset_scientist(dataset_id=version.dataset_id, current_user=user, db=db)
-    return split_training_samples(payload)
+    result = split_training_samples(payload)
+    data = result.model_dump(mode="json", include=set(TrainingSplit.model_fields))
+    fingerprint = hashlib.sha256(json.dumps(
+        data, sort_keys=True, separators=(",", ":"),
+    ).encode()).hexdigest()
+    try:
+        stored = crud_model_training.save_split(db, payload.dataset_version_id, fingerprint, data)
+        result.split_id = stored.id
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(503, "Could not save train/test split; please retry") from exc
+    return result

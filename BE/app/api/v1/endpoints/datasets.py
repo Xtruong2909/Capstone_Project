@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from app.core.dataset_access import require_dataset_reader
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
-from app.models.audit import AuditLog
 from app.models.dataset import DataCleaningHistory, DatasetVersion
 from app.models.user import User
 from app.schemas.dataset import (
@@ -39,6 +38,7 @@ from app.schemas.dataset_normalization import (
     NormalizedDataValidationResponse,
     ProcessingReportResponse,
 )
+from app.services.audit_log_service import audit_action, record_audit_event
 from app.services.dataset_mapping_service import (
     DatasetMappingNotFoundError,
     apply_saved_column_mappings,
@@ -149,14 +149,23 @@ def upload_dataset(
         ) from exc
 
     try:
-        dataset, version = create_dataset_upload(
-            db,
-            metadata=metadata,
-            file_stream=file.file,
-            filename=file.filename or "",
-            creator_id=current_user.id,
+        with audit_action(
+            action="UPLOAD_DATASET",
+            module="Dataset",
+            description="Dataset uploaded successfully",
+            user=current_user,
             ip_address=request.client.host if request.client else None,
-        )
+            details={"filename": file.filename or ""},
+            record_success=False,
+        ):
+            dataset, version = create_dataset_upload(
+                db,
+                metadata=metadata,
+                file_stream=file.file,
+                filename=file.filename or "",
+                creator_id=current_user.id,
+                ip_address=request.client.host if request.client else None,
+            )
     except UnsupportedDatasetFormatError as exc:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -233,10 +242,19 @@ def normalize_dataset_structure(
 )
 def validate_normalized_dataset(
     dataset_id: UUID,
+    request: Request,
     current_user: User = Depends(require_data_engineer),
 ) -> NormalizedDataValidationResponse:
     """Check the latest normalized staging output for common data-quality issues."""
-    return validate_normalized_dataset_service(dataset_id=dataset_id)
+    with audit_action(
+        action="VALIDATE_DATASET",
+        module="Dataset",
+        description="Normalized dataset validation completed",
+        user=current_user,
+        resource_id=dataset_id,
+        ip_address=request.client.host if request.client else None,
+    ):
+        return validate_normalized_dataset_service(dataset_id=dataset_id)
 
 
 # =====================================================================
@@ -456,21 +474,15 @@ def submit_dataset_version_for_admin(
     db.commit()
     db.refresh(version)
 
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="SUBMIT_DATASET_FOR_REVIEW",
-            resource_type="DATASET_VERSION",
-            resource_id=str(version.id),
-            details={
-                "dataset_id": str(dataset_id),
-                "version_id": str(version_id),
-                "status": version.approval_status,
-                "note": payload.note,
-            },
-        )
+    record_audit_event(
+        user=current_user,
+        action="SUBMIT_DATASET_FOR_REVIEW",
+        module="Dataset",
+        status="SUCCESS",
+        description="Dataset version submitted for review",
+        resource_id=version.id,
+        details={"dataset_id": str(dataset_id), "status": version.approval_status},
     )
-    db.commit()
 
     return DatasetVersionSubmitResponse(
         dataset_id=dataset_id,
@@ -526,21 +538,15 @@ def resubmit_dataset_version_for_admin(
     db.commit()
     db.refresh(version)
 
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            action="RESUBMIT_DATASET_FOR_REVIEW",
-            resource_type="DATASET_VERSION",
-            resource_id=str(version.id),
-            details={
-                "dataset_id": str(dataset_id),
-                "version_id": str(version_id),
-                "status": version.approval_status,
-                "note": payload.note,
-            },
-        )
+    record_audit_event(
+        user=current_user,
+        action="RESUBMIT_DATASET_FOR_REVIEW",
+        module="Dataset",
+        status="SUCCESS",
+        description="Dataset version resubmitted for review",
+        resource_id=version.id,
+        details={"dataset_id": str(dataset_id), "status": version.approval_status},
     )
-    db.commit()
 
     return DatasetVersionResubmitResponse(
         dataset_id=dataset_id,
