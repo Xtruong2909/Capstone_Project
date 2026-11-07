@@ -28,7 +28,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
 
-    const result = await login(email, password);
+    const result = await login(email, password, rememberMe);
 
     if (result.success) {
       const roleRoutes = {
