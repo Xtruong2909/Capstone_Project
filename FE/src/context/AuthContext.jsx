@@ -1,29 +1,26 @@
-import { createContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useState, useCallback } from 'react'
 import { authService } from '../services/authService'
+import { authStorage } from '../services/authStorage'
 
 export const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('user_info')
-    return savedUser ? JSON.parse(savedUser) : null
-  })
-  const [token, setToken] = useState(() => localStorage.getItem('access_token') || null)
+  const [user, setUser] = useState(() => authStorage.read().user)
+  const [token, setToken] = useState(() => authStorage.read().token)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
   // Hàm thực hiện đăng nhập
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, rememberMe = false) => {
     setIsLoading(true)
     setError(null)
     try {
       const data = await authService.login({ email, password })
+      authStorage.save(data, rememberMe)
       
       // Lưu vào state và LocalStorage
       setToken(data.access_token)
       setUser(data.user)
-      localStorage.setItem('access_token', data.access_token)
-      localStorage.setItem('user_info', JSON.stringify(data.user))
       
       return { success: true, user: data.user }
     } catch (err) {
@@ -40,8 +37,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     setToken(null)
     setUser(null)
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('user_info')
+    authStorage.clear()
   }, [])
 
   return (

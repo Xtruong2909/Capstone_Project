@@ -618,7 +618,7 @@ def preview_traffic_aggregation(
     query = (
         traffic_time_query(
             db, recording_start=recording_start, start_time=start_time,
-            end_time=end_time, descending=True,
+            end_time=end_time, descending=False,
         )
         .filter(
             TrafficTimeSeries.dataset_version_id == version.id,

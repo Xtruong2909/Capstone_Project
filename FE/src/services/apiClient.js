@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { authStorage } from './authStorage'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
 
@@ -12,7 +13,7 @@ const apiClient = axios.create({
 // Request Interceptor: Tự động gắn Token vào Header nếu đã đăng nhập
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access_token')
+    const { token } = authStorage.read()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -26,8 +27,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('user_info')
+      authStorage.clear()
       // Có thể chuyển hướng về trang login nếu cần
     }
     return Promise.reject(error)
