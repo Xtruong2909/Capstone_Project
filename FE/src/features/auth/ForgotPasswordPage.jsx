@@ -1,117 +1,118 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
-import "./LoginPage.css"; // Tái sử dụng CSS đẹp mắt của LoginPage
+﻿import { Link } from 'react-router-dom'
+import { Mail, ArrowLeft, ArrowRight, Check, CheckCircle2, ShieldCheck, LockKeyhole, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useForgotPassword } from '../../hooks/useForgotPassword'
+import './LoginPage.css'
+import './ForgotPasswordPage.css'
+
+const STEPS = ['Email address', 'Verify code', 'New password']
 
 export default function ForgotPasswordPage() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    // TODO: Khi Backend có API reset password, gọi qua src/services/authService
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSubmitted(true);
-    }, 800);
-  };
+  const recovery = useForgotPassword()
+  const { step, isLoading, email, secondsLeft } = recovery
+  const stepIndex = { email: 0, otp: 1, password: 2, success: 3 }[step]
+  const titles = { email: 'Forgot your password?', otp: 'Check your inbox', password: 'Create a new password', success: 'You’re all set!' }
+  const descriptions = {
+    email: 'Enter the email linked to your account. We’ll send you a code to verify it’s you.',
+    otp: `Enter the 6-digit code sent to ${email}. The code expires in 5 minutes.`,
+    password: 'Choose a new password for your account. Use at least 6 characters.',
+    success: 'Your password has been updated. You can now sign in with your new password.',
+  }
+  const submit = (event) => {
+    event.preventDefault()
+    if (step === 'email') recovery.sendCode()
+    else if (step === 'otp') recovery.verifyCode()
+    else if (step === 'password') recovery.savePassword()
+  }
 
   return (
-    <div className="login-page">
+    <div className="login-page recovery-page">
       <div className="login-card">
-        
-        {/* Cột trái: Giữ nguyên Branding như Login */}
         <section className="login-brand-panel">
           <div className="brand-overlay">
             <div className="brand-logo">
               <div className="brand-logo-mark">A</div>
-              <div>
-                <h1>Urban Traffic</h1>
-                <h2>Analytics</h2>
-                <span>Traffic Dataset Management & Forecasting</span>
-              </div>
+              <div><h1>Urban Traffic</h1><h2>Analytics</h2><span>Traffic Dataset Management &amp; Forecasting</span></div>
             </div>
-
             <div className="brand-content">
-              <h3>
-                Account Recovery
-              </h3>
-              <p>
-                Don't worry, reset instructions will be sent to your registered email address.
-              </p>
+              <div className="recovery-brand-icon"><ShieldCheck size={30} /></div>
+              <h3>Let’s get you<br />back on track.</h3>
+              <p>Recover access to your workspace in three simple steps. Your datasets and insights will be ready when you return.</p>
             </div>
+            <div className="recovery-brand-note"><LockKeyhole size={16} /> Email verification keeps your account protected.</div>
           </div>
         </section>
 
-        {/* Cột phải: Form Quên mật khẩu */}
         <section className="login-form-panel">
-          {/* Nút quay lại trang Đăng nhập */}
-          <button
-            type="button"
-            className="login-back-home"
-            onClick={() => navigate("/login")}
-          >
-            ← Back to Sign In
-          </button>
+          <Link className="login-back-home recovery-back" to="/login"><ArrowLeft size={15} /> Back to Sign In</Link>
+          <div className="login-form-content recovery-content">
+            <ol className="recovery-steps" aria-label="Password recovery progress">
+              {STEPS.map((label, index) => (
+                <li key={label} className={index <= stepIndex ? 'is-active' : ''} aria-current={index === stepIndex ? 'step' : undefined}>
+                  <span>{index < stepIndex ? <Check size={14} /> : index + 1}</span>{label}
+                </li>
+              ))}
+            </ol>
+            <div className={`recovery-icon ${step === 'success' ? 'recovery-icon--success' : ''}`}>
+              {step === 'success' ? <CheckCircle2 size={30} /> : step === 'password' ? <LockKeyhole size={28} /> : <Mail size={28} />}
+            </div>
+            <h2>{titles[step]}</h2>
+            <p className="login-description">{descriptions[step]}</p>
 
-          <div className="login-form-content">
-            <h2>Reset Password</h2>
-            <p className="login-description">
-              Enter your email address and we'll send you a recovery link.
-            </p>
+            {recovery.error && <p className="login-error" role="alert">{recovery.error}</p>}
+            {recovery.notice && <p className="recovery-notice" role="status">{recovery.notice}</p>}
 
-            {isSubmitted ? (
-              // Trạng thái khi đã bấm gửi thành công
-              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <CheckCircle2 size={48} color="#22c55e" style={{ margin: "0 auto 12px" }} />
-                <h3 style={{ fontSize: "1.1rem", marginBottom: "8px" }}>Check your email</h3>
-                <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: "20px" }}>
-                  We've sent password reset instructions to <strong>{email}</strong>
-                </p>
-                <button
-                  type="button"
-                  className="login-submit"
-                  onClick={() => navigate("/login")}
-                >
-                  Return to Sign In
-                </button>
-              </div>
+            {step === 'success' ? (
+              <Link className="login-submit recovery-submit" to="/login">Back to Sign In <ArrowRight size={18} /></Link>
             ) : (
-              // Form nhập email
-              <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label htmlFor="reset-email">Email Address</label>
-                  <div className="input-wrapper">
-                    <Mail size={18} />
-                    <input
-                      id="reset-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your registered email"
-                      required
-                    />
+              <form onSubmit={submit} aria-busy={isLoading}>
+                {step === 'email' && (
+                  <div className="form-group">
+                    <label htmlFor="recovery-email">Email address</label>
+                    <div className="input-wrapper"><Mail size={18} />
+                      <input id="recovery-email" type="email" autoComplete="email" value={email} onChange={(event) => recovery.setEmail(event.target.value)} placeholder="you@example.com" required disabled={isLoading} />
+                    </div>
                   </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="login-submit"
-                  disabled={isLoading}
-                  style={{ marginTop: "16px" }}
-                >
-                  {isLoading ? "Sending Link..." : "Send Reset Link"}
+                )}
+                {step === 'otp' && (
+                  <div className="form-group">
+                    <label htmlFor="recovery-otp">Verification code</label>
+                    <input key="otp" autoFocus id="recovery-otp" className="recovery-otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={recovery.otp} onChange={(event) => recovery.setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" aria-describedby="otp-hint" required disabled={isLoading} />
+                    <p id="otp-hint" className="recovery-hint">You can paste the full code from your email.</p>
+                  </div>
+                )}
+                {step === 'password' && (
+                  <>
+                    <div className="form-group">
+                      <label htmlFor="recovery-password">New password</label>
+                      <div className="input-wrapper"><LockKeyhole size={18} />
+                        <input key="password" autoFocus id="recovery-password" type={recovery.showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={6} maxLength={128} value={recovery.password} onChange={(event) => recovery.setPassword(event.target.value)} required disabled={isLoading} aria-describedby="password-hint" />
+                        <button type="button" className="password-toggle" aria-label={recovery.showPassword ? 'Hide passwords' : 'Show passwords'} aria-pressed={recovery.showPassword} onClick={() => recovery.setShowPassword(!recovery.showPassword)}>{recovery.showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+                      </div>
+                      <p id="password-hint" className="recovery-hint">6–128 characters. A longer, unique password is best.</p>
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="recovery-confirmation">Confirm new password</label>
+                      <div className="input-wrapper"><LockKeyhole size={18} />
+                        <input id="recovery-confirmation" type={recovery.showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={6} maxLength={128} value={recovery.confirmation} onChange={(event) => recovery.setConfirmation(event.target.value)} required disabled={isLoading} />
+                      </div>
+                    </div>
+                  </>
+                )}
+                <button type="submit" className="login-submit recovery-submit" disabled={isLoading}>
+                  {isLoading ? <><Loader2 className="recovery-spinner" size={18} /> Please wait...</> : <>{step === 'email' ? 'Send verification code' : step === 'otp' ? 'Verify code' : 'Reset password'}<ArrowRight size={18} /></>}
                 </button>
+                {step === 'otp' && (
+                  <div className="recovery-resend">
+                    <span>Didn’t receive a code?</span>
+                    <button type="button" disabled={isLoading || secondsLeft > 0} onClick={recovery.sendCode}>{secondsLeft > 0 ? `Resend in ${secondsLeft}s` : 'Resend code'}</button>
+                  </div>
+                )}
+                {step !== 'email' && <button type="button" className="recovery-change" disabled={isLoading} onClick={recovery.changeEmail}>Use a different email</button>}
               </form>
             )}
           </div>
         </section>
-
       </div>
     </div>
-  );
+  )
 }

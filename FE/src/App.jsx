@@ -21,6 +21,14 @@ import EngineerUploadPage from './features/engineer/pages/EngineerUploadPage'
 import EngineerPreviewPage from './features/engineer/pages/EngineerPreviewPage'
 import EngineerPipelineStudioPage from './features/engineer/pages/EngineerPipelineStudioPage'
 
+// Data Scientist features
+import ScientistLayout from './features/scientist/ScientistLayout'
+import ScientistOverviewPage from './features/scientist/pages/ScientistOverviewPage'
+import ScientistApprovedDatasetsPage from './features/scientist/pages/ScientistApprovedDatasetsPage'
+import ScientistDatasetPreviewPage from './features/scientist/pages/ScientistDatasetPreviewPage'
+import ScientistTrainingPage from './features/scientist/pages/ScientistTrainingPage'
+import ScientistPredictionPage from './features/scientist/pages/ScientistPredictionPage'
+
 // Other role workspaces
 import RoleDashboardPage from './features/roles/RoleDashboardPage'
 
@@ -58,16 +66,14 @@ export default function App() {
 
       {/* Data Scientist Workspace */}
       <Route element={<ProtectedRoute allowedRoles={['data_scientist']} />}>
-        <Route
-          path="/scientist"
-          element={
-            <RoleDashboardPage
-              roleTitle="Data Scientist Workspace"
-              roleCode="data_scientist"
-              description="Không gian dành cho Nhà khoa học dữ liệu: Khai thác dataset đã được phê duyệt, tạo chuỗi thời gian 1m/5m, cấu hình & huấn luyện mô hình dự báo Random Forest / LSTM và đánh giá sai số MAE, RMSE."
-            />
-          }
-        />
+        <Route path="/scientist" element={<ScientistLayout />}>
+          <Route index element={<ScientistOverviewPage />} />
+          <Route path="datasets" element={<ScientistApprovedDatasetsPage />} />
+          <Route path="preview" element={<ScientistDatasetPreviewPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId" element={<ScientistDatasetPreviewPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId/train" element={<ScientistTrainingPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId/predict" element={<ScientistPredictionPage />} />
+        </Route>
       </Route>
 
       {/* Business User Portal */}

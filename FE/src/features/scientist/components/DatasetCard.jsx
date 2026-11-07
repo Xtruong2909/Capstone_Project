@@ -1,0 +1,77 @@
+import { Eye, MapPin, ShieldCheck, Database, FlaskConical, TrendingUp } from 'lucide-react'
+
+function formatDatasetCode(code) {
+  if (!code) return 'DATASET'
+  if (/^DATASET_[0-9A-F]{16,}$/i.test(code)) {
+    return `DS-${code.slice(8, 14).toUpperCase()}`
+  }
+  return code
+}
+
+export default function DatasetCard({ item, onPreview, onTrain, onPredict }) {
+  return (
+    <article className="sci-card">
+      <div className="sci-card__top">
+        <div style={{ minWidth: 0 }}>
+          <span className="sci-card__code" title={item.dataset_code}>
+            {formatDatasetCode(item.dataset_code)}
+          </span>
+          <h3 className="sci-card__title" title={item.dataset_name}>
+            {item.dataset_name}
+          </h3>
+        </div>
+        <span className="sci-pill sci-pill--approved" style={{ flexShrink: 0 }}>
+          <ShieldCheck size={12} /> {item.approval_status === 'APPROVED' ? 'Approved' : item.approval_status}
+        </span>
+      </div>
+
+      <div className="sci-meta">
+        <span title={item.source}>
+          <Database size={13} />
+          <em>{item.source}</em>
+        </span>
+        <span title={item.location_name}>
+          <MapPin size={13} />
+          <em>{item.location_name}</em>
+        </span>
+      </div>
+
+      <div className="sci-card__footer">
+        <span className="sci-pill sci-pill--version">{item.version_tag}</span>
+        <div className="sci-icon-actions">
+          {onTrain && (
+            <button
+              type="button"
+              className="sci-action-chip"
+              onClick={() => onTrain(item)}
+              title="Open Training Pipeline"
+            >
+              <FlaskConical size={14} />
+              <span>Train</span>
+            </button>
+          )}
+          {onPredict && (
+            <button
+              type="button"
+              className="sci-action-chip"
+              onClick={() => onPredict(item)}
+              title="Open Prediction Insight"
+            >
+              <TrendingUp size={14} />
+              <span>Predict</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="sci-action-chip sci-action-chip--primary"
+            onClick={() => onPreview(item)}
+            title="Open Dataset Detail & Preview"
+          >
+            <Eye size={14} />
+            <span>Preview</span>
+          </button>
+        </div>
+      </div>
+    </article>
+  )
+}
