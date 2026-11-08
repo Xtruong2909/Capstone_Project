@@ -9,6 +9,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 BE/uploads/
+BE/artifacts/final_models/
 .venv/
 env/
 venv/
