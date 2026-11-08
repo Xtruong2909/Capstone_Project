@@ -36,17 +36,24 @@ CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role_id);
 
 CREATE TABLE audit_logs (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    action VARCHAR(64) NOT NULL,
+    username VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    module VARCHAR(100) NOT NULL DEFAULT 'System',
+    status VARCHAR(20) NOT NULL DEFAULT 'SUCCESS'
+        CHECK (status IN ('SUCCESS', 'FAILED')),
+    description TEXT,
     resource_type VARCHAR(64) NOT NULL,
-    resource_id VARCHAR(64),
+    resource_id VARCHAR(255),
     details JSONB,
     ip_address VARCHAR(45) CHECK (ip_address IS NULL OR ip_address ~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$'),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
+CREATE INDEX idx_audit_logs_created_id ON audit_logs(created_at DESC, id DESC);
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
 
 -- ====================================================================
 -- PHÂN HỆ 2: QUẢN LÝ BỘ DỮ LIỆU UAV & KIỂM ĐỊNH CHẤT LƯỢNG

@@ -16,6 +16,26 @@ uv run uvicorn app.main:app --reload --port 8000
 
 API Documentation: `http://localhost:8000/docs`
 
+## Administrator audit logs
+
+The append-only audit history is exposed at `GET /api/v1/admin/audit-logs` and requires
+an Administrator JWT. Existing PostgreSQL databases must apply
+`migrations/20261107_complete_audit_logs.sql` once; it preserves existing events and
+converts their IDs to UUID. For example, from the repository root:
+
+```powershell
+Get-Content -Raw 'BE\migrations\20261107_complete_audit_logs.sql' |
+  docker compose exec -T postgres psql -U admin -d urban_traffic -v ON_ERROR_STOP=1
+```
+
+The endpoint returns `{ total, skip, limit, items }` and supports `user_id`, exact
+`action`, exact `module`, `status=SUCCESS|FAILED`, timezone-aware `start_date` and
+`end_date`, and free-text `search`. Results are sorted newest first with UUID as the
+stable tie-breaker. Authentication, user administration, dataset, feature-engineering,
+train/test, model-training, traffic aggregation, and unhandled system errors are logged
+by the backend where those operations exist. There are no API routes to create, edit,
+or delete audit events.
+
 ## Outgoing email
 
 Set these variables in `BE/.env` to send OTPs and temporary account credentials using Gmail SMTP:

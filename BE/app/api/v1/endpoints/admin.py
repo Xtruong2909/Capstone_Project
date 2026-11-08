@@ -1,5 +1,6 @@
 import secrets
 import smtplib
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from app.models.dataset import DatasetVersion
 from app.models.user import User
 from app.schemas.admin import (
     AdminStats,
+    AuditLogPage,
     AuditLogResponse,
     DatasetApprovalAction,
     DatasetApprovalResponse,
@@ -23,6 +25,7 @@ from app.schemas.admin import (
 )
 from app.schemas.dataset import DatasetPreviewResponse
 from app.schemas.user import UserResponse
+from app.services.audit_log_service import audit_action, record_audit_event
 from app.services.dataset_mapping_service import (
     DatasetMappingNotFoundError,
     apply_saved_column_mappings,
@@ -78,21 +81,50 @@ def create_new_user(
         )
 
     temporary_password = secrets.token_urlsafe(18)
-    user = crud_admin.create_user(db, user_in, initial_password=temporary_password)
+    with audit_action(
+        action="CREATE_USER",
+        module="User Management",
+        description="User account creation",
+        user=admin,
+        ip_address=request.client.host if request.client else None,
+        record_success=False,
+    ):
+        user = crud_admin.create_user(db, user_in, initial_password=temporary_password)
     try:
         send_initial_credentials(user.email, user.full_name, temporary_password)
     except EmailConfigurationError as exc:
         db.rollback()
+        record_audit_event(
+            user=admin,
+            action="CREATE_USER",
+            module="User Management",
+            status="FAILED",
+            description="User creation failed because email delivery is unavailable",
+            resource_id=user.id,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email chưa được cấu hình. Chưa tạo tài khoản.",
         ) from exc
     except (OSError, smtplib.SMTPException) as exc:
         db.rollback()
+        record_audit_event(
+            user=admin,
+            action="CREATE_USER",
+            module="User Management",
+            status="FAILED",
+            description="User creation failed because credentials could not be emailed",
+            resource_id=user.id,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Không gửi được email tài khoản. Chưa tạo tài khoản.",
         ) from exc
+
+    db.commit()
+    db.refresh(user)
 
     # Ghi nhận Audit Log
     client_ip = request.client.host if request.client else None
@@ -128,8 +160,27 @@ def update_user_status(
             detail="Không thể tự vô hiệu hóa tài khoản của chính mình",
         )
 
-    user = crud_admin.update_user_status(db, user_id=user_id, is_active=status_update.is_active)
+    with audit_action(
+        action="UPDATE_USER",
+        module="User Management",
+        description="User status updated",
+        user=admin,
+        resource_id=user_id,
+        ip_address=request.client.host if request.client else None,
+        details={"is_active": status_update.is_active},
+        record_success=False,
+    ):
+        user = crud_admin.update_user_status(db, user_id=user_id, is_active=status_update.is_active)
     if not user:
+        record_audit_event(
+            user=admin,
+            action="UPDATE_USER",
+            module="User Management",
+            status="FAILED",
+            description="User status update failed because the user was not found",
+            resource_id=user_id,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Không tìm thấy người dùng",
@@ -140,7 +191,7 @@ def update_user_status(
     crud_admin.create_audit_log(
         db,
         user_id=admin.id,
-        action="UPDATE_USER_STATUS",
+        action="UPDATE_USER",
         resource_type="USER",
         resource_id=str(user.id),
         details={"email": user.email, "is_active": user.is_active},
@@ -159,15 +210,47 @@ def list_roles(
     return [RoleResponse.model_validate(r) for r in roles]
 
 
-@router.get("/audit-logs", response_model=list[AuditLogResponse], summary="Nhật ký hoạt động hệ thống")
+@router.get("/audit-logs", response_model=AuditLogPage, summary="Nhật ký hoạt động hệ thống")
 def list_audit_logs(
-    skip: int = 0,
-    limit: int = 50,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    user_id: UUID | None = None,
+    action: Annotated[str | None, Query(max_length=100)] = None,
+    module: Annotated[str | None, Query(max_length=100)] = None,
+    status_filter: Annotated[
+        Literal["SUCCESS", "FAILED"] | None, Query(alias="status")
+    ] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    search: Annotated[str | None, Query(max_length=255)] = None,
     db: Session = Depends(get_db),
-) -> list[AuditLogResponse]:
-    """Xem audit trail thực tế của hệ thống."""
-    logs = crud_admin.get_audit_logs(db, skip=skip, limit=limit)
-    return [AuditLogResponse(**log) for log in logs]
+) -> AuditLogPage:
+    """Search and page the append-only audit trail; timestamps must include timezone."""
+    if start_date and (start_date.tzinfo is None or start_date.utcoffset() is None):
+        raise HTTPException(status_code=422, detail="start_date must include a timezone")
+    if end_date and (end_date.tzinfo is None or end_date.utcoffset() is None):
+        raise HTTPException(status_code=422, detail="end_date must include a timezone")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must not be later than end_date")
+
+    total, logs = crud_admin.get_audit_logs(
+        db,
+        skip=skip,
+        limit=limit,
+        user_id=user_id,
+        action=action,
+        module=module,
+        status=status_filter,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+    )
+    return AuditLogPage(
+        total=total,
+        skip=skip,
+        limit=limit,
+        items=[AuditLogResponse.model_validate(log) for log in logs],
+    )
 
 
 @router.get("/datasets", response_model=list[DatasetApprovalResponse], summary="Danh sách phiên bản dataset")
@@ -255,13 +338,23 @@ def review_dataset(
             detail="Không tìm thấy phiên bản dataset trong dataset này",
         )
 
-    ver = crud_admin.approve_or_reject_dataset_version(
-        db,
-        version_id=id,
-        status=action.status,
-        note=action.note,
-        admin_id=admin.id,
-    )
+    with audit_action(
+        action="APPROVE_DATASET",
+        module="Dataset",
+        description="Dataset approval review",
+        user=admin,
+        resource_id=id,
+        ip_address=request.client.host if request.client else None,
+        details={"status": action.status},
+        record_success=False,
+    ):
+        ver = crud_admin.approve_or_reject_dataset_version(
+            db,
+            version_id=id,
+            status=action.status,
+            note=action.note,
+            admin_id=admin.id,
+        )
     if not ver:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -273,7 +366,7 @@ def review_dataset(
     crud_admin.create_audit_log(
         db,
         user_id=admin.id,
-        action=f"DATASET_{action.status}",
+        action="APPROVE_DATASET",
         resource_type="DATASET_VERSION",
         resource_id=str(ver.id),
         details={"status": action.status, "note": action.note},
@@ -315,9 +408,9 @@ def review_dataset_legacy(
 
 @router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
 def get_experiments_overview(
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> ExperimentsOverviewResponse:
-    """Giám sát các thí nghiệm mô hình AI/ML (ARIMA, Prophet) và metrics."""
+    """Giám sát trạng thái, metrics và nhật ký chạy thí nghiệm AI/ML."""
     data = crud_admin.get_experiments_overview_data(db, limit=limit)
     return ExperimentsOverviewResponse(**data)

@@ -155,6 +155,15 @@ def test_openapi_routes_require_authentication() -> None:
         assert "200" in operation["responses"]
 
 
+def test_roi_hidden_in_request_schema_but_defaults_and_compatibility_remain() -> None:
+    schema = app.openapi()["components"]["schemas"]["FeatureRequest"]
+    assert set(schema["properties"]) == {"dataset_version_id"}
+    assert FeatureRequest(dataset_version_id=VERSION).roi_identifier == "MAIN_ROI"
+    assert FeatureRequest(dataset_version_id=VERSION, roi_identifier="ROI-A").roi_identifier == "ROI-A"
+    with pytest.raises(ValidationError):
+        FeatureRequest(dataset_version_id=VERSION, roi_identifier="")
+
+
 def test_missing_version_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: None)
     with pytest.raises(HTTPException) as error:

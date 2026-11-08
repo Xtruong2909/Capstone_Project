@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.schemas.model_training import TrainingLogEntry
+
 
 class AdminStats(BaseModel):
     total_users: int
@@ -56,15 +58,24 @@ class UserStatusUpdate(BaseModel):
 class AuditLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     user_id: UUID | None = None
-    user_email: str | None = None
+    username: str | None = None
     action: str
-    resource_type: str
+    module: str
+    status: Literal["SUCCESS", "FAILED"]
+    description: str | None = None
     resource_id: str | None = None
     details: dict | None = None
     ip_address: str | None = None
     created_at: datetime
+
+
+class AuditLogPage(BaseModel):
+    total: int
+    skip: int
+    limit: int
+    items: list[AuditLogResponse]
 
 
 class DatasetApprovalResponse(BaseModel):
@@ -114,10 +125,16 @@ class ExperimentOverviewItem(BaseModel):
     dataset_name: str | None = None
     metrics: ExperimentMetricsSummary | None = None
     created_at: datetime
+    experiment_type: str = "FORECASTING"
+    split_id: UUID | None = None
+    hyperparameters: dict | None = None
+    evaluation_mode: str | None = None
+    logs: list[TrainingLogEntry] = Field(default_factory=list)
 
 
 class ExperimentStats(BaseModel):
     total_experiments: int
+    pending_count: int = 0
     running_count: int
     completed_count: int
     failed_count: int

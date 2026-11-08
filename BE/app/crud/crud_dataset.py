@@ -1,11 +1,16 @@
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from app.models.dataset import DataCleaningHistory  # Import model đã có sẵn trong init_db
-from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetColumnMapping, DatasetVersion
-from app.schemas.dataset import DatasetUploadMetadata
+
 from app.crud.crud_recording_metadata import resolve_original_filename
+from app.models.dataset import (
+    DataCleaningHistory,  # Import model đã có sẵn trong init_db
+    Dataset,
+    DatasetColumnMapping,
+    DatasetVersion,
+)
+from app.schemas.dataset import DatasetUploadMetadata
+from app.services.audit_log_service import record_audit_event
 
 
 def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
@@ -79,20 +84,20 @@ def save_dataset_column_mapping(
         saved_mapping.mappings = mappings
         saved_mapping.updated_by = user_id
 
-    db.add(
-        AuditLog(
-            user_id=user_id,
-            action="CONFIRM_DATASET_COLUMN_MAPPING",
-            resource_type="DATASET",
-            resource_id=str(dataset_id),
-            details={
-                "dataset_version_id": str(dataset_version_id),
-                "mapping_count": len(mappings),
-            },
-        )
-    )
     db.commit()
     db.refresh(saved_mapping)
+    record_audit_event(
+        user_id=user_id,
+        action="CONFIRM_DATASET_COLUMN_MAPPING",
+        module="Dataset",
+        status="SUCCESS",
+        description="Dataset column mapping updated",
+        resource_id=dataset_id,
+        details={
+            "dataset_version_id": str(dataset_version_id),
+            "mapping_count": len(mappings),
+        },
+    )
     return saved_mapping
 
 
@@ -137,11 +142,18 @@ def create_dataset_version(
     elif file_format == "PARQUET":
         version.parquet_file_path = data_file_path
 
-    audit_log = AuditLog(
+    db.add_all([dataset, version])
+    db.commit()
+    db.refresh(dataset)
+    db.refresh(version)
+    record_audit_event(
         user_id=creator_id,
         action="UPLOAD_DATASET",
-        resource_type="DATASET_VERSION",
-        resource_id=str(version_id),
+        module="Dataset",
+        status="SUCCESS",
+        description="Dataset uploaded successfully",
+        resource_id=version_id,
+        ip_address=ip_address,
         details={
             "dataset_code": dataset_code,
             "version_tag": version_tag,
@@ -149,13 +161,7 @@ def create_dataset_version(
             "file_format": file_format,
             "file_size_bytes": file_size_bytes,
         },
-        ip_address=ip_address,
     )
-
-    db.add_all([dataset, version, audit_log])
-    db.commit()
-    db.refresh(dataset)
-    db.refresh(version)
     return dataset, version
 
 def create_normalized_version(
