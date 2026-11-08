@@ -151,3 +151,75 @@ def test_split_api_saves_id_before_first_experiment(storage: tuple, monkeypatch:
             connection.rollback()
             connection.execute(text("SET search_path TO public"))
             connection.commit()
+
+
+def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
+    """The additive migration preserves legacy rows and stores idempotent final forecasts."""
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    from app.models.model_training import FinalModel, ModelTrainingExperiment, ModelValidationResult
+
+    schema, version_id, user_id = storage
+    split = make_split()
+    split.dataset_version_id = version_id
+    origin = datetime(2018, 10, 24, 6, 48, tzinfo=UTC)
+    with engine.connect() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        connection.commit()
+        try:
+            connection.execute(text(
+                "CREATE TABLE forecast_results (id BIGSERIAL PRIMARY KEY, "
+                "experiment_id UUID NOT NULL, timestamp TIMESTAMPTZ NOT NULL, "
+                "horizon_minutes INTEGER NOT NULL, predicted_value NUMERIC(10,2) NOT NULL)"
+            ))
+            legacy_id = uuid4()
+            connection.execute(text(
+                "INSERT INTO forecast_results (experiment_id,timestamp,horizon_minutes,predicted_value) "
+                "VALUES (:id,:time,1,1.00)"
+            ), {"id": legacy_id, "time": origin})
+            connection.commit()
+            migration = Path("migrations/20261108_model_prediction.sql").read_text(encoding="utf-8")
+            connection.exec_driver_sql(migration)
+            connection.commit()
+            connection.exec_driver_sql(migration)
+            connection.commit()
+            with Session(bind=connection) as db:
+                saved_split = repository.save_split(db, version_id, uuid4().hex,
+                                                    split.model_dump(mode="json"))
+                experiment = ModelTrainingExperiment(
+                    split_id=saved_split.id, created_by=user_id, status="COMPLETED",
+                    configuration={"model": "RANDOM_FOREST"}, evaluation={},
+                )
+                db.add(experiment)
+                db.commit()
+                validation = ModelValidationResult(
+                    experiment_id=experiment.id, validation_fingerprint="a" * 64,
+                    sample_count=3,
+                    performance_by_horizon={str(h): {"mae": 1, "rmse": 2} for h in (1, 3, 5)},
+                )
+                final = FinalModel(
+                    experiment_id=experiment.id, dataset_version_id=version_id,
+                    split_id=saved_split.id, roi_identifier="MAIN_ROI",
+                    recording_session_id=str(version_id), artifact_path="final.joblib",
+                    artifact_sha256="b" * 64, trained_through=origin,
+                    feature_order=[f"lag_{i}" for i in range(1, 6)],
+                    forecast_horizons=[1, 3, 5], hyperparameters={},
+                )
+                db.add_all([validation, final])
+                db.commit()
+                assert repository.list_completed_forests(db, version_id)[0].id == experiment.id
+                assert repository.get_validation_result(db, experiment.id).sample_count == 3
+                assert repository.get_final_model(db, experiment.id).id == final.id
+                forecasts = [(h, origin + timedelta(minutes=h), Decimal("42.50"))
+                             for h in (1, 3, 5)]
+                repository.save_final_forecasts(db, final.id, origin, forecasts)
+                repository.save_final_forecasts(db, final.id, origin, forecasts)
+                assert db.scalar(text("SELECT count(*) FROM forecast_results")) == 4
+                assert db.scalar(text(
+                    "SELECT count(*) FROM forecast_results WHERE experiment_id = :id"
+                ), {"id": legacy_id}) == 1
+        finally:
+            connection.rollback()
+            connection.execute(text("SET search_path TO public"))
+            connection.commit()

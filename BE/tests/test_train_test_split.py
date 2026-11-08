@@ -32,7 +32,7 @@ def request_data(count: int = 5, strategy: str = "chronological") -> dict:
     }
 
 
-def test_five_samples_split_three_two_with_warning() -> None:
+def test_five_samples_split_three_two_without_warning_fields() -> None:
     payload = TrainTestSplitRequest.model_validate(request_data())
     before = payload.model_dump()
     result = service.split_training_samples(payload)
@@ -41,9 +41,9 @@ def test_five_samples_split_three_two_with_warning() -> None:
     assert result.y_test == [sample.y for sample in payload.samples[3:]]
     assert result.train_times == [sample.time_bucket for sample in payload.samples[:3]]
     assert result.test_target_times == [sample.target_times for sample in payload.samples[3:]]
-    assert result.temporal_overlap_warning
     assert not result.official_evaluation_eligible
-    assert result.warnings
+    assert "warnings" not in result.model_dump()
+    assert "temporal_overlap_warning" not in result.model_dump()
     assert payload.model_dump() == before
 
 
@@ -62,7 +62,7 @@ def test_safe_split_purges_all_overlapping_targets_and_history() -> None:
     assert result.train_count + result.test_count + result.purged_count == result.total_samples
     assert max(t.target_h5 for t in result.train_target_times) < min(result.test_history_start_times)
     assert result.official_evaluation_eligible
-    assert not result.temporal_overlap_warning
+    assert "temporal_overlap_warning" not in result.model_dump()
     assert result.X_test == [sample.x for sample in payload.samples[21:]]
 
 
@@ -204,7 +204,7 @@ def test_paste_complete_feature_response() -> None:
     assert payload.train_ratio == 0.7
     result = service.split_training_samples(payload)
     assert (result.train_count, result.test_count) == (3, 2)
-    assert result.temporal_overlap_warning
+    assert not result.official_evaluation_eligible
     assert "recording_session_id" not in response
 
 

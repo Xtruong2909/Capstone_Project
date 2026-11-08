@@ -101,7 +101,9 @@ class ForecastResult(Base):
         UniqueConstraint("experiment_id", "timestamp", name="uq_forecast_target"),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    experiment_id = Column(UUID(as_uuid=True), nullable=False)
+    experiment_id = Column(UUID(as_uuid=True), nullable=True)
+    model_id = Column(UUID(as_uuid=True), ForeignKey("final_models.id"), nullable=True)
+    last_observed_time = Column(DateTime(timezone=True), nullable=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, comment="Forecast target time")
     horizon_minutes = Column(Integer, nullable=False)
     predicted_value = Column(Numeric(10, 2), nullable=False)

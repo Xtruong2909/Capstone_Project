@@ -1,5 +1,7 @@
 """PostgreSQL persistence and access-filtered experiment queries."""
 
+from datetime import datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -7,7 +9,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.dataset import DatasetAccessGrant, DatasetVersion
-from app.models.model_training import ModelTrainingExperiment, ModelTrainingSplit
+from app.models.experiment import ForecastResult
+from app.models.model_training import (
+    FinalModel,
+    ModelTrainingExperiment,
+    ModelTrainingSplit,
+    ModelValidationResult,
+)
 from app.models.user import User
 
 
@@ -42,6 +50,42 @@ def update_experiment(db: Session, experiment: ModelTrainingExperiment, **values
 
 def get_experiment(db: Session, experiment_id: UUID) -> ModelTrainingExperiment | None:
     return db.get(ModelTrainingExperiment, experiment_id)
+
+
+def list_completed_forests(db: Session, version_id: UUID) -> list[ModelTrainingExperiment]:
+    """Candidates are scoped by the saved split, not an untrusted JSON version field."""
+    query = (select(ModelTrainingExperiment)
+             .join(ModelTrainingSplit)
+             .where(ModelTrainingSplit.dataset_version_id == version_id)
+             .where(ModelTrainingExperiment.status == "COMPLETED")
+             .where(ModelTrainingExperiment.configuration["model"].astext == "RANDOM_FOREST")
+             .order_by(ModelTrainingExperiment.number))
+    return list(db.scalars(query))
+
+
+def get_validation_result(db: Session, experiment_id: UUID) -> ModelValidationResult | None:
+    return db.get(ModelValidationResult, experiment_id)
+
+
+def get_final_model(db: Session, experiment_id: UUID) -> FinalModel | None:
+    return db.scalar(select(FinalModel).where(FinalModel.experiment_id == experiment_id))
+
+
+def save_final_forecasts(
+    db: Session, model_id: UUID, origin: datetime,
+    forecasts: list[tuple[int, datetime, Decimal]],
+) -> None:
+    """Keep repeated requests for the same model/origin idempotent."""
+    rows = [{
+        "model_id": model_id, "last_observed_time": origin,
+        "horizon_minutes": horizon, "timestamp": target_time,
+        "predicted_value": value,
+    } for horizon, target_time, value in forecasts]
+    db.execute(insert(ForecastResult).values(rows).on_conflict_do_nothing(
+        index_elements=["model_id", "last_observed_time", "horizon_minutes"],
+        index_where=ForecastResult.model_id.is_not(None),
+    ))
+    db.commit()
 
 
 def list_experiments(db: Session, user: User, version_id: UUID | None, skip: int,
