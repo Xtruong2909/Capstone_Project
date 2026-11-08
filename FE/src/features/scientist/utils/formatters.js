@@ -32,6 +32,10 @@ export function formatDate(iso) {
 export function extractErrorMessage(err, fallback) {
   const detail = err?.response?.data?.detail
   if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d) => d.msg).join('; ')
+  if (Array.isArray(detail)) return detail.map((d) => d.msg || JSON.stringify(d)).join('; ')
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string') return detail.message
+    if (typeof detail.detail === 'string') return detail.detail
+  }
   return fallback
 }

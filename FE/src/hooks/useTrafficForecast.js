@@ -384,4 +384,217 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
   }
 }
 
+/**
+ * POST /api/train-test-split/training hook for Step 2 (70/30 Chronological Split).
+ */
+export function useTrainTestSplit(datasetId, versionId) {
+  const [splitData, setSplitData] = useState(() =>
+    trainingFeatureState.readSplit(datasetId, versionId)
+  )
+  const [isSplitting, setIsSplitting] = useState(false)
+  const [splitError, setSplitError] = useState(null)
+  const requestRef = useRef(0)
+
+  useEffect(() => {
+    requestRef.current += 1
+    setSplitData(trainingFeatureState.readSplit(datasetId, versionId))
+    setIsSplitting(false)
+    setSplitError(null)
+  }, [datasetId, versionId])
+
+  const runTrainTestSplit = useCallback(
+    async (featureResponse, { trainRatio = 0.7, splitStrategy = 'chronological' } = {}) => {
+      if (!featureResponse?.samples?.length) {
+        setSplitError('Chưa có dữ liệu mẫu Lag Features (X/Y) từ Bước 1 để chia Train/Test.')
+        return null
+      }
+      const requestId = ++requestRef.current
+      setIsSplitting(true)
+      setSplitError(null)
+      try {
+        const result = await trafficForecastService.splitTrainingData(featureResponse, {
+          trainRatio,
+          splitStrategy,
+        })
+        if (requestId !== requestRef.current) return null
+        setSplitData(result)
+        trainingFeatureState.saveSplit(datasetId, versionId, result)
+        return result
+      } catch (err) {
+        if (requestId !== requestRef.current) return null
+        setSplitError(
+          extractErrorMessage(err, 'Không thể chia dữ liệu Train/Test 70/30. Vui lòng thử lại.')
+        )
+        return null
+      } finally {
+        if (requestId === requestRef.current) setIsSplitting(false)
+      }
+    },
+    [datasetId, versionId]
+  )
+
+  return {
+    splitData,
+    setSplitData,
+    isSplitting,
+    splitError,
+    setSplitError,
+    runTrainTestSplit,
+  }
+}
+
+/**
+ * Hook for Step 3, Step 4, and Step 5:
+ * - POST /api/model-training/experiment
+ * - GET  /api/model-training/experiments
+ * - GET  /api/model-training/experiments/{experiment_id}
+ * - POST /api/model-training/experiments/compare
+ */
+export function useModelTrainingExperiments(versionId) {
+  const [experiments, setExperiments] = useState([])
+  const [isLoadingList, setIsLoadingList] = useState(false)
+  const [listError, setListError] = useState(null)
+
+  const [latestExperiment, setLatestExperiment] = useState(null)
+  const [isTraining, setIsTraining] = useState(false)
+  const [trainError, setTrainError] = useState(null)
+
+  const [selectedExperiment, setSelectedExperiment] = useState(null)
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [detailError, setDetailError] = useState(null)
+
+  const [comparisonData, setComparisonData] = useState(null)
+  const [isComparing, setIsComparing] = useState(false)
+  const [compareError, setCompareError] = useState(null)
+
+  const listReqRef = useRef(0)
+  const detailReqRef = useRef(0)
+
+  const reloadExperiments = useCallback(async () => {
+    if (!versionId) return []
+    const reqId = ++listReqRef.current
+    setIsLoadingList(true)
+    setListError(null)
+    try {
+      const data = await trafficForecastService.listTrainingExperiments({
+        datasetVersionId: versionId,
+        skip: 0,
+        limit: 100,
+      })
+      if (reqId !== listReqRef.current) return []
+      const items = Array.isArray(data) ? data : []
+      setExperiments(items)
+      return items
+    } catch (err) {
+      if (reqId !== listReqRef.current) return []
+      setListError(extractErrorMessage(err, 'Không thể tải danh sách thí nghiệm.'))
+      return []
+    } finally {
+      if (reqId === listReqRef.current) setIsLoadingList(false)
+    }
+  }, [versionId])
+
+  useEffect(() => {
+    setExperiments([])
+    setLatestExperiment(null)
+    setTrainError(null)
+    setSelectedExperiment(null)
+    setDetailError(null)
+    setComparisonData(null)
+    setCompareError(null)
+    if (versionId) {
+      reloadExperiments()
+    }
+  }, [versionId, reloadExperiments])
+
+  const runExperiment = useCallback(
+    async (params) => {
+      setIsTraining(true)
+      setTrainError(null)
+      try {
+        const created = await trafficForecastService.createTrainingExperiment(params)
+        setLatestExperiment(created)
+        // Refresh the experiment list so the new Ex-00N appears immediately
+        await reloadExperiments()
+        return created
+      } catch (err) {
+        setTrainError(
+          extractErrorMessage(err, 'Huấn luyện mô hình thất bại. Vui lòng kiểm tra cấu hình.')
+        )
+        return null
+      } finally {
+        setIsTraining(false)
+      }
+    },
+    [reloadExperiments]
+  )
+
+  const loadExperimentDetail = useCallback(async (experimentId) => {
+    if (!experimentId) return null
+    const reqId = ++detailReqRef.current
+    setIsLoadingDetail(true)
+    setDetailError(null)
+    try {
+      const detail = await trafficForecastService.getTrainingExperimentDetail(experimentId)
+      if (reqId !== detailReqRef.current) return null
+      setSelectedExperiment(detail)
+      return detail
+    } catch (err) {
+      if (reqId !== detailReqRef.current) return null
+      setDetailError(extractErrorMessage(err, 'Không thể tải chi tiết thí nghiệm.'))
+      return null
+    } finally {
+      if (reqId === detailReqRef.current) setIsLoadingDetail(false)
+    }
+  }, [])
+
+  const compareExperiments = useCallback(async (experimentIds) => {
+    if (!Array.isArray(experimentIds) || experimentIds.length < 2) {
+      setCompareError('Vui lòng chọn ít nhất 2 thí nghiệm COMPLETED để so sánh.')
+      return null
+    }
+    setIsComparing(true)
+    setCompareError(null)
+    try {
+      const data = await trafficForecastService.compareTrainingExperiments(experimentIds)
+      setComparisonData(data)
+      return data
+    } catch (err) {
+      setCompareError(
+        extractErrorMessage(
+          err,
+          'Không thể so sánh các thí nghiệm đã chọn. Hãy đảm bảo cùng Split ID và chế độ đánh giá.'
+        )
+      )
+      return null
+    } finally {
+      setIsComparing(false)
+    }
+  }, [])
+
+  return {
+    experiments,
+    isLoadingList,
+    listError,
+    reloadExperiments,
+    latestExperiment,
+    setLatestExperiment,
+    isTraining,
+    trainError,
+    setTrainError,
+    runExperiment,
+    selectedExperiment,
+    setSelectedExperiment,
+    isLoadingDetail,
+    detailError,
+    loadExperimentDetail,
+    comparisonData,
+    setComparisonData,
+    isComparing,
+    compareError,
+    setCompareError,
+    compareExperiments,
+  }
+}
+
 
