@@ -99,7 +99,5 @@ class TrainTestSplitResponse(BaseModel):
     test_history_start_times: list[datetime]
     train_target_times: list[TargetTimes]
     test_target_times: list[TargetTimes]
-    temporal_overlap_warning: bool
     official_evaluation_eligible: bool
-    warnings: list[str]
     overlap_policy: str = "max(train target times) < min(test history_start_time)"

@@ -11,7 +11,9 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Identity,
+    Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -51,4 +53,41 @@ class ModelTrainingExperiment(Base):
     library_versions = Column(JSONB, nullable=False, default=dict)
     logs = Column(JSONB, nullable=False, default=list)
     error = Column(String(512))
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ModelValidationResult(Base):
+    """Scores from a separate, identified Validation set (never Test metrics)."""
+
+    __tablename__ = "model_validation_results"
+    experiment_id = Column(
+        UUID(as_uuid=True), ForeignKey("model_training_experiments.id"), primary_key=True,
+    )
+    validation_fingerprint = Column(String(64), nullable=False)
+    sample_count = Column(Integer, nullable=False)
+    performance_by_horizon = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FinalModel(Base):
+    """Immutable metadata for a trusted, already fitted three-horizon model bundle."""
+
+    __tablename__ = "final_models"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    experiment_id = Column(
+        UUID(as_uuid=True), ForeignKey("model_training_experiments.id"),
+        nullable=False, unique=True,
+    )
+    dataset_version_id = Column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id"), nullable=False,
+    )
+    split_id = Column(UUID(as_uuid=True), ForeignKey("model_training_splits.id"), nullable=False)
+    roi_identifier = Column(String(64), nullable=False)
+    recording_session_id = Column(String(255), nullable=False)
+    artifact_path = Column(Text, nullable=False)
+    artifact_sha256 = Column(String(64), nullable=False)
+    trained_through = Column(DateTime(timezone=True), nullable=False)
+    feature_order = Column(JSONB, nullable=False)
+    forecast_horizons = Column(JSONB, nullable=False)
+    hyperparameters = Column(JSONB, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
