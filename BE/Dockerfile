@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy backend source code
 COPY app ./app
+COPY docs ./docs
 
 EXPOSE 8000
 

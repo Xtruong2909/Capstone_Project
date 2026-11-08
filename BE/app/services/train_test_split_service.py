@@ -50,11 +50,6 @@ def split_training_samples(payload: TrainTestSplitRequest) -> TrainTestSplitResp
                 "official_evaluation_eligible": False,
             })
     overlap = any(overlaps(sample) for sample in train)
-    warnings = []
-    if overlap:
-        warnings.append("Train target times overlap the Test observation window (including its five-minute lag history). Not eligible for official evaluation; use purged_chronological.")
-    if purged:
-        warnings.append("Boundary training samples were purged; the retained train/test ratio differs from the requested initial ratio.")
     return TrainTestSplitResponse(
         dataset_version_id=payload.dataset_version_id, roi_identifier=payload.roi_identifier,
         recording_session_id=payload.recording_session_id, train_ratio=payload.train_ratio,
@@ -69,8 +64,7 @@ def split_training_samples(payload: TrainTestSplitRequest) -> TrainTestSplitResp
         test_history_start_times=[sample.history_start_time for sample in test],
         train_target_times=[sample.target_times for sample in train],
         test_target_times=[sample.target_times for sample in test],
-        temporal_overlap_warning=overlap, official_evaluation_eligible=not overlap,
-        warnings=warnings,
+        official_evaluation_eligible=not overlap,
     )
 
 

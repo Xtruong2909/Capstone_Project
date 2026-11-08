@@ -8,7 +8,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.v1.api import api_router
+from app.api.v1.endpoints.ai_assistant import router as ai_assistant_router
 from app.api.v1.endpoints.feature_engineering import router as feature_engineering_router
+from app.api.v1.endpoints.model_prediction import router as model_prediction_router
 from app.api.v1.endpoints.model_training import router as model_training_router
 from app.api.v1.endpoints.train_test_split import router as train_test_split_router
 from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
@@ -37,6 +39,8 @@ app.include_router(api_router, prefix=API_V1_STR)
 app.include_router(feature_engineering_router, prefix="/api")
 app.include_router(train_test_split_router, prefix="/api")
 app.include_router(model_training_router, prefix="/api")
+app.include_router(model_prediction_router, prefix="/api")
+app.include_router(ai_assistant_router, prefix="/api")
 
 
 @app.exception_handler(Exception)

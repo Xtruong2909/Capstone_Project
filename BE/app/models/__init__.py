@@ -8,7 +8,12 @@ from app.models.dataset import (
     DatasetVersion,
 )
 from app.models.experiment import EvaluationMetric, Experiment, ForecastResult
-from app.models.model_training import ModelTrainingExperiment, ModelTrainingSplit
+from app.models.model_training import (
+    FinalModel,
+    ModelTrainingExperiment,
+    ModelTrainingSplit,
+    ModelValidationResult,
+)
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 from app.models.user import Role, User
 
@@ -23,9 +28,11 @@ __all__ = [
     "DatasetVersion",
     "EvaluationMetric",
     "Experiment",
+    "FinalModel",
     "ForecastResult",
     "ModelTrainingExperiment",
     "ModelTrainingSplit",
+    "ModelValidationResult",
     "Role",
     "TrafficAggregationJob",
     "TrafficTimeSeries",
