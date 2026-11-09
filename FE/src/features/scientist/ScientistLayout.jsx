@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import ScientistProfileModal from './components/ScientistProfileModal'
+import AiAssistantChatWidget from './components/AiAssistantChatWidget'
 import '../admin/AdminLayout.css'
 import './ScientistPages.css'
 
@@ -178,6 +179,9 @@ export default function ScientistLayout() {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
       />
+
+      {/* Floating AI Assistant Chat Box */}
+      <AiAssistantChatWidget />
     </div>
   )
 }

@@ -213,4 +213,57 @@ export const trafficForecastService = {
     )
     return response.data
   },
+
+  // ---------------------------------------------------------- Model Prediction (+1, +3, +5 min)
+  /**
+   * POST /api/model-training/predict
+   * Selects the best experiment by Validation score and predicts +1, +3, +5 minutes using Final Model.
+   */
+  async predictTrafficFlow({ datasetVersionId, splitId, experimentId } = {}) {
+    const payload = {}
+    if (datasetVersionId) payload.dataset_version_id = datasetVersionId
+    if (splitId) payload.split_id = splitId
+    if (experimentId) payload.experiment_id = experimentId
+
+    const response = await apiClient.post('/model-training/predict', payload, {
+      baseURL: FEATURE_API_BASE_URL,
+    })
+    return response.data
+  },
+
+  // ---------------------------------------------------------- AI Assistant (Gemini)
+  /**
+   * POST /api/ai/assistant
+   * Calls the Data Scientist AI Assistant powered by Gemini.
+   */
+  async askAiAssistant({
+    action = 'CHAT',
+    message,
+    experimentIds,
+    predictionId,
+    modelId,
+    datasetVersionId,
+  } = {}) {
+    const payload = { action }
+    if (Array.isArray(experimentIds) && experimentIds.length > 0) {
+      payload.experiment_ids = experimentIds
+    }
+    if (predictionId != null && String(predictionId).trim() !== '') {
+      payload.prediction_id = Number(predictionId)
+    }
+    if (modelId && String(modelId).trim() !== '') {
+      payload.model_id = String(modelId).trim()
+    }
+    if (datasetVersionId && String(datasetVersionId).trim() !== '') {
+      payload.dataset_version_id = String(datasetVersionId).trim()
+    }
+    if (message != null && String(message).trim() !== '') {
+      payload.message = String(message).trim()
+    }
+
+    const response = await apiClient.post('/ai/assistant', payload, {
+      baseURL: FEATURE_API_BASE_URL,
+    })
+    return response.data
+  },
 }
