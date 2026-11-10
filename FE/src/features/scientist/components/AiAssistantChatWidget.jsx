@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
-  Bot,
+  MessageCircleMore,
   Sparkles,
   Send,
-  X,
   RotateCcw,
   Loader2,
   CheckCircle2,
@@ -13,16 +12,11 @@ import {
   Sliders,
   TrendingUp,
   MessageSquare,
+  Maximize2,
+  Minimize2,
+  Minus,
 } from 'lucide-react'
 import { useAiAssistant, useModelTrainingExperiments } from '../../../hooks/useTrafficForecast'
-
-const ACTION_TABS = [
-  { id: 'CHAT', label: 'Chat AI' },
-  { id: 'EXPERIMENT_ANALYSIS', label: 'Phân tích Ex' },
-  { id: 'MODEL_RECOMMENDATION', label: 'Gợi ý Cấu hình' },
-  { id: 'EXPERIMENT_COMPARISON', label: 'So sánh Ex' },
-  { id: 'FORECAST_EXPLANATION', label: 'Giải thích Dự báo' },
-]
 
 const QUICK_PROMPTS = [
   'Random Forest dự báo lưu lượng như thế nào?',
@@ -158,6 +152,8 @@ export default function AiAssistantChatWidget() {
   )
 
   const [isOpen, setIsOpen] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [hasStarted, setHasStarted] = useState(false)
   const [activeAction, setActiveAction] = useState('CHAT')
   const [inputMessage, setInputMessage] = useState('')
   const [selectedExpId, setSelectedExpId] = useState('')
@@ -211,6 +207,7 @@ export default function AiAssistantChatWidget() {
     const handler = (event) => {
       const detail = event?.detail || {}
       setIsOpen(true)
+      setHasStarted(true)
       if (detail.action) {
         setActiveAction(detail.action)
       }
@@ -323,6 +320,7 @@ export default function AiAssistantChatWidget() {
 
   const handleQuickPrompt = async (promptText) => {
     if (isSending) return
+    setHasStarted(true)
     setActiveAction('CHAT')
     await sendRequest({
       action: 'CHAT',
@@ -354,63 +352,92 @@ export default function AiAssistantChatWidget() {
     predictionIdInput,
   ])
 
+  const conversationMessages = messages.filter((msg) => msg.id !== 'welcome')
+  const showWelcome = !hasStarted && conversationMessages.length === 0
+
+  const handleReset = () => {
+    clearMessages()
+    setActiveAction('CHAT')
+    setInputMessage('')
+    setHasStarted(false)
+  }
+
   return (
     <div className="sci-ai-widget">
       {/* Floating Chat Box Window */}
       {isOpen && (
-        <aside className="sci-ai-box" aria-label="Trợ lý AI Data Scientist">
+        <aside
+          className={`sci-ai-box ${isExpanded ? 'sci-ai-box--expanded' : ''}`}
+          aria-label="Trợ lý AI Data Scientist"
+        >
           {/* Header */}
           <div className="sci-ai-box__header">
             <div className="sci-ai-box__brand">
-              <div className="sci-ai-box__avatar">
-                <Bot size={18} />
+              <div className="sci-ai-box__avatar" aria-hidden="true">
+                <MessageCircleMore size={23} strokeWidth={2.2} />
               </div>
               <div>
-                <h3 className="sci-ai-box__title">Trợ lý AI · Data Scientist</h3>
-                <span className="sci-ai-box__subtitle">
-                  {activeVersionId
-                    ? `Ngữ cảnh: Dataset ${activeVersionId.slice(0, 8)}…`
-                    : 'Gemini AI · Phân tích & Dự báo UAV'}
-                </span>
+                <h3 className="sci-ai-box__title">Trợ lý AI</h3>
+                <span className="sci-ai-box__subtitle">Data Scientist · Phân tích giao thông</span>
               </div>
             </div>
 
             <div className="sci-ai-box__header-actions">
+              {!showWelcome && (
+                <button
+                  type="button"
+                  className="sci-ai-icon-btn"
+                  onClick={handleReset}
+                  disabled={isSending}
+                  aria-label="Làm mới hội thoại"
+                  title="Làm mới hội thoại"
+                >
+                  <RotateCcw size={17} />
+                </button>
+              )}
               <button
                 type="button"
                 className="sci-ai-icon-btn"
-                onClick={clearMessages}
-                title="Làm mới hội thoại"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                aria-label={isExpanded ? 'Thu nhỏ cửa sổ chat' : 'Phóng to cửa sổ chat'}
+                title={isExpanded ? 'Thu nhỏ cửa sổ chat' : 'Phóng to cửa sổ chat'}
               >
-                <RotateCcw size={15} />
+                {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
               </button>
               <button
                 type="button"
                 className="sci-ai-icon-btn"
                 onClick={() => setIsOpen(false)}
+                aria-label="Thu gọn Trợ lý AI"
                 title="Thu gọn Trợ lý AI"
               >
-                <X size={17} />
+                <Minus size={19} />
               </button>
             </div>
           </div>
 
-          {/* 5 Action Mode Tabs */}
-          <div className="sci-ai-tabs" role="tablist">
-            {ACTION_TABS.map((tab) => (
+          {showWelcome ? (
+            <div className="sci-ai-welcome">
+              <div className="sci-ai-welcome__intro">
+                <div className="sci-ai-welcome__icon">
+                  <MessageCircleMore size={23} strokeWidth={2.2} />
+                </div>
+                <h4>Xin chào Anh/Chị!</h4>
+                <p>Em sẵn sàng hỗ trợ phân tích dữ liệu, thí nghiệm và dự báo giao thông.</p>
+              </div>
               <button
-                key={tab.id}
                 type="button"
-                role="tab"
-                aria-selected={activeAction === tab.id}
-                className={`sci-ai-tab ${activeAction === tab.id ? 'sci-ai-tab--active' : ''}`}
-                onClick={() => setActiveAction(tab.id)}
+                className="sci-ai-start-btn"
+                onClick={() => {
+                  setActiveAction('CHAT')
+                  setHasStarted(true)
+                }}
               >
-                {tab.label}
+                Bắt đầu chat
               </button>
-            ))}
-          </div>
-
+            </div>
+          ) : (
+            <>
           {/* Context Selectors for specialized actions */}
           {activeAction !== 'CHAT' && (
             <div className="sci-ai-context-bar">
@@ -490,7 +517,7 @@ export default function AiAssistantChatWidget() {
 
           {/* Messages Thread */}
           <div className="sci-ai-thread">
-            {messages.map((msg) => (
+            {conversationMessages.map((msg) => (
               <div
                 key={msg.id}
                 className={`sci-ai-msg ${
@@ -516,26 +543,37 @@ export default function AiAssistantChatWidget() {
               </div>
             )}
 
+            {activeAction === 'CHAT' && conversationMessages.length === 0 && !isSending && (
+              <div className="sci-ai-empty-state">
+                <p>Em có thể giúp gì cho Anh/Chị?</p>
+                <div className="sci-ai-suggestions">
+                  {activeVersionId && (
+                    <button
+                      type="button"
+                      className="sci-ai-suggestion-chip"
+                      onClick={() => handleQuickPrompt('Phân tích dataset này và cho tôi biết chất lượng dữ liệu.')}
+                    >
+                      <MessageSquare size={15} />
+                      <span>Phân tích dataset này</span>
+                    </button>
+                  )}
+                  {QUICK_PROMPTS.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="sci-ai-suggestion-chip"
+                      onClick={() => handleQuickPrompt(q)}
+                    >
+                      <MessageSquare size={15} />
+                      <span>{q}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div ref={threadEndRef} />
           </div>
-
-          {/* Quick Suggestion Chips (in CHAT mode) */}
-          {activeAction === 'CHAT' && messages.length <= 2 && (
-            <div className="sci-ai-suggestions">
-              {QUICK_PROMPTS.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className="sci-ai-suggestion-chip"
-                  onClick={() => handleQuickPrompt(q)}
-                  disabled={isSending}
-                >
-                  <MessageSquare size={11} />
-                  <span>{q}</span>
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Input Form */}
           <form onSubmit={handleSubmit} className="sci-ai-box__footer">
@@ -544,7 +582,7 @@ export default function AiAssistantChatWidget() {
               className="sci-ai-input"
               placeholder={
                 activeAction === 'CHAT'
-                  ? 'Đặt câu hỏi về dữ liệu, thí nghiệm, dự báo...'
+                  ? 'Hỏi AI về dataset, thí nghiệm, dự báo...'
                   : 'Ghi chú câu hỏi bổ sung (tuỳ chọn)...'
               }
               value={inputMessage}
@@ -560,20 +598,26 @@ export default function AiAssistantChatWidget() {
               {isSending ? <Loader2 size={16} className="sci-spin" /> : <Send size={16} />}
             </button>
           </form>
+            </>
+          )}
         </aside>
       )}
 
       {/* Floating Toggle Button in bottom-right corner */}
-      <button
-        type="button"
-        className={`sci-ai-fab ${isOpen ? 'sci-ai-fab--active' : ''}`}
-        onClick={() => setIsOpen((prev) => !prev)}
-        aria-label="Mở Trợ lý AI Data Scientist"
-        title="Trợ lý AI Data Scientist (Gemini)"
-      >
-        <Sparkles size={19} />
-        <span>Trợ lý AI</span>
-      </button>
+      {!isOpen && (
+        <button
+          type="button"
+          className="sci-ai-fab"
+          onClick={() => setIsOpen(true)}
+          aria-label="Mở Trợ lý AI Data Scientist"
+          title="Trợ lý AI Data Scientist (Gemini)"
+        >
+          <MessageCircleMore size={27} strokeWidth={2.1} />
+          <span className="sci-ai-fab__sparkle" aria-hidden="true">
+            <Sparkles size={13} strokeWidth={2.4} />
+          </span>
+        </button>
+      )}
     </div>
   )
 }

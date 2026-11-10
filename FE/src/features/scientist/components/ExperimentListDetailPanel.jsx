@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { formatDate, formatNumber } from '../utils/formatters'
+import { formatDate, formatNumber, formatRecordingTime as formatTimeOnly } from '../utils/formatters'
 
 const DETAIL_PAGE_SIZE = 15
 
@@ -33,13 +33,6 @@ function formatFlow(val) {
   if (val == null || Number.isNaN(Number(val))) return '—'
   const num = Number(val)
   return Number.isInteger(num) ? String(num) : num.toFixed(2)
-}
-
-function formatTimeOnly(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
 function formatSec(sec) {

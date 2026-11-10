@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -32,6 +32,14 @@ export default function ScientistDatasetPreviewPage() {
   const effectiveVersionId =
     paramVersionId || (datasets.length > 0 ? datasets[0].version_id : null)
 
+  useEffect(() => {
+    if (!paramVersionId && effectiveDatasetId && effectiveVersionId) {
+      navigate(`/scientist/datasets/${effectiveDatasetId}/versions/${effectiveVersionId}`, {
+        replace: true,
+      })
+    }
+  }, [paramVersionId, effectiveDatasetId, effectiveVersionId, navigate])
+
   const activeMeta = datasets.find(
     (d) => d.dataset_id === effectiveDatasetId && d.version_id === effectiveVersionId
   )
@@ -39,7 +47,6 @@ export default function ScientistDatasetPreviewPage() {
   // 2. Query parameters (matching Swagger screenshot)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [representation, setRepresentation] = useState('normalized') // 'normalized' | 'raw'
   const [columnSearch, setColumnSearch] = useState('')
 
   // 3. Live Preview API query (GET /datasets/{dataset_id}/versions/{version_id}/preview)
@@ -49,7 +56,7 @@ export default function ScientistDatasetPreviewPage() {
     {
       page,
       pageSize,
-      representation,
+      representation: 'normalized',
     }
   )
 
@@ -157,55 +164,8 @@ export default function ScientistDatasetPreviewPage() {
         </div>
 
         <div className="sci-card-body">
-          {/* Parameters Bar (matching Swagger parameter controls) */}
+          {/* Preview actions */}
           <div className="sci-params-bar">
-            <div className="sci-params-bar__controls">
-              <div className="sci-params-bar__group">
-                <span className="sci-params-bar__label">Representation:</span>
-                <div className="sci-tabs">
-                  <button
-                    type="button"
-                    className={representation === 'normalized' ? 'active' : ''}
-                    onClick={() => {
-                      setRepresentation('normalized')
-                      setPage(1)
-                    }}
-                    title="Expand trajectory points and normalize columns"
-                  >
-                    Normalized
-                  </button>
-                  <button
-                    type="button"
-                    className={representation === 'raw' ? 'active' : ''}
-                    onClick={() => {
-                      setRepresentation('raw')
-                      setPage(1)
-                    }}
-                    title="Original raw records"
-                  >
-                    Raw
-                  </button>
-                </div>
-              </div>
-
-              <div className="sci-params-bar__group">
-                <span className="sci-params-bar__label">Page Size:</span>
-                <select
-                  className="sci-dataset-select"
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value))
-                    setPage(1)
-                  }}
-                >
-                  <option value={10}>10 rows / page</option>
-                  <option value={20}>20 rows / page (default)</option>
-                  <option value={50}>50 rows / page</option>
-                  <option value={100}>100 rows / page (max)</option>
-                </select>
-              </div>
-            </div>
-
             <div className="sci-params-bar__actions">
               <button
                 type="button"
@@ -316,7 +276,7 @@ export default function ScientistDatasetPreviewPage() {
             </div>
             <div className="sci-chips">
               {filteredColumns.map((c) => (
-                <span key={c.name} className="sci-chip" title={`Data type: ${c.type}`}>
+                <span key={c.name} className="sci-chip" data-type={String(c.type).toLowerCase()} title={`Data type: ${c.type}`}>
                   {c.name} <small>{c.type}</small>
                 </span>
               ))}
@@ -384,14 +344,31 @@ export default function ScientistDatasetPreviewPage() {
 
             {/* Pagination Controls */}
             <div className="sci-pager">
-              <span>
-                Showing{' '}
-                <strong>
-                  {formatNumber((page - 1) * pageSize + 1)}–
-                  {formatNumber((page - 1) * pageSize + (pagination?.returned_rows ?? preview.rows.length))}
-                </strong>
-                {totalRows != null ? ` of ${formatNumber(totalRows)} records` : ' records'}
-              </span>
+              <div className="sci-pager__summary">
+                <label htmlFor="sci-page-size">Page Size:</label>
+                <select
+                  id="sci-page-size"
+                  className="sci-dataset-select"
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setPage(1)
+                  }}
+                >
+                  <option value={10}>10 rows / page</option>
+                  <option value={20}>20 rows / page (default)</option>
+                  <option value={50}>50 rows / page</option>
+                  <option value={100}>100 rows / page (max)</option>
+                </select>
+                <span>
+                  Showing{' '}
+                  <strong>
+                    {formatNumber((page - 1) * pageSize + 1)}–
+                    {formatNumber((page - 1) * pageSize + (pagination?.returned_rows ?? preview.rows.length))}
+                  </strong>
+                  {totalRows != null ? ` of ${formatNumber(totalRows)} records` : ' records'}
+                </span>
+              </div>
 
               <div className="sci-pager__controls">
                 <button

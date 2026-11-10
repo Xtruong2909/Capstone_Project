@@ -10,26 +10,10 @@ import {
   CheckCircle2,
   Sliders,
 } from 'lucide-react'
-
-function formatShortTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
-
-function formatDateTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import {
+  formatRecordingDateTime as formatDateTime,
+  formatRecordingTime as formatShortTime,
+} from '../utils/formatters'
 
 function formatFlow(val) {
   if (val == null || Number.isNaN(Number(val))) return '—'

@@ -13,16 +13,9 @@ import {
   CheckCircle2,
   Sliders,
 } from 'lucide-react'
-import { formatNumber } from '../utils/formatters'
+import { formatNumber, formatRecordingTime as formatShortTime } from '../utils/formatters'
 
 const PAGE_SIZE = 15
-
-function formatShortTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
 
 function formatFlow(val) {
   if (val == null || Number.isNaN(Number(val))) return '—'

@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { useApprovedDatasets, useDatasetPreview } from '../../../hooks/useScientistData'
+import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import {
   usePredictionFeatureEngineering,
   useTrafficPrediction,
@@ -24,12 +24,6 @@ export default function ScientistPredictionPage() {
 
   const { datasets, isLoading: isLoadingList } = useApprovedDatasets('')
   const meta = datasets.find((d) => d.dataset_id === datasetId && d.version_id === versionId)
-  const { preview: datasetPreview } = useDatasetPreview(datasetId, versionId, {
-    page: 1,
-    pageSize: 1,
-    representation: 'normalized',
-  })
-
   const {
     featureData,
     isLoading: isGeneratingFeatures,
@@ -80,7 +74,6 @@ export default function ScientistPredictionPage() {
         datasets={datasets}
         datasetId={datasetId}
         versionId={versionId}
-        preview={datasetPreview}
         isLoading={isLoadingList}
       />
 

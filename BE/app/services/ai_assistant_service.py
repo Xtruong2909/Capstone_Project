@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.crud import crud_ai_assistant as repo
+from app.models.data_quality import DataQualityCheck
 from app.models.user import User
 from app.schemas.ai_assistant import (
     AssistantAction,
@@ -19,6 +20,11 @@ from app.schemas.ai_assistant import (
     ForecastExplanationResult,
     ModelRecommendationResult,
 )
+from app.services.ai_intent_service import (
+    asks_for_dataset_analysis,
+    infer_action,
+    prediction_id_from_question,
+)
 from app.services.ai_scope_service import (
     CLARIFICATION_MESSAGE,
     OUT_OF_SCOPE_MESSAGE,
@@ -29,6 +35,54 @@ from app.services.dataset_access_service import check_dataset_version_access
 from app.services.gemini_service import generate_analysis
 
 SMALL_TEST_THRESHOLD = 10  # Advice only; never blocks training or changes eligibility.
+
+
+def _resolve_chat_action(db: Session, request: AssistantRequest) -> AssistantRequest:
+    """Choose a supported action when the question and saved context identify one."""
+    if request.action != AssistantAction.CHAT or not request.message:
+        return request
+    if request.experiment_ids or request.prediction_id or request.model_id:
+        return request
+
+    action = infer_action(request.message)
+    if action == AssistantAction.CHAT:
+        return request
+    if action == AssistantAction.FORECAST_EXPLANATION:
+        prediction_id = prediction_id_from_question(request.message)
+        if prediction_id is None and request.dataset_version_id is not None:
+            latest = repo.get_latest_forecast_for_version(db, request.dataset_version_id)
+            prediction_id = latest.id if latest else None
+        return (request.model_copy(update={"action": action, "prediction_id": prediction_id})
+                if prediction_id is not None else request)
+
+    if request.dataset_version_id is None:
+        return request
+    experiments = repo.list_recent_experiments(db, request.dataset_version_id)
+    required = 2 if action == AssistantAction.EXPERIMENT_COMPARISON else 1
+    if len(experiments) < required:
+        return request
+    return request.model_copy(update={
+        "action": action,
+        "experiment_ids": [experiment.id for experiment in experiments[:required]],
+    })
+
+
+def _quality_context(check: DataQualityCheck | None) -> dict | None:
+    if check is None:
+        return None
+    report = check.report or {}
+    return {
+        "status": check.status,
+        "detected_structure": report.get("detected_structure"),
+        "total_rows": report.get("total_rows"),
+        "valid_rows": report.get("valid_rows"),
+        "invalid_rows": report.get("invalid_rows"),
+        "total_errors": report.get("total_errors"),
+        "total_warnings": report.get("total_warnings"),
+        "missing_required_columns": (report.get("missing_required_columns") or [])[:12],
+        "errors_by_type": dict(list((report.get("errors_by_type") or {}).items())[:12]),
+        "missing_values_by_column": (report.get("missing_values_by_column") or [])[:12],
+    }
 
 
 def _experiment_fact(db: Session, experiment_id: UUID, user: User) -> dict:
@@ -190,6 +244,10 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
         if scope == "unclear":
             return _scope_response(request.action, CLARIFICATION_MESSAGE)
 
+    if request.dataset_version_id is not None:
+        check_dataset_version_access(user, request.dataset_version_id, db)
+    request = _resolve_chat_action(db, request)
+
     knowledge_query = request.message or {
         AssistantAction.EXPERIMENT_ANALYSIS: "thí nghiệm MAE RMSE",
         AssistantAction.MODEL_RECOMMENDATION: "Random Forest thí nghiệm",
@@ -198,8 +256,6 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
         AssistantAction.CHAT: "",
     }[request.action]
     knowledge = retrieve_knowledge(knowledge_query)
-    if request.dataset_version_id is not None:
-        check_dataset_version_access(user, request.dataset_version_id, db)
     facts = [_experiment_fact(db, experiment_id, user) for experiment_id in request.experiment_ids]
     if request.dataset_version_id is not None and any(
         fact["dataset_version_id"] != str(request.dataset_version_id) for fact in facts
@@ -223,9 +279,14 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                 raise HTTPException(404, "Không tìm thấy phiên bản dataset")
             recent = repo.list_recent_experiments(db, request.dataset_version_id)
             models = repo.list_final_models(db, request.dataset_version_id)
+            dataset = getattr(version, "dataset", None)
             context = {"dataset_version_id": str(request.dataset_version_id),
                        "dataset": {"dataset_id": str(version.dataset_id),
+                                   "name": dataset.name if dataset else None,
+                                   "description": (dataset.description or "")[:400] if dataset else None,
+                                   "location_name": dataset.location_name if dataset else None,
                                    "version_tag": version.version_tag,
+                                   "file_format": version.file_format,
                                    "total_records": version.total_records,
                                    "approval_status": version.approval_status},
                        "recent_experiments": [{"experiment_id": str(item.id),
@@ -234,7 +295,19 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                        "final_models": [{"model_id": str(item.id),
                                          "experiment_id": str(item.experiment_id)}
                                         for item in models],
-                       "note": "Dùng experiment_ids hoặc prediction_id để xem chỉ số chi tiết."}
+                       "note": "Các thí nghiệm và dự báo chỉ được phân tích chi tiết khi có dữ liệu đã lưu."}
+            if request.message and asks_for_dataset_analysis(request.message):
+                context["quality_check"] = _quality_context(
+                    repo.get_latest_quality_check(db, request.dataset_version_id)
+                )
+                context["traffic_overview"] = repo.get_traffic_overview(
+                    db, request.dataset_version_id
+                )
+                context["analysis_scope"] = (
+                    "Phân tích phiên bản dataset hiện tại dựa trên metadata, báo cáo chất lượng "
+                    "và dữ liệu tổng hợp đã lưu. Nếu phần nào chưa có, nói rõ; không suy diễn "
+                    "kết quả của toàn bộ file từ thông tin thiếu."
+                )
     else:
         context = {"experiments": [{k: v for k, v in fact.items() if not k.startswith("_")}
                                    for fact in facts]}

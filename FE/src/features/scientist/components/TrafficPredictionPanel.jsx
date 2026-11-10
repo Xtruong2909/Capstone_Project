@@ -14,6 +14,10 @@ import {
   Table2,
   Sparkles,
 } from 'lucide-react'
+import {
+  formatRecordingDateTime as formatDateTime,
+  formatRecordingTime as formatShortTime,
+} from '../utils/formatters'
 
 const LINE_WIDTH = 620
 const LINE_HEIGHT = 265
@@ -22,26 +26,6 @@ const LINE_PAD = { top: 28, right: 26, bottom: 42, left: 50 }
 const BAR_WIDTH = 520
 const BAR_HEIGHT = 265
 const BAR_PAD = { top: 28, right: 26, bottom: 42, left: 50 }
-
-function formatShortTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
-
-function formatDateTime(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function formatFlow(val) {
   if (val == null || Number.isNaN(Number(val))) return '—'

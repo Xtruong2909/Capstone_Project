@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Eye, BarChart3, Loader2, FlaskConical, CheckCircle2 } from 'lucide-react'
-import { useApprovedDatasets, useDatasetPreview } from '../../../hooks/useScientistData'
+import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import {
   useOneMinuteVehicleAggregation,
   useTrainingFeatureEngineering,
@@ -30,12 +30,6 @@ export default function ScientistTrainingPage() {
 
   const { datasets, isLoading: isLoadingList } = useApprovedDatasets('')
   const meta = datasets.find((d) => d.dataset_id === datasetId && d.version_id === versionId)
-  const { preview } = useDatasetPreview(datasetId, versionId, {
-    page: 1,
-    pageSize: 1,
-    representation: 'normalized',
-  })
-
   const { chart, statusInfo, isLoading, isCalculating, progress, error, aggregateOneMinute } =
     useOneMinuteVehicleAggregation(datasetId)
 
@@ -209,7 +203,6 @@ export default function ScientistTrainingPage() {
         datasets={datasets}
         datasetId={datasetId}
         versionId={versionId}
-        preview={preview}
         isLoading={isLoadingList}
       />
 
