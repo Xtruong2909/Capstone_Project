@@ -75,6 +75,15 @@ export default function ScientistExperimentsPage() {
           isLoadingDetail={isLoadingDetail || (!visibleExperiment && !detailError)}
           detailError={detailError}
           onBackToList={() => navigate(datasetPath(datasetId))}
+          onCreateWithSameSplit={(experiment) => navigate(trainingPath(experiment.dataset_version_id), {
+            state: { reuseSplit: {
+              splitId: experiment.split_id,
+              trainCount: null,
+              testCount: experiment.result_tables?.horizon_forecasts?.[0]?.sample_count ?? null,
+              officialEligible: experiment.official_evaluation_eligible,
+              evaluationMode: experiment.evaluation_mode || 'exploratory',
+            } },
+          })}
           onUseForPrediction={(experiment) => navigate(`/scientist/datasets/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(experiment.dataset_version_id)}/predict?experimentId=${encodeURIComponent(experiment.experiment_id)}`)}
         />}
       </>}

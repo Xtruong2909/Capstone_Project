@@ -365,7 +365,7 @@ export default function ExperimentListDetailPanel({
                         <div>
                           <h4>Bảng 1 · Dự báo theo Horizon (Random Forest tại mốc cuối tập Test)</h4>
                           <p>
-                            Giá trị dự báo tại mốc thời gian cuối cùng của tập Test cho +1, +3, +5 phút, kèm MSE/RMSE tính trên toàn bộ mẫu Test của từng horizon.
+                            Giá trị dự báo tại mốc thời gian cuối cùng của tập Test cho +1, +3, +5 phút, kèm MAE/RMSE tính trên toàn bộ mẫu Test của từng mốc dự báo.
                           </p>
                         </div>
                       </div>
@@ -378,11 +378,8 @@ export default function ExperimentListDetailPanel({
                               <th>Mốc mục tiêu (Target)</th>
                               <th>Thực tế (Actual)</th>
                               <th>Dự báo (Predicted)</th>
-                              <th>Sai số tuyệt đối (|e|)</th>
-                              <th>Số mẫu Test</th>
-                              <th>MAE (Horizon)</th>
-                              <th>MSE (Horizon)</th>
-                              <th>RMSE (Horizon)</th>
+                              <th>MAE</th>
+                              <th>RMSE</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -405,12 +402,9 @@ export default function ExperimentListDetailPanel({
                                   <td className="sci-td-x">
                                     <strong>{formatMetric(row.predicted_traffic_flow, 2)}</strong>
                                   </td>
-                                  <td>{formatMetric(row.absolute_error, 2)}</td>
-                                  <td>{formatNumber(row.sample_count)}</td>
                                   <td>
                                     <strong>{formatMetric(horizonMae, 4)}</strong>
                                   </td>
-                                  <td>{formatMetric(row.mse, 4)}</td>
                                   <td className="sci-td-y">
                                     <strong>{formatMetric(row.rmse, 4)}</strong>
                                   </td>
@@ -430,7 +424,7 @@ export default function ExperimentListDetailPanel({
                             Bảng 2 · Chi tiết dự đoán của ba mô hình (Random Forest, Persistence, Historical Average)
                           </h4>
                           <p>
-                            Toàn bộ dự đoán trên từng dòng tập Test và từng horizon (+1, +3, +5 phút).
+                            Toàn bộ dự đoán trên từng dòng tập Test. MAE và RMSE là chỉ số của mô hình theo từng khoảng dự báo, nên lặp lại ở các dòng cùng nhóm.
                           </p>
                         </div>
 
@@ -476,13 +470,14 @@ export default function ExperimentListDetailPanel({
                               <th>Mốc mục tiêu (Target)</th>
                               <th>Thực tế (Actual)</th>
                               <th>Dự đoán (Predicted)</th>
-                              <th>Sai số tuyệt đối (Absolute Error)</th>
-                              <th>Sai số bình phương (Squared Error)</th>
+                              <th>MAE</th>
+                              <th>RMSE</th>
                             </tr>
                           </thead>
                           <tbody>
                             {pagedPredictionDetails.map((row, idx) => {
                               const rowNum = (detailPage - 1) * DETAIL_PAGE_SIZE + idx + 1
+                              const metrics = exp.performance_by_horizon?.[String(row.horizon_minutes)]?.[String(row.model).toLowerCase()]
                               return (
                                 <tr
                                   key={`${row.model}-${row.horizon_minutes}-${row.forecast_origin_time}-${idx}`}
@@ -508,8 +503,8 @@ export default function ExperimentListDetailPanel({
                                   <td className="sci-td-x">
                                     <strong>{formatMetric(row.predicted_traffic_flow, 2)}</strong>
                                   </td>
-                                  <td>{formatMetric(row.absolute_error, 4)}</td>
-                                  <td>{formatMetric(row.squared_error, 4)}</td>
+                                  <td><strong>{formatMetric(metrics?.mae, 4)}</strong></td>
+                                  <td className="sci-td-y"><strong>{formatMetric(metrics?.rmse, 4)}</strong></td>
                                 </tr>
                               )
                             })}
@@ -557,11 +552,11 @@ export default function ExperimentListDetailPanel({
                       )}
                     </div>
 
-                    {/* Bảng 3.3: Tổng hợp MAE / MSE / RMSE (model_summary) */}
+                    {/* Bảng 3.3: Tổng hợp MAE / RMSE (model_summary) */}
                     <div className="sci-subtable-box">
                       <div className="sci-subtable-box__head">
                         <div>
-                          <h4>Bảng 3 · Tổng hợp MAE / MSE / RMSE theo mô hình</h4>
+                          <h4>Bảng 3 · Tổng hợp MAE / RMSE theo mô hình</h4>
                           <p>
                             Sai số gộp trên tất cả cặp mẫu Test và cả 3 horizon (+1, +3, +5 phút) với trọng số bằng nhau.
                           </p>
@@ -573,9 +568,8 @@ export default function ExperimentListDetailPanel({
                             <tr>
                               <th>Mô hình</th>
                               <th>Tổng số điểm dự đoán</th>
-                              <th>MAE (Gộp)</th>
-                              <th>MSE (Gộp)</th>
-                              <th>RMSE (Gộp)</th>
+                              <th>MAE</th>
+                              <th>RMSE</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -595,7 +589,6 @@ export default function ExperimentListDetailPanel({
                                 <td>
                                   <strong>{formatMetric(row.mae, 4)}</strong>
                                 </td>
-                                <td>{formatMetric(row.mse, 4)}</td>
                                 <td className="sci-td-y">
                                   <strong>{formatMetric(row.rmse, 4)}</strong>
                                 </td>

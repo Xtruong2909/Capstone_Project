@@ -91,9 +91,8 @@ export default function ScientistPredictionPage() {
       {/* Step 1: Tạo Đặc trưng cho Dự báo (POST /api/feature-engineering/prediction) */}
       <PredictionFeaturePanel
         key={`pred-features:${datasetId}:${versionId}`}
+        datasetId={datasetId}
         featureData={featureData}
-        datasetMeta={meta}
-        forecastData={forecastData}
         isLoading={isGeneratingFeatures}
         error={featureError}
         onGenerate={generatePredictionFeatures}

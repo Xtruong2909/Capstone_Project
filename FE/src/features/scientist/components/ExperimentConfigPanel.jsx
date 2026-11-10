@@ -3,11 +3,7 @@ import {
   Sliders,
   Play,
   Loader2,
-  CheckCircle2,
   AlertCircle,
-  Eye,
-  PlusCircle,
-  ArrowLeft,
   ClipboardList,
 } from 'lucide-react'
 import { formatNumber } from '../utils/formatters'
@@ -22,25 +18,14 @@ const DEFAULT_PARAMS = {
   randomState: 42,
 }
 
-function formatMetricVal(val) {
-  if (val == null || Number.isNaN(Number(val))) return '—'
-  return Number(val).toFixed(4)
-}
-
 /**
  * Step 3: UI component for POST /api/model-training/experiment
  */
 export default function ExperimentConfigPanel({
-  datasetMeta,
-  versionId,
   activeSplitContext,
   isTraining,
   trainError,
-  latestExperiment,
   onRunExperiment,
-  onViewExperimentDetail,
-  onResetLatestExperiment,
-  onBackToSplit,
   onOpenExperimentList,
   experimentCount = 0,
 }) {
@@ -53,10 +38,6 @@ export default function ExperimentConfigPanel({
   const evaluationMode = officialEligible
     ? activeSplitContext?.evaluationMode || 'exploratory'
     : 'exploratory'
-
-  const datasetLabel = datasetMeta
-    ? `${datasetMeta.dataset_name} (${datasetMeta.version_tag})`
-    : versionId || '—'
 
   const handleFieldChange = (field, value) => {
     setFormState((prev) => ({ ...prev, [field]: value }))
@@ -78,10 +59,6 @@ export default function ExperimentConfigPanel({
     })
   }
 
-  const handleCreateAnotherSameSplit = () => {
-    onResetLatestExperiment?.()
-  }
-
   return (
     <section className="admin-card">
       <div className="admin-card__header">
@@ -100,17 +77,6 @@ export default function ExperimentConfigPanel({
         </div>
 
         <div className="sci-train-actions">
-          {onBackToSplit && (
-            <button
-              type="button"
-              className="btn-secondary sci-train-btn"
-              onClick={onBackToSplit}
-            >
-              <ArrowLeft size={16} />
-              <span>Quay lại Chia 70/30</span>
-            </button>
-          )}
-
           {onOpenExperimentList && (
             <button
               type="button"
@@ -125,22 +91,7 @@ export default function ExperimentConfigPanel({
       </div>
 
       <div className="sci-card-body">
-        {/* Top Dataset & Split Context Banner as specified in gợi ý.txt */}
         <div className="sci-exp-context-banner">
-          <div className="sci-exp-context-item">
-            <span className="sci-exp-context-item__label">Dataset:</span>
-            <strong className="sci-exp-context-item__val" title={datasetLabel}>
-              {datasetLabel}
-            </strong>
-          </div>
-
-          <div className="sci-exp-context-item">
-            <span className="sci-exp-context-item__label">Split:</span>
-            <code className="sci-mono sci-split-code" title={splitId || ''}>
-              {splitId ? `${String(splitId).slice(0, 12)}…` : 'Chưa có Split ID'}
-            </code>
-          </div>
-
           <div className="sci-exp-context-item">
             <span className="sci-exp-context-item__label">Train:</span>
             <strong className="sci-exp-context-item__val">
@@ -207,7 +158,7 @@ export default function ExperimentConfigPanel({
                   onChange={(e) => handleFieldChange('nEstimators', e.target.value)}
                   className="sci-rf-input"
                 />
-                <small className="sci-rf-field__hint">Gợi ý: 100 (Từ 1 đến 1000 cây)</small>
+                <small className="sci-rf-field__hint">Từ 1 đến 1000 cây.</small>
               </div>
 
               {/* 2. Độ sâu tối đa (max_depth) */}
@@ -228,15 +179,13 @@ export default function ExperimentConfigPanel({
                   onChange={(e) => handleFieldChange('maxDepth', e.target.value)}
                   className="sci-rf-input"
                 />
-                <small className="sci-rf-field__hint">
-                  Gợi ý: 10 (Nhập 0 để không giới hạn độ sâu)
-                </small>
+                <small className="sci-rf-field__hint">Nhập 0 để không giới hạn độ sâu.</small>
               </div>
 
               {/* 3. Mẫu tối thiểu để chia nhánh (min_samples_split) */}
               <div className="sci-rf-field">
                 <div className="sci-rf-field__label-row">
-                  <label htmlFor="rf-min-samples-split">Mẫu tối thiểu để chia nhánh</label>
+                  <label htmlFor="rf-min-samples-split">Mẫu tối thiểu để tách</label>
                   <code>min_samples_split</code>
                 </div>
                 <input
@@ -250,13 +199,13 @@ export default function ExperimentConfigPanel({
                   onChange={(e) => handleFieldChange('minSamplesSplit', e.target.value)}
                   className="sci-rf-input"
                 />
-                <small className="sci-rf-field__hint">Gợi ý: 2 (Tối thiểu &ge; 2)</small>
+                <small className="sci-rf-field__hint">Ít nhất 2 mẫu tại nút.</small>
               </div>
 
               {/* 4. Mẫu tối thiểu tại nút lá (min_samples_leaf) */}
               <div className="sci-rf-field">
                 <div className="sci-rf-field__label-row">
-                  <label htmlFor="rf-min-samples-leaf">Mẫu tối thiểu tại nút lá</label>
+                  <label htmlFor="rf-min-samples-leaf">Mẫu tối thiểu ở lá</label>
                   <code>min_samples_leaf</code>
                 </div>
                 <input
@@ -270,13 +219,13 @@ export default function ExperimentConfigPanel({
                   onChange={(e) => handleFieldChange('minSamplesLeaf', e.target.value)}
                   className="sci-rf-input"
                 />
-                <small className="sci-rf-field__hint">Gợi ý: 1 (Tối thiểu &ge; 1)</small>
+                <small className="sci-rf-field__hint">Ít nhất 1 mẫu mỗi lá.</small>
               </div>
 
               {/* 5. Số đặc trưng xét mỗi lần (max_features) */}
               <div className="sci-rf-field">
                 <div className="sci-rf-field__label-row">
-                  <label htmlFor="rf-max-features">Số đặc trưng xét mỗi lần</label>
+                  <label htmlFor="rf-max-features">Đặc trưng mỗi lần tách</label>
                   <code>max_features</code>
                 </div>
                 <input
@@ -297,15 +246,13 @@ export default function ExperimentConfigPanel({
                   <option value="3">3 đặc trưng</option>
                   <option value="5">5 đặc trưng</option>
                 </datalist>
-                <small className="sci-rf-field__hint">
-                  Gợi ý: 1.0 (Tỷ lệ 0..1.0, số nguyên 1..5, sqrt, log2, null)
-                </small>
+                <small className="sci-rf-field__hint">Tỷ lệ 0–1, số nguyên 1–5, sqrt hoặc log2.</small>
               </div>
 
               {/* 6. Lấy mẫu có hoàn lại (bootstrap) */}
               <div className="sci-rf-field">
                 <div className="sci-rf-field__label-row">
-                  <label htmlFor="rf-bootstrap">Lấy mẫu có hoàn lại</label>
+                  <label htmlFor="rf-bootstrap">Lấy mẫu hoàn lại</label>
                   <code>bootstrap</code>
                 </div>
                 <select
@@ -318,7 +265,7 @@ export default function ExperimentConfigPanel({
                   <option value="true">Bật (True)</option>
                   <option value="false">Tắt (False)</option>
                 </select>
-                <small className="sci-rf-field__hint">Gợi ý: Bật (Bootstrap sampling)</small>
+                <small className="sci-rf-field__hint">Lấy mẫu ngẫu nhiên cho từng cây.</small>
               </div>
 
               {/* 7. Hạt giống ngẫu nhiên (random_state) */}
@@ -339,9 +286,7 @@ export default function ExperimentConfigPanel({
                   onChange={(e) => handleFieldChange('randomState', e.target.value)}
                   className="sci-rf-input"
                 />
-                <small className="sci-rf-field__hint">
-                  Gợi ý: 42 (Đảm bảo tái lập kết quả huấn luyện)
-                </small>
+                <small className="sci-rf-field__hint">Giữ cố định để tái lập kết quả.</small>
               </div>
             </div>
 
@@ -395,106 +340,6 @@ export default function ExperimentConfigPanel({
           </div>
         )}
 
-        {/* Result Banner after creating experiment */}
-        {!isTraining && latestExperiment && (
-          <div
-            className={`sci-exp-created-card ${
-              latestExperiment.status === 'FAILED' ? 'sci-exp-created-card--failed' : ''
-            }`}
-          >
-            <div className="sci-exp-created-card__head">
-              <div className="sci-exp-created-card__title-group">
-                {latestExperiment.status === 'FAILED' ? (
-                  <AlertCircle size={20} style={{ color: '#dc2626' }} />
-                ) : (
-                  <CheckCircle2 size={20} style={{ color: '#16a34a' }} />
-                )}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span className="sci-exp-created-card__title">
-                      Đã tạo thí nghiệm:{' '}
-                      <strong>{latestExperiment.experiment_name}</strong>
-                    </span>
-                    <span
-                      className={`sci-pill ${
-                        latestExperiment.status === 'COMPLETED'
-                          ? 'sci-pill--approved'
-                          : 'sci-job__status--failed'
-                      }`}
-                    >
-                      {latestExperiment.status}
-                    </span>
-                  </div>
-                  <p className="sci-exp-created-card__sub">
-                    Số cây: <strong>{latestExperiment.hyperparameters?.n_estimators}</strong> · Độ sâu:{' '}
-                    <strong>{latestExperiment.hyperparameters?.max_depth ?? 'Không giới hạn'}</strong> ·
-                    Train / Dự đoán / Tổng:{' '}
-                    <strong>
-                      {latestExperiment.training_time_sec != null
-                        ? `${latestExperiment.training_time_sec.toFixed(4)}s`
-                        : '—'}{' / '}
-                      {latestExperiment.prediction_time_sec != null
-                        ? `${latestExperiment.prediction_time_sec.toFixed(4)}s`
-                        : '—'}{' / '}
-                      {latestExperiment.execution_time_sec != null
-                        ? `${latestExperiment.execution_time_sec.toFixed(4)}s`
-                        : '—'}
-                    </strong>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {latestExperiment.status === 'COMPLETED' &&
-              latestExperiment.performance_by_horizon && (
-                <div className="sci-exp-created-card__metrics">
-                  {['1', '3', '5'].map((h) => {
-                    const rf = latestExperiment.performance_by_horizon?.[h]?.random_forest
-                    return (
-                      <div key={h} className="sci-exp-mini-metric">
-                        <span className="sci-exp-mini-metric__label">Horizon +{h} phút</span>
-                        <div className="sci-exp-mini-metric__vals">
-                          <span>
-                            MAE: <strong>{formatMetricVal(rf?.mae)}</strong>
-                          </span>
-                          <span>
-                            RMSE: <strong>{formatMetricVal(rf?.rmse)}</strong>
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-            {latestExperiment.status === 'FAILED' && latestExperiment.error && (
-              <div className="sci-state sci-state--error" style={{ padding: '0.85rem 1rem' }}>
-                <p style={{ margin: 0, fontWeight: 700 }}>{latestExperiment.error}</p>
-              </div>
-            )}
-
-            {/* Two Primary Actions right under result as specified in gợi ý.txt */}
-            <div className="sci-exp-created-card__actions">
-              <button
-                type="button"
-                className="btn-action btn-action--primary sci-train-btn"
-                onClick={() => onViewExperimentDetail?.(latestExperiment)}
-              >
-                <Eye size={16} />
-                <span>Xem kết quả {latestExperiment.experiment_name}</span>
-              </button>
-
-              <button
-                type="button"
-                className="btn-secondary sci-train-btn"
-                onClick={handleCreateAnotherSameSplit}
-              >
-                <PlusCircle size={16} />
-                <span>Tạo thí nghiệm khác với cùng dữ liệu</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </section>
   )

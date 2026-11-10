@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { Eye, BarChart3, Loader2, CheckCircle2, GitCompareArrows, Database, FlaskConical, ArrowRight } from 'lucide-react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Eye, BarChart3, Loader2, CheckCircle2, GitCompareArrows, FlaskConical, ArrowRight, ArrowLeft, Clock3 } from 'lucide-react'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import { useTrainingWorkspace } from '../../../hooks/useTrainingWorkspace'
 import {
@@ -12,22 +12,20 @@ import {
 import DatasetInfoPanel from '../components/DatasetInfoPanel'
 import BarChart from '../components/BarChart'
 import AggregationExplorer from '../components/AggregationExplorer'
-import TrainingPreparationAccordion from '../components/TrainingPreparationAccordion'
 import TrainingFeaturePanel from '../components/TrainingFeaturePanel'
-import TrainTestSplitPanel from '../components/TrainTestSplitPanel'
+import ExperimentSplitSection from '../components/ExperimentSplitSection'
 import ExperimentConfigPanel from '../components/ExperimentConfigPanel'
 import ExperimentListDetailPanel from '../components/ExperimentListDetailPanel'
 import ExperimentComparePanel from '../components/ExperimentComparePanel'
-import { formatDate, formatNumber } from '../utils/formatters'
+import { formatDate, formatNumber, formatRecordingDateTime } from '../utils/formatters'
 
 function TrainingWorkspace({ datasetId, versionId }) {
   const navigate = useNavigate()
-  const { activeTab, setActiveTab, openPreparation, setOpenPreparation, comparisonOpen, setComparisonOpen } = useTrainingWorkspace()
-  const [overrideSplitContext, setOverrideSplitContext] = useState(null)
+  const location = useLocation()
+  const reuseSplit = location.state?.reuseSplit || null
+  const { activeTab, setActiveTab, showSplitDetails, setShowSplitDetails, comparisonOpen, setComparisonOpen } = useTrainingWorkspace(reuseSplit ? 'experiments' : 'preparation')
+  const [overrideSplitContext, setOverrideSplitContext] = useState(reuseSplit)
   const [selectedCompareIds, setSelectedCompareIds] = useState([])
-  const [workspaceNotice, setWorkspaceNotice] = useState('')
-  const [showAggregationDetails, setShowAggregationDetails] = useState(false)
-  const [hasOpenedAggregationDetails, setHasOpenedAggregationDetails] = useState(false)
 
   const { datasets, isLoading: isLoadingList } = useApprovedDatasets('')
   const meta = datasets.find((d) => d.dataset_id === datasetId && d.version_id === versionId)
@@ -53,7 +51,6 @@ function TrainingWorkspace({ datasetId, versionId }) {
     isLoadingList: isLoadingExperiments,
     listError: experimentsError,
     reloadExperiments,
-    latestExperiment,
     setLatestExperiment,
     isTraining,
     trainError,
@@ -73,6 +70,7 @@ function TrainingWorkspace({ datasetId, versionId }) {
   } = useModelTrainingExperiments(versionId)
 
   const sampleCount = featureData?.sample_count ?? featureData?.samples?.length ?? 0
+  const timeLabels = chart?.time_labels || []
 
   // Resolve the active split context for Step 3 (from override, or splitData, or latest experiment)
   const activeSplitContext = useMemo(() => {
@@ -103,8 +101,6 @@ function TrainingWorkspace({ datasetId, versionId }) {
   }, [overrideSplitContext, splitData, experiments])
 
   const aggregationStatus = error ? 'error' : isLoading || isCalculating ? 'processing' : chart ? 'completed' : 'pending'
-  const featureStatus = featureError ? 'error' : isGeneratingFeatures ? 'processing' : sampleCount >= 2 ? 'completed' : 'pending'
-  const splitStatus = splitError ? 'error' : isSplitting ? 'processing' : activeSplitContext?.splitId ? 'completed' : 'pending'
   const splitOutdated = useMemo(() => {
     if (!splitData?.split_id || !featureData?.samples?.length) return false
     const samples = featureData.samples
@@ -125,7 +121,6 @@ function TrainingWorkspace({ datasetId, versionId }) {
   }, [splitData, featureData, versionId])
 
   const handleAggregate = async () => {
-    setWorkspaceNotice('')
     await aggregateOneMinute()
   }
 
@@ -133,19 +128,26 @@ function TrainingWorkspace({ datasetId, versionId }) {
     navigate(`/scientist/datasets/${datasetId}/versions/${versionId}`)
   }
 
-  const handleProceedToSplit = () => {
-    setOpenPreparation('split')
-  }
-
   // Step 2: Run 70/30 Chronological Split
-  const handleRunSplit = async () => {
-    const res = await runTrainTestSplit(featureData, {
+  const handleRunSplit = async (sourceFeatures = featureData) => {
+    const res = await runTrainTestSplit(sourceFeatures, {
       trainRatio: 0.7,
       splitStrategy: 'chronological',
     })
     if (res?.split_id) {
       setOverrideSplitContext(null)
-      setWorkspaceNotice('Dữ liệu đã chia 70/30. Bạn có thể sang tab Thí nghiệm mô hình.')
+    }
+  }
+
+  const handleProceedToSplit = async () => {
+    if (splitData?.split_id) return
+    setShowSplitDetails(true)
+    let sourceFeatures = featureData
+    if ((sourceFeatures?.samples?.length ?? 0) < 2) {
+      sourceFeatures = await generateTrainingFeatures('MAIN_ROI')
+    }
+    if ((sourceFeatures?.samples?.length ?? 0) >= 2) {
+      await handleRunSplit(sourceFeatures)
     }
   }
 
@@ -154,15 +156,22 @@ function TrainingWorkspace({ datasetId, versionId }) {
     setOverrideSplitContext(null)
     setLatestExperiment(null)
     setTrainError(null)
+    setShowSplitDetails(false)
     setActiveTab('experiments')
   }
 
-  // Step 3 -> View created experiment detail in Step 4
-  const handleViewCreatedExperiment = async (exp) => {
-    if (!exp?.experiment_id) return
-    setSelectedExperiment(exp)
-    setActiveTab('analysis')
-    await loadExperimentDetail(exp.experiment_id)
+  const handleRunExperiment = async (params) => {
+    const experiment = await runExperiment(params)
+    if (!experiment) return
+    if (experiment.status === 'FAILED') {
+      setTrainError(experiment.error || 'Thí nghiệm thất bại. Vui lòng kiểm tra cấu hình và thử lại.')
+      return
+    }
+    if (!experiment.experiment_id) {
+      setTrainError('Đã tạo thí nghiệm nhưng API không trả về mã thí nghiệm để mở trang kết quả.')
+      return
+    }
+    navigate(`/scientist/experiments/${encodeURIComponent(datasetId)}/${encodeURIComponent(experiment.experiment_id)}`)
   }
 
   // Step 4 / Step 5 -> Reuse split_id in Step 3
@@ -193,6 +202,12 @@ function TrainingWorkspace({ datasetId, versionId }) {
     await compareExperiments(ids)
   }
 
+  const openComparison = () => {
+    setSelectedExperiment(null)
+    setComparisonOpen(true)
+    setActiveTab('analysis')
+  }
+
   const handleChangeCompareIds = (ids) => {
     setSelectedCompareIds(ids)
     setComparisonData(null)
@@ -207,68 +222,48 @@ function TrainingWorkspace({ datasetId, versionId }) {
 
   return (
     <div className="sci-page">
-      <DatasetInfoPanel
-        item={meta}
-        datasets={datasets}
-        datasetId={datasetId}
-        versionId={versionId}
-        isLoading={isLoadingList}
-      />
+      {activeTab === 'preparation' && (
+        <>
+          <DatasetInfoPanel
+            item={meta}
+            datasets={datasets}
+            datasetId={datasetId}
+            versionId={versionId}
+            isLoading={isLoadingList}
+          />
+          <div className="sci-workspace-intro">
+            <div>
+              <span className="sci-workspace-eyebrow">DATA SCIENTIST WORKSPACE</span>
+              <h1>Tổng hợp theo thời gian và biểu đồ giao thông</h1>
+              <p>Theo dõi lưu lượng từ dữ liệu UAV theo từng phút, sau đó chuẩn bị dữ liệu để chạy và so sánh thí nghiệm.</p>
+            </div>
+          </div>
+        </>
+      )}
 
-      <div className="sci-workspace-intro">
-        <div>
-          <span className="sci-workspace-eyebrow">DATA SCIENTIST WORKSPACE</span>
-          <h1>Huấn luyện và phân tích mô hình</h1>
-          <p>Chuẩn bị dữ liệu một lần, chạy nhiều cấu hình Random Forest và đối chiếu kết quả trên cùng tập Test.</p>
-        </div>
-      </div>
-
-      <nav className="sci-workspace-tabs" role="tablist" aria-label="Training Workspace">
-        {[
-          { id: 'preparation', icon: Database, label: 'Chuẩn bị dữ liệu', description: 'Aggregation · Lag Features · Train/Test' },
-          { id: 'experiments', icon: FlaskConical, label: 'Thí nghiệm mô hình', description: 'Cấu hình và chạy Random Forest' },
-          { id: 'analysis', icon: GitCompareArrows, label: 'Phân tích thí nghiệm', description: 'Kết quả và so sánh' },
-        ].map(({ id, icon: Icon, label, description }) => (
-          <button
-            key={id}
-            type="button"
-            id={'workspace-tab-' + id}
-            role="tab"
-            aria-controls={'workspace-panel-' + id}
-            aria-selected={activeTab === id}
-            className={'sci-workspace-tab' + (activeTab === id ? ' is-active' : '')}
-            onClick={() => setActiveTab(id)}
-          >
-            <Icon size={19} />
-            <span><strong>{label}</strong><small>{description}</small></span>
-          </button>
-        ))}
-      </nav>
-
-      <div id="workspace-panel-preparation" role="tabpanel" aria-labelledby="workspace-tab-preparation" className="sci-workspace-panel" hidden={activeTab !== 'preparation'}>
+      <div id="workspace-panel-preparation" className="sci-workspace-panel" hidden={activeTab !== 'preparation'}>
         <div className="sci-workspace-section-heading">
-          <div><h2>Chuẩn bị dữ liệu</h2><p>Thực hiện lần lượt ba mục bên dưới. Mỗi kết quả đã tạo đều có thể mở lại để xem.</p></div>
+          <div><h2>Tổng hợp thời gian</h2><p>Gom dữ liệu thành các mốc 1 phút và quan sát sự thay đổi lưu lượng, vận tốc theo thời gian.</p></div>
           {splitData?.split_id && <span className="sci-prep-status sci-prep-status--completed"><CheckCircle2 size={15} /> Sẵn sàng huấn luyện</span>}
         </div>
-        {workspaceNotice && <div className="sci-notice" role="status">{workspaceNotice}</div>}
         {splitOutdated && <div className="sci-warning" role="alert">Lag Features hiện tại khác tập Train/Test đã lưu. Hãy chia lại Train/Test trước khi chạy thí nghiệm mới. Các thí nghiệm cũ vẫn gắn với tập Test trước đó.</div>}
-        <div className="sci-preparation-stack">
-          <TrainingPreparationAccordion
-            id="prep-aggregation"
-            index="01"
-            title="Tổng hợp dữ liệu · Data Aggregation"
-            description="Gom số xe thành các mốc 1 phút và xem biểu đồ lưu lượng."
-            status={aggregationStatus}
-            isOpen={openPreparation === 'aggregation'}
-            onToggle={() => setOpenPreparation(openPreparation === 'aggregation' ? null : 'aggregation')}
-          >
+        <section className="admin-card sci-training-aggregation">
+          <div className="admin-card__header">
+            <div className="admin-card__header-left">
+              <div className="admin-card__icon-box admin-card__icon-box--blue"><Clock3 size={18} /></div>
+              <div><h3 className="admin-card__title">Dữ liệu theo từng phút · Data Aggregation</h3><p className="admin-card__subtitle">Thời gian ghi nhận và số xe trong mỗi mốc 60 giây.</p></div>
+            </div>
+            <span className={`sci-prep-status sci-prep-status--${aggregationStatus}`}>
+              {aggregationStatus === 'completed' ? 'Hoàn thành' : aggregationStatus === 'processing' ? 'Đang xử lý' : aggregationStatus === 'error' ? 'Lỗi' : 'Chưa thực hiện'}
+            </span>
+          </div>
+          <div className="sci-card-body">
             <div className="sci-prep-actions">
               <button type="button" className="btn-secondary sci-train-btn" onClick={handleReviewDataset}><Eye size={16} /> Xem Dataset</button>
               {!chart && <button type="button" className="btn-action btn-action--primary sci-train-btn" onClick={handleAggregate} disabled={isLoading || isCalculating}>
                 {isCalculating ? <Loader2 size={16} className="sci-spin" /> : <BarChart3 size={16} />}
                 {isCalculating ? 'Đang tổng hợp...' : 'Tổng hợp theo phút'}
               </button>}
-              {chart && <button type="button" className="btn-secondary sci-train-btn" aria-expanded={showAggregationDetails} onClick={() => { setHasOpenedAggregationDetails(true); setShowAggregationDetails(!showAggregationDetails) }}>{showAggregationDetails ? 'Ẩn phân tích chi tiết' : 'Xem phân tích chi tiết'}</button>}
             </div>
             {chart && <p className="sci-workspace-help">Dữ liệu tổng hợp đã có sẵn. Bạn có thể xem biểu đồ hoặc tiếp tục bước tiếp theo.</p>}
             {isLoading && <div className="sci-state" role="status"><Loader2 size={20} className="sci-spin" /> Đang tải dữ liệu tổng hợp đã lưu...</div>}
@@ -281,86 +276,66 @@ function TrainingWorkspace({ datasetId, versionId }) {
                 <span className="sci-status-box__item">Số mốc: <strong>{formatNumber(statusInfo.records_count)}</strong></span>
                 {statusInfo.last_generated_at && <span className="sci-status-box__item">Cập nhật: <strong>{formatDate(statusInfo.last_generated_at)}</strong></span>}
               </div>}
+              <div className="sci-training-time-summary">
+                <div><small>Bắt đầu</small><strong>{formatRecordingDateTime(timeLabels[0])}</strong></div>
+                <div><small>Kết thúc</small><strong>{formatRecordingDateTime(timeLabels[timeLabels.length - 1])}</strong></div>
+                <div><small>Số mốc</small><strong>{formatNumber(timeLabels.length)} mốc</strong></div>
+                <div><small>Chu kỳ</small><strong>1 phút / mốc</strong></div>
+              </div>
               <BarChart labels={chart.time_labels} values={chart.vehicle_count} />
             </>}
-            {chart && hasOpenedAggregationDetails && <div className="sci-prep-explorer" hidden={!showAggregationDetails}><AggregationExplorer key={'aggregation:' + datasetId + ':' + versionId} datasetId={datasetId} versionId={versionId} aggregationInterval={60} roiIdentifier="MAIN_ROI" title="Biểu đồ giao thông theo phút" /></div>}
-            {chart && <div className="sci-prep-next"><button type="button" className="btn-action btn-action--primary sci-train-btn" onClick={() => setOpenPreparation('features')}>Tiếp tục tạo Lag Features <ArrowRight size={16} /></button></div>}
-          </TrainingPreparationAccordion>
+          </div>
+        </section>
 
-          <TrainingPreparationAccordion
-            id="prep-features"
-            index="02"
-            title="Tạo đặc trưng trễ · Lag Features"
-            description="Tạo 5 lag và nhãn dự báo +1, +3, +5 phút."
-            status={featureStatus}
-            isOpen={openPreparation === 'features'}
-            onToggle={() => setOpenPreparation(openPreparation === 'features' ? null : 'features')}
-          >
-            {!chart && !isLoading && <div className="sci-warning">Chưa có tổng hợp 1 phút. Chức năng này có thể tạo dữ liệu tổng hợp khi cần; nên hoàn thành mục đầu tiên để kiểm tra đầu vào.</div>}
-            <TrainingFeaturePanel
-              key={'features:' + datasetId + ':' + versionId}
-              featureData={featureData}
-              datasetMeta={meta}
-              isLoading={isGeneratingFeatures}
-              error={featureError}
-              onGenerate={generateTrainingFeatures}
-              hasDependentSplit={Boolean(splitData?.split_id)}
-              onProceedToSplit={handleProceedToSplit}
-            />
-          </TrainingPreparationAccordion>
+        {chart && <div className="sci-prep-explorer"><AggregationExplorer key={'aggregation:' + datasetId + ':' + versionId} datasetId={datasetId} versionId={versionId} aggregationInterval={60} roiIdentifier="MAIN_ROI" title="Các biểu đồ giao thông theo phút" subtitle="Đối chiếu số xe, vận tốc trung bình và lưu lượng giao thông theo thời gian." /></div>}
 
-          <TrainingPreparationAccordion
-            id="prep-split"
-            index="03"
-            title="Chia dữ liệu · Train/Test Split"
-            description="Chia theo thời gian: 70% Train và 30% Test."
-            status={splitStatus}
-            isOpen={openPreparation === 'split'}
-            onToggle={() => setOpenPreparation(openPreparation === 'split' ? null : 'split')}
-          >
-            {!splitData?.split_id && activeSplitContext?.splitId && <div className="sci-notice">Split ID cũ vẫn dùng được để chạy thí nghiệm. Bảng Train/Test của phiên trước chưa thể tải lại vì API hiện tại chưa hỗ trợ đọc bảng theo Split ID. Nếu cần xem lại bảng, hãy tạo lại Lag Features rồi chia Train/Test mới.</div>}
-            <TrainTestSplitPanel
-              key={'split:' + datasetId + ':' + versionId}
-              featureData={featureData}
-              splitData={splitData}
-              isSplitting={isSplitting}
-              splitError={splitError}
-              onRunSplit={handleRunSplit}
-              onProceedToExperiment={handleProceedToExperiment}
-              onBackToFeatures={() => setOpenPreparation('features')}
-            />
-          </TrainingPreparationAccordion>
-        </div>
+        {!chart && !isLoading && <div className="sci-warning">Chưa có dữ liệu tổng hợp theo phút. Khi tạo Lag Features, hệ thống sẽ kiểm tra và tổng hợp dữ liệu nếu cần.</div>}
+        <TrainingFeaturePanel
+          key={'features:' + datasetId + ':' + versionId}
+          featureData={featureData}
+          isLoading={isGeneratingFeatures}
+          error={featureError}
+          onGenerate={generateTrainingFeatures}
+          hasDependentSplit={Boolean(splitData?.split_id)}
+        />
       </div>
 
-      <div id="workspace-panel-experiments" role="tabpanel" aria-labelledby="workspace-tab-experiments" className="sci-workspace-panel" hidden={activeTab !== 'experiments'}>
-        <div className="sci-workspace-section-heading">
-          <div><h2>Thí nghiệm mô hình</h2><p>Thay đổi cấu hình Random Forest và chạy thí nghiệm mới trên dữ liệu đã chuẩn bị.</p></div>
-          <span className={'sci-prep-status sci-prep-status--' + (activeSplitContext?.splitId && !splitOutdated ? 'completed' : 'pending')}>
-            {activeSplitContext?.splitId && !splitOutdated ? 'Dữ liệu sẵn sàng' : 'Cần dữ liệu Train/Test'}
-          </span>
+      <div id="workspace-panel-experiments" className="sci-workspace-panel" hidden={activeTab !== 'experiments'}>
+        <div className="sci-experiment-context">
+          <button type="button" className="sci-back" onClick={() => setActiveTab('preparation')}><ArrowLeft size={16} /> Về tổng hợp thời gian</button>
+          <span>Dataset đang dùng: <strong>{meta?.dataset_name || 'Đang tải dataset'}{meta?.version_tag ? ` · ${meta.version_tag}` : ''}</strong></span>
         </div>
-        {splitOutdated && <div className="sci-warning" role="alert">Tập Lag Features đã thay đổi. Hãy chia lại Train/Test trước khi chạy thí nghiệm.</div>}
+        <ExperimentSplitSection
+          datasetKey={'split:' + datasetId + ':' + versionId}
+          sampleCount={sampleCount}
+          featureData={featureData}
+          splitData={splitData}
+          isSplitting={isSplitting}
+          isPreparingFeatures={isGeneratingFeatures}
+          featureError={featureError}
+          splitError={splitError}
+          splitOutdated={splitOutdated}
+          activeSplitContext={activeSplitContext}
+          showDetails={showSplitDetails}
+          onToggleDetails={handleProceedToSplit}
+          onRunSplit={handleRunSplit}
+          onProceedToExperiment={handleProceedToExperiment}
+        />
         <ExperimentConfigPanel
           key={'exp-config:' + datasetId + ':' + versionId}
-          datasetMeta={meta}
-          versionId={versionId}
           activeSplitContext={splitOutdated ? null : activeSplitContext}
           isTraining={isTraining}
           trainError={trainError}
-          latestExperiment={latestExperiment}
-          onRunExperiment={runExperiment}
-          onViewExperimentDetail={handleViewCreatedExperiment}
-          onResetLatestExperiment={() => { setLatestExperiment(null); setTrainError(null) }}
-          onBackToSplit={() => { setActiveTab('preparation'); setOpenPreparation('split') }}
+          onRunExperiment={handleRunExperiment}
           onOpenExperimentList={() => { setSelectedExperiment(null); setActiveTab('analysis') }}
           experimentCount={experiments.length}
         />
       </div>
 
-      <div id="workspace-panel-analysis" role="tabpanel" aria-labelledby="workspace-tab-analysis" className="sci-workspace-panel" hidden={activeTab !== 'analysis'}>
+      <div id="workspace-panel-analysis" className="sci-workspace-panel" hidden={activeTab !== 'analysis'}>
         <div className="sci-workspace-section-heading">
           <div><h2>Phân tích thí nghiệm</h2><p>Tìm thí nghiệm, xem chi tiết dự báo và so sánh các lần chạy cùng điều kiện đánh giá.</p></div>
+          <button type="button" className="btn-secondary sci-train-btn" onClick={() => setActiveTab('preparation')}><ArrowLeft size={16} /> Về biểu đồ</button>
         </div>
         <div className="sci-analysis-stack">
           <ExperimentListDetailPanel
@@ -406,6 +381,18 @@ function TrainingWorkspace({ datasetId, versionId }) {
           </div>
         </div>
       </div>
+      {activeTab !== 'experiments' && <nav className="sci-training-shortcuts" aria-label="Thí nghiệm và so sánh">
+        <button type="button" className={`sci-training-shortcut${activeTab === 'experiments' ? ' is-active' : ''}`} onClick={() => setActiveTab('experiments')} aria-current={activeTab === 'experiments' ? 'page' : undefined}>
+          <span className="sci-training-shortcut__icon"><FlaskConical size={24} /></span>
+          <span><strong>Thí nghiệm</strong><small>Cấu hình và chạy mô hình Random Forest</small></span>
+          <ArrowRight size={17} className="sci-training-shortcut__arrow" />
+        </button>
+        <button type="button" className={`sci-training-shortcut${activeTab === 'analysis' ? ' is-active' : ''}`} onClick={openComparison} aria-current={activeTab === 'analysis' ? 'page' : undefined}>
+          <span className="sci-training-shortcut__icon"><GitCompareArrows size={24} /></span>
+          <span><strong>So sánh</strong><small>Xem kết quả và đối chiếu các thí nghiệm</small></span>
+          <ArrowRight size={17} className="sci-training-shortcut__arrow" />
+        </button>
+      </nav>}
     </div>
   )
 }

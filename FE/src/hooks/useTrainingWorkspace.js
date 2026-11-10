@@ -1,15 +1,15 @@
 import { useState } from 'react'
 
-export function useTrainingWorkspace() {
-  const [activeTab, setActiveTab] = useState('preparation')
-  const [openPreparation, setOpenPreparation] = useState('aggregation')
+export function useTrainingWorkspace(initialTab = 'preparation') {
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [showSplitDetails, setShowSplitDetails] = useState(false)
   const [comparisonOpen, setComparisonOpen] = useState(false)
 
   return {
     activeTab,
     setActiveTab,
-    openPreparation,
-    setOpenPreparation,
+    showSplitDetails,
+    setShowSplitDetails,
     comparisonOpen,
     setComparisonOpen,
   }
