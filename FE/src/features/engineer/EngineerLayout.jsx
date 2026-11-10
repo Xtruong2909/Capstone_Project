@@ -161,13 +161,13 @@ export default function EngineerLayout() {
 
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge" title="Urban Traffic - Data Engineer">
-              <Database size={20} />
+            <div className="admin-sidebar__logo-badge admin-sidebar__logo-badge--engineer" title="Urban Traffic - Data Engineer">
+              <Workflow size={20} />
             </div>
             {!isSidebarCollapsed && (
               <div className="admin-sidebar__brand-text">
                 <h2>Urban Traffic</h2>
-                <span>pNEUMA Pipeline</span>
+                <span className="brand-role-tag--engineer">pNEUMA Pipeline</span>
               </div>
             )}
           </div>
@@ -301,8 +301,40 @@ export default function EngineerLayout() {
       {/* Main Content */}
       <div className="admin-main">
         <header className="admin-header">
-          <div className="admin-header__title">
-            <h1>Data Engineer Workspace (pNEUMA Pipeline)</h1>
+          <div className="admin-header__left">
+            <div className="admin-header__project-tag">
+              <span className="project-tag-pill project-tag-pill--engineer">FA26SE155</span>
+              <span className="project-tag-divider">•</span>
+              <span className="project-tag-sub">UAV Trajectory Pipeline</span>
+            </div>
+            <h1 className="admin-header__heading">
+              Data Engineering & Schema QA Studio
+            </h1>
+          </div>
+
+          <div className="admin-header__right">
+            <div className="admin-header__pipeline-chip" title="3-Step Preprocessing Flow">
+              <span className="pipeline-step-mini">1. Map</span>
+              <span className="pipeline-step-arrow">→</span>
+              <span className="pipeline-step-mini">2. QA</span>
+              <span className="pipeline-step-arrow">→</span>
+              <span className="pipeline-step-mini">3. Normalize</span>
+            </div>
+            <div
+              className="admin-header__status-chip"
+              title={dbStatus?.status === 'connected' ? 'Database Connected' : 'Database Offline'}
+            >
+              <span
+                className={`status-indicator-dot ${
+                  dbStatus?.status === 'connected' ? 'online' : 'offline'
+                }`}
+              />
+              <span>{dbStatus?.status === 'connected' ? 'DB Connected' : 'DB Offline'}</span>
+            </div>
+            <div className="admin-header__role-badge admin-header__role-badge--engineer">
+              <Database size={14} />
+              <span>Data Engineer</span>
+            </div>
           </div>
         </header>
 

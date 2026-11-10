@@ -242,6 +242,13 @@ export default function EngineerUploadPage() {
     }
   }
 
+  // Auto-load sample file if passed via navigation state from EngineerOverviewPage
+  useEffect(() => {
+    if (location.state?.sampleFile) {
+      handleSampleDatasetGenerated(location.state.sampleFile, location.state.sampleSummary)
+    }
+  }, [location.state])
+
   const handleGenerateSamplePneumaFile = () => {
     setIsSampleGeneratorOpen(true)
   }
