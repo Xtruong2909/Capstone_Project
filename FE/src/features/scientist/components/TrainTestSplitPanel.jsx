@@ -37,6 +37,7 @@ export default function TrainTestSplitPanel({
   const [activeTab, setActiveTab] = useState('train')
   const [page, setPage] = useState(1)
   const [copiedId, setCopiedId] = useState(false)
+  const [confirmResplit, setConfirmResplit] = useState(false)
 
   const totalSamples =
     splitData?.total_samples ??
@@ -45,6 +46,7 @@ export default function TrainTestSplitPanel({
     0
   const previewTrainCount = splitData?.train_count ?? Math.floor(totalSamples * 0.7)
   const previewTestCount = splitData?.test_count ?? Math.max(0, totalSamples - previewTrainCount)
+  const canSplit = (featureData?.samples?.length ?? 0) >= 2
 
   const featureOrder = splitData?.feature_order ||
     featureData?.feature_order || ['lag_1', 'lag_2', 'lag_3', 'lag_4', 'lag_5']
@@ -52,6 +54,11 @@ export default function TrainTestSplitPanel({
     featureData?.target_order || ['target_h1', 'target_h3', 'target_h5']
 
   const handleSplitClick = async () => {
+    if (splitData?.split_id && !confirmResplit) {
+      setConfirmResplit(true)
+      return
+    }
+    setConfirmResplit(false)
     setPage(1)
     await onRunSplit?.()
   }
@@ -110,7 +117,7 @@ export default function TrainTestSplitPanel({
           </div>
           <div>
             <h2 className="admin-card__title">
-              Bước 2 · Chia dữ liệu Train / Test (70/30)
+              Chia dữ liệu Train / Test (70/30)
             </h2>
             <p className="admin-card__subtitle">
               Chia dữ liệu chuỗi thời gian theo tỷ lệ 70% Train / 30% Test (Chronological) không xáo trộn thứ tự quan sát.
@@ -166,7 +173,7 @@ export default function TrainTestSplitPanel({
               type="button"
               className="btn-action btn-action--primary sci-train-btn"
               onClick={handleSplitClick}
-              disabled={isSplitting || totalSamples < 2}
+              disabled={isSplitting || !canSplit}
             >
               {isSplitting ? (
                 <Loader2 size={16} className="sci-spin" />
@@ -174,10 +181,12 @@ export default function TrainTestSplitPanel({
                 <Play size={16} />
               )}
               <span>
-                {isSplitting ? 'Đang chia dữ liệu 70/30...' : 'Chia dữ liệu 70/30'}
+                {isSplitting ? 'Đang chia dữ liệu 70/30...' : confirmResplit ? 'Xác nhận chia lại' : splitData?.split_id ? 'Chia lại dữ liệu 70/30' : 'Chia dữ liệu 70/30'}
               </span>
             </button>
           </div>
+          {confirmResplit && <div className="sci-warning" role="alert">Chia lại sẽ tạo Split ID mới. Các thí nghiệm cũ vẫn gắn với Split ID trước đó và không thể so sánh trực tiếp với thí nghiệm mới. Nhấn “Xác nhận chia lại” để tiếp tục, hoặc <button type="button" className="sci-inline-link" onClick={() => setConfirmResplit(false)}>Hủy</button>.</div>}
+          {!canSplit && !isSplitting && <p className="sci-workspace-help">Cần ít nhất 2 mẫu Lag Features từ mục trước để chia Train/Test. Tập đã lưu vẫn có thể xem bên dưới.</p>}
 
           {/* Visual 70/30 Progress Bar */}
           <div className="sci-split-ratio-visual">

@@ -32,13 +32,20 @@ export default function TrainingFeaturePanel({
   isLoading,
   error,
   onGenerate,
+  hasDependentSplit = false,
   onProceedToSplit,
 }) {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [page, setPage] = useState(1)
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false)
 
   const handleRun = (e) => {
     e.preventDefault()
+    if (hasDependentSplit && !confirmRegenerate) {
+      setConfirmRegenerate(true)
+      return
+    }
+    setConfirmRegenerate(false)
     setSelectedIdx(0)
     setPage(1)
     onGenerate('MAIN_ROI')
@@ -68,7 +75,7 @@ export default function TrainingFeaturePanel({
           </div>
           <div>
             <h2 className="admin-card__title">
-              Bước 1 · Tạo Lag Features (X / Y)
+              Tạo Lag Features (X / Y)
             </h2>
             <p className="admin-card__subtitle">
               Trích xuất 5 đặc trưng trễ quan sát (X: lag_1..lag_5) và 3 nhãn dự báo tương lai (+1, +3, +5 phút Y) theo cửa sổ trượt.
@@ -88,9 +95,7 @@ export default function TrainingFeaturePanel({
               ) : (
                 <Play size={16} />
               )}
-              <span>
-                {isLoading ? 'Đang trích xuất Lag Features...' : 'Tạo Lag Features'}
-              </span>
+              <span>{isLoading ? 'Đang trích xuất Lag Features...' : confirmRegenerate ? 'Xác nhận tạo lại' : 'Tạo Lag Features'}</span>
             </button>
           </form>
 
@@ -108,6 +113,7 @@ export default function TrainingFeaturePanel({
       </div>
 
       <div className="sci-card-body">
+        {confirmRegenerate && <div className="sci-warning" role="alert">Tạo lại Lag Features có thể làm tập Train/Test đã lưu không còn phù hợp. Nhấn “Xác nhận tạo lại” để tiếp tục, hoặc <button type="button" className="sci-inline-link" onClick={() => setConfirmRegenerate(false)}>Hủy</button>.</div>}
         {isLoading && (
           <div className="sci-state">
             <div className="sci-spinner" />

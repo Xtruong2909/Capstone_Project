@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   Sliders,
   Play,
@@ -45,7 +45,6 @@ export default function ExperimentConfigPanel({
   experimentCount = 0,
 }) {
   const [formState, setFormState] = useState(DEFAULT_PARAMS)
-  const formRef = useRef(null)
 
   const splitId = activeSplitContext?.splitId || null
   const trainCount = activeSplitContext?.trainCount
@@ -81,11 +80,10 @@ export default function ExperimentConfigPanel({
 
   const handleCreateAnotherSameSplit = () => {
     onResetLatestExperiment?.()
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   return (
-    <section className="admin-card" ref={formRef}>
+    <section className="admin-card">
       <div className="admin-card__header">
         <div className="admin-card__header-left">
           <div className="admin-card__icon-box admin-card__icon-box--blue">
@@ -93,7 +91,7 @@ export default function ExperimentConfigPanel({
           </div>
           <div>
             <h2 className="admin-card__title">
-              Bước 3 · Cấu hình và chạy thí nghiệm (Random Forest)
+              Cấu hình và chạy thí nghiệm · Random Forest
             </h2>
             <p className="admin-card__subtitle">
               Thiết lập 7 siêu tham số cho mô hình Random Forest Regressor và huấn luyện trên tập dữ liệu đã chia.
@@ -158,6 +156,11 @@ export default function ExperimentConfigPanel({
           </div>
 
           <div className="sci-exp-context-item">
+            <span className="sci-exp-context-item__label">Đặc trưng:</span>
+            <strong className="sci-exp-context-item__val">5 lag</strong>
+          </div>
+
+          <div className="sci-exp-context-item">
             <span className="sci-exp-context-item__label">Horizon:</span>
             <strong className="sci-exp-context-item__val">+1, +3, +5 phút</strong>
           </div>
@@ -180,7 +183,7 @@ export default function ExperimentConfigPanel({
           <div className="sci-warning">
             <AlertCircle size={16} />
             <span>
-              Chưa có <strong>split_id</strong>. Vui lòng thực hiện <strong>Bước 2: Chia Train/Test 70/30</strong> hoặc chọn &ldquo;Tạo thí nghiệm khác với cùng Split&rdquo; từ một thí nghiệm đã lưu ở Bước 4.
+              Chưa có tập Train/Test. Hãy mở tab <strong>Chuẩn bị dữ liệu</strong> để chia 70/30, hoặc chọn một thí nghiệm đã lưu trong tab <strong>Phân tích thí nghiệm</strong> để dùng lại Split.
             </span>
           </div>
         ) : (
@@ -366,7 +369,7 @@ export default function ExperimentConfigPanel({
                   <Play size={16} />
                 )}
                 <span>
-                  {isTraining ? 'Đang huấn luyện và đánh giá...' : 'Huấn luyện và đánh giá'}
+                  {isTraining ? 'Đang huấn luyện và đánh giá...' : 'Chạy thí nghiệm'}
                 </span>
               </button>
             </div>
@@ -425,10 +428,16 @@ export default function ExperimentConfigPanel({
                   <p className="sci-exp-created-card__sub">
                     Số cây: <strong>{latestExperiment.hyperparameters?.n_estimators}</strong> · Độ sâu:{' '}
                     <strong>{latestExperiment.hyperparameters?.max_depth ?? 'Không giới hạn'}</strong> ·
-                    Thời gian train:{' '}
+                    Train / Dự đoán / Tổng:{' '}
                     <strong>
                       {latestExperiment.training_time_sec != null
                         ? `${latestExperiment.training_time_sec.toFixed(4)}s`
+                        : '—'}{' / '}
+                      {latestExperiment.prediction_time_sec != null
+                        ? `${latestExperiment.prediction_time_sec.toFixed(4)}s`
+                        : '—'}{' / '}
+                      {latestExperiment.execution_time_sec != null
+                        ? `${latestExperiment.execution_time_sec.toFixed(4)}s`
                         : '—'}
                     </strong>
                   </p>

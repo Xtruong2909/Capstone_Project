@@ -1,4 +1,4 @@
-import { Eye, MapPin, ShieldCheck, Database, FlaskConical, TrendingUp } from 'lucide-react'
+import { FileSearch, MapPin, ShieldCheck, Database, FlaskConical, TrendingUp } from 'lucide-react'
 
 export default function DatasetCard({ item, onPreview, onTrain, onPredict }) {
   return (
@@ -56,7 +56,7 @@ export default function DatasetCard({ item, onPreview, onTrain, onPredict }) {
             onClick={() => onPreview(item)}
             title="Open Dataset Detail & Preview"
           >
-            <Eye size={14} />
+            <FileSearch size={15} strokeWidth={2} />
             <span>Preview</span>
           </button>
         </div>

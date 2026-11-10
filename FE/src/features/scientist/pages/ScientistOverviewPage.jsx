@@ -4,7 +4,7 @@ import {
   Layers,
   MapPin,
   Radio,
-  Eye,
+  FileSearch,
   Sparkles,
   FlaskConical,
   TrendingUp,
@@ -195,7 +195,7 @@ export default function ScientistOverviewPage() {
                         title="Open Dataset Detail & Preview"
                         onClick={(e) => goTo(e, basePath)}
                       >
-                        <Eye size={14} />
+                        <FileSearch size={15} strokeWidth={2} />
                         <span>Preview</span>
                       </button>
                     </div>

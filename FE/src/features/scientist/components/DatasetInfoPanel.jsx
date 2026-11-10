@@ -3,7 +3,7 @@ import {
   ArrowLeft,
   Database,
   ShieldCheck,
-  Eye,
+  FileSearch,
   FlaskConical,
   TrendingUp,
 } from 'lucide-react'
@@ -104,7 +104,7 @@ export default function DatasetInfoPanel({
                 to={basePath}
                 className={`sci-mode-switch__btn ${activeMode === 'preview' ? 'active' : ''}`}
               >
-                <Eye size={14} /> Data Preview
+                <FileSearch size={15} strokeWidth={2} /> Data Preview
               </Link>
               <Link
                 to={`${basePath}/train`}

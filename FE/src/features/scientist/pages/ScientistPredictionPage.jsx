@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import {
   usePredictionFeatureEngineering,
@@ -20,6 +20,8 @@ import AggregationExplorer from '../components/AggregationExplorer'
  */
 export default function ScientistPredictionPage() {
   const { datasetId, versionId } = useParams()
+  const { search } = useLocation()
+  const preferredExperimentId = new URLSearchParams(search).get('experimentId')
   const predictSectionRef = useRef(null)
 
   const { datasets, isLoading: isLoadingList } = useApprovedDatasets('')
@@ -105,6 +107,7 @@ export default function ScientistPredictionPage() {
           versionId={versionId}
           datasetMeta={meta}
           experiments={experiments}
+          preferredExperimentId={preferredExperimentId}
           savedSplitId={splitData?.split_id || null}
           forecastData={forecastData}
           isPredicting={isPredicting}

@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 const APPROVAL_NOTE_PRESETS = [
   'Meets pNEUMA UAV trajectory schema and data quality standards.',
@@ -33,6 +34,7 @@ const REJECTION_NOTE_PRESETS = [
 ]
 
 export default function AdminDatasetsPage() {
+  const { t, language } = useLanguage()
   const [datasets, setDatasets] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -276,7 +278,7 @@ export default function AdminDatasetsPage() {
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
           >
             <CheckCircle2 size={12} />
-            <span>Approved</span>
+            <span>{t('Approved')}</span>
           </span>
         )
       case 'REJECTED':
@@ -286,7 +288,7 @@ export default function AdminDatasetsPage() {
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
           >
             <XCircle size={12} />
-            <span>Rejected</span>
+            <span>{t('Rejected')}</span>
           </span>
         )
       case 'SUBMITTED':
@@ -304,7 +306,7 @@ export default function AdminDatasetsPage() {
             }}
           >
             <Clock size={12} />
-            <span>Awaiting Review</span>
+            <span>{t('Awaiting Review')}</span>
           </span>
         )
       case 'PENDING':
@@ -315,7 +317,7 @@ export default function AdminDatasetsPage() {
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
           >
             <Clock size={12} />
-            <span>Pending</span>
+            <span>{t('Pending')}</span>
           </span>
         )
     }
@@ -351,7 +353,7 @@ export default function AdminDatasetsPage() {
               {stats.awaiting}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              Awaiting Approval
+              {t('Awaiting Approval')}
             </div>
           </div>
         </div>
@@ -375,7 +377,7 @@ export default function AdminDatasetsPage() {
               {stats.totalRecords.toLocaleString()}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              Total Trajectory Points in Queue
+              {t('Total Trajectory Points in Queue')}
             </div>
           </div>
         </div>
@@ -462,7 +464,7 @@ export default function AdminDatasetsPage() {
               <input
                 type="text"
                 className="admin-input"
-                placeholder="Search dataset or version..."
+                placeholder={t('Search dataset or version...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -481,7 +483,7 @@ export default function AdminDatasetsPage() {
               onClick={fetchDatasets}
             >
               <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
+              <span>{t('Refresh')}</span>
             </button>
           </div>
         </div>
@@ -493,19 +495,19 @@ export default function AdminDatasetsPage() {
               className="animate-spin"
               style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
             />
-            <p>Loading dataset versions...</p>
+            <p>{t('Loading dataset versions...')}</p>
           </div>
         ) : error ? (
           <div className="empty-state">
             <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{error}</p>
+            <p>{t(error)}</p>
           </div>
         ) : filteredDatasets.length === 0 ? (
           <div className="empty-state">
             <Database size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>No dataset versions match your current filter.</p>
+            <p>{t('No dataset versions match your current filter.')}</p>
             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              When a Data Engineer exports and submits a standardized version, it will appear here for approval.
+              {t('When a Data Engineer exports and submits a standardized version, it will appear here for approval.')}
             </span>
           </div>
         ) : (
@@ -513,13 +515,13 @@ export default function AdminDatasetsPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Dataset Name</th>
-                  <th>Version</th>
-                  <th>Format</th>
-                  <th>Total Records</th>
-                  <th>Status</th>
-                  <th>Submitted At</th>
-                  <th>Inspection & Review</th>
+                  <th>{t('Dataset Name')}</th>
+                  <th>{t('Version')}</th>
+                  <th>{t('Format')}</th>
+                  <th>{t('Total Records')}</th>
+                  <th>{t('Status')}</th>
+                  <th>{t('Submitted At')}</th>
+                  <th>{t('Inspection & Review')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -592,9 +594,9 @@ export default function AdminDatasetsPage() {
                       <td>{getStatusBadge(item.approval_status)}</td>
                       <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
                         {item.submitted_at
-                          ? new Date(item.submitted_at).toLocaleString('en-US')
+                          ? new Date(item.submitted_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
                           : item.created_at
-                          ? new Date(item.created_at).toLocaleString('en-US')
+                          ? new Date(item.created_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
                           : '—'}
                       </td>
                       <td>
@@ -625,7 +627,7 @@ export default function AdminDatasetsPage() {
                             title="Inspect dataset rows (Normalized or Raw)"
                           >
                             <Eye size={13} />
-                            <span>Preview</span>
+                            <span>{t('Preview')}</span>
                           </button>
 
                           <button
@@ -643,7 +645,7 @@ export default function AdminDatasetsPage() {
                             onClick={() => handleOpenReviewModal(item, 'APPROVED')}
                           >
                             <CheckCircle2 size={13} />
-                            <span>Approve</span>
+                            <span>{t('Approve')}</span>
                           </button>
                           <button
                             type="button"
@@ -660,7 +662,7 @@ export default function AdminDatasetsPage() {
                             onClick={() => handleOpenReviewModal(item, 'REJECTED')}
                           >
                             <XCircle size={13} />
-                            <span>Reject</span>
+                            <span>{t('Reject')}</span>
                           </button>
                         </div>
                       </td>
@@ -711,8 +713,8 @@ export default function AdminDatasetsPage() {
                     }}
                   >
                     {reviewModal.decision === 'APPROVED'
-                      ? 'Approve Dataset Version'
-                      : 'Reject Dataset Version'}
+                      ? t('Approve Dataset Version')
+                      : t('Reject Dataset Version')}
                   </h3>
                   <div
                     style={{
@@ -766,7 +768,7 @@ export default function AdminDatasetsPage() {
               >
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
-                    VERSION TAG
+                    {t('VERSION TAG')}
                   </div>
                   <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', marginTop: '0.15rem' }}>
                     {reviewModal.item.version_tag}
@@ -774,7 +776,7 @@ export default function AdminDatasetsPage() {
                 </div>
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
-                    FILE FORMAT
+                    {t('FILE FORMAT')}
                   </div>
                   <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1d4ed8', marginTop: '0.15rem' }}>
                     {reviewModal.item.file_format}
@@ -782,7 +784,7 @@ export default function AdminDatasetsPage() {
                 </div>
                 <div>
                   <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
-                    TOTAL RECORDS
+                    {t('TOTAL RECORDS')}
                   </div>
                   <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', marginTop: '0.15rem' }}>
                     {Number(reviewModal.item.total_records || 0).toLocaleString()}
@@ -804,7 +806,7 @@ export default function AdminDatasetsPage() {
                   }}
                 >
                   <Sparkles size={13} color="#2563eb" />
-                  <span>Quick Review Note Templates:</span>
+                  <span>{t('Quick Review Note Templates:')}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   {(reviewModal.decision === 'APPROVED'
@@ -851,7 +853,7 @@ export default function AdminDatasetsPage() {
                     marginBottom: '0.35rem',
                   }}
                 >
-                  Administrator Review Note
+                  {t('Administrator Review Note')}
                 </label>
                 <textarea
                   rows={3}
@@ -860,7 +862,7 @@ export default function AdminDatasetsPage() {
                   onChange={(e) =>
                     setReviewModal((prev) => ({ ...prev, note: e.target.value }))
                   }
-                  placeholder="Enter feedback or approval note for the Data Engineer..."
+                  placeholder={t('Enter feedback or approval note for the Data Engineer...')}
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.85rem',
@@ -888,7 +890,7 @@ export default function AdminDatasetsPage() {
                 onClick={handleCloseReviewModal}
                 disabled={actionLoading === reviewModal.item.id}
               >
-                Cancel
+                {t('Cancel')}
               </button>
               <button
                 type="button"
@@ -916,17 +918,17 @@ export default function AdminDatasetsPage() {
                 {actionLoading === reviewModal.item.id ? (
                   <>
                     <RefreshCw size={14} className="animate-spin" />
-                    <span>Processing...</span>
+                    <span>{t('Processing...')}</span>
                   </>
                 ) : reviewModal.decision === 'APPROVED' ? (
                   <>
                     <Check size={15} />
-                    <span>Confirm Approval</span>
+                    <span>{t('Confirm Approval')}</span>
                   </>
                 ) : (
                   <>
                     <XCircle size={15} />
-                    <span>Confirm Rejection</span>
+                    <span>{t('Confirm Rejection')}</span>
                   </>
                 )}
               </button>
@@ -959,7 +961,7 @@ export default function AdminDatasetsPage() {
                     </span>
                   </h3>
                   <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-                    Status: <strong>{previewState.item.approval_status}</strong> • Format:{' '}
+                    {t('Status:')} <strong>{t(previewState.item.approval_status)}</strong> • {t('Format')}:{' '}
                     <strong>{previewState.item.file_format}</strong> • Records:{' '}
                     <strong>
                       {Number(previewState.item.total_records || 0).toLocaleString()}
@@ -999,7 +1001,7 @@ export default function AdminDatasetsPage() {
                     }}
                     onClick={() => handleToggleRepresentation('normalized')}
                   >
-                    Normalized (pNEUMA)
+                    {t('Normalized (pNEUMA)')}
                   </button>
                   <button
                     type="button"
@@ -1020,7 +1022,7 @@ export default function AdminDatasetsPage() {
                     }}
                     onClick={() => handleToggleRepresentation('raw')}
                   >
-                    Raw Source
+                    {t('Raw Source')}
                   </button>
                 </div>
 
@@ -1041,7 +1043,7 @@ export default function AdminDatasetsPage() {
                     className="animate-spin"
                     style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
                   />
-                  <p>Loading {previewState.representation} preview data...</p>
+                  <p>{t(`Loading ${previewState.representation} preview data...`)}</p>
                 </div>
               ) : previewState.error ? (
                 <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
@@ -1049,7 +1051,7 @@ export default function AdminDatasetsPage() {
                     size={26}
                     style={{ margin: '0 auto 0.75rem', color: '#dc2626' }}
                   />
-                  <p style={{ color: '#dc2626' }}>{previewState.error}</p>
+                  <p style={{ color: '#dc2626' }}>{t(previewState.error)}</p>
                 </div>
               ) : !previewState.data ||
                 !previewState.data.rows ||
@@ -1059,7 +1061,7 @@ export default function AdminDatasetsPage() {
                     size={26}
                     style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }}
                   />
-                  <p>No preview rows available for this representation.</p>
+                  <p>{t('No preview rows available for this representation.')}</p>
                 </div>
               ) : (
                 <div>
@@ -1074,7 +1076,7 @@ export default function AdminDatasetsPage() {
                     }}
                   >
                     <span>
-                      Showing page <strong>{previewState.page}</strong> •{' '}
+                      {t('Showing page')} <strong>{previewState.page}</strong> •{' '}
                       {previewState.data.columns?.length || 0} columns
                     </span>
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
@@ -1178,7 +1180,7 @@ export default function AdminDatasetsPage() {
                 className="btn-secondary"
                 onClick={handleClosePreview}
               >
-                Close Preview
+                {t('Close Preview')}
               </button>
 
               {isAwaitingReview(previewState.item.approval_status) && (
@@ -1231,7 +1233,7 @@ export default function AdminDatasetsPage() {
                     }
                   >
                     <XCircle size={14} />
-                    <span>Reject Version</span>
+                    <span>{t('Reject Version')}</span>
                   </button>
                   <button
                     type="button"
@@ -1253,7 +1255,7 @@ export default function AdminDatasetsPage() {
                     }
                   >
                     <CheckCircle2 size={14} />
-                    <span>Approve Version</span>
+                    <span>{t('Approve Version')}</span>
                   </button>
                 </div>
               )}

@@ -14,9 +14,11 @@ import {
   Lock,
 } from 'lucide-react'
 import { authService } from '../../../services/authService'
+import { useLanguage } from '../../../hooks/useLanguage'
 import { formatDate, extractErrorMessage } from '../utils/formatters'
 
 export default function ScientistProfileModal({ isOpen, onClose }) {
+  const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState('info') // 'info' | 'password'
 
   // Profile data state (GET /api/v1/auth/me)
@@ -128,7 +130,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
         className="modal-dialog"
         style={{
           width: '100%',
-          maxWidth: '560px',
+          maxWidth: '720px',
           backgroundColor: '#fff',
           borderRadius: '16px',
           boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.25)',
@@ -167,10 +169,10 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
             </div>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
-                Account Profile & Security
+                {t('Account Profile & Security')}
               </h3>
               <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
-                Manage your personal account details and update your password
+                {t('Manage your personal account details and update your password')}
               </p>
             </div>
           </div>
@@ -223,7 +225,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               transition: 'all 0.15s',
             }}
           >
-            <User size={16} /> Personal Information
+            <User size={16} /> {t('Personal Information')}
           </button>
 
           <button
@@ -244,7 +246,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               transition: 'all 0.15s',
             }}
           >
-            <KeyRound size={16} /> Change Password
+            <KeyRound size={16} /> {t('Change Password')}
           </button>
         </div>
 
@@ -256,21 +258,21 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               {isLoadingProfile && (
                 <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748b' }}>
                   <div className="sci-spinner" />
-                  <p style={{ margin: 0, fontSize: '0.85rem' }}>Loading account information...</p>
+                  <p style={{ margin: 0, fontSize: '0.85rem' }}>{t('Loading account information...')}</p>
                 </div>
               )}
 
               {profileError && (
                 <div className="sci-state sci-state--error" style={{ marginBottom: '1rem', padding: '1rem' }}>
                   <AlertCircle size={18} style={{ verticalAlign: 'middle', marginRight: '0.4rem' }} />
-                  {profileError}
+                  {t(profileError)}
                   <button
                     type="button"
                     className="btn-secondary"
                     onClick={fetchProfile}
                     style={{ display: 'block', margin: '0.6rem auto 0' }}
                   >
-                    Retry
+                    {t('Retry')}
                   </button>
                 </div>
               )}
@@ -311,10 +313,10 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                          {userProfile.full_name || 'Data Scientist'}
+                          {userProfile.full_name || t('Data Scientist')}
                         </h4>
                         <span className="badge badge--scientist" style={{ fontSize: '0.68rem', padding: '0.12rem 0.5rem' }}>
-                          {userProfile.role_id === 'data_scientist' ? 'Data Scientist' : userProfile.role_id}
+                          {userProfile.role_id === 'data_scientist' ? t('Data Scientist') : t(userProfile.role_id)}
                         </span>
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.15rem' }}>
@@ -326,7 +328,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       type="button"
                       className="btn-secondary"
                       onClick={fetchProfile}
-                      title="Refresh profile from server"
+                      title={t('Refresh profile from server')}
                       style={{ padding: '0.4rem 0.65rem' }}
                     >
                       <RefreshCw size={13} />
@@ -351,7 +353,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <Mail size={13} /> Email Address
+                        <Mail size={13} /> {t('Email Address')}
                       </span>
                       <strong style={{ color: '#0f172a', wordBreak: 'break-all' }}>{userProfile.email}</strong>
                     </div>
@@ -365,13 +367,13 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <ShieldCheck size={13} /> Account Status
+                        <ShieldCheck size={13} /> {t('Account Status')}
                       </span>
                       <span
                         className="sci-pill sci-pill--approved"
                         style={{ display: 'inline-flex', marginTop: '0.1rem' }}
                       >
-                        <CheckCircle2 size={12} /> {userProfile.is_active ? 'Active' : 'Suspended'}
+                        <CheckCircle2 size={12} /> {t(userProfile.is_active ? 'Active' : 'Suspended')}
                       </span>
                     </div>
 
@@ -384,7 +386,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <Calendar size={13} /> Account Created
+                        <Calendar size={13} /> {t('Account Created')}
                       </span>
                       <strong style={{ color: '#0f172a' }}>{formatDate(userProfile.created_at)}</strong>
                     </div>
@@ -398,10 +400,10 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       }}
                     >
                       <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.3rem' }}>
-                        <Lock size={13} /> Password Change Required
+                        <Lock size={13} /> {t('Password Change Required')}
                       </span>
                       <strong style={{ color: userProfile.must_change_password ? '#b45309' : '#15803d' }}>
-                        {userProfile.must_change_password ? 'Required' : 'No'}
+                        {t(userProfile.must_change_password ? 'Required' : 'No')}
                       </strong>
                     </div>
                   </div>
@@ -418,7 +420,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       lineHeight: 1.45,
                     }}
                   >
-                    💡 <strong>Note:</strong> Account details and Data Scientist permissions are centrally managed by the System Administrator. If you need to update your email or role permissions, please contact an Admin.
+                    💡 <strong>{t('Note:')}</strong> {t('Account details and Data Scientist permissions are centrally managed by the System Administrator. If you need to update your email or role permissions, please contact an Admin.')}
                   </div>
                 </div>
               )}
@@ -443,7 +445,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   }}
                 >
                   <CheckCircle2 size={16} style={{ flexShrink: 0 }} />
-                  <span>{passwordSuccess}</span>
+                  <span>{t(passwordSuccess)}</span>
                 </div>
               )}
 
@@ -462,20 +464,20 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   }}
                 >
                   <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                  <span>{passwordError}</span>
+                  <span>{t(passwordError)}</span>
                 </div>
               )}
 
               {/* Current Password */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  Current Password <span style={{ color: '#ef4444' }}>*</span>
+                  {t('Current Password')} <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showCurrentPassword ? 'text' : 'password'}
                     className="admin-input"
-                    placeholder="Enter your current password..."
+                    placeholder={t('Enter your current password...')}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     required
@@ -484,6 +486,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowCurrentPassword((prev) => !prev)}
+                    aria-label={t(showCurrentPassword ? 'Hide password' : 'Show password')}
                     style={{
                       position: 'absolute',
                       right: '0.75rem',
@@ -504,13 +507,13 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               {/* New Password */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  New Password <span style={{ color: '#ef4444' }}>*</span>
+                  {t('New Password')} <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showNewPassword ? 'text' : 'password'}
                     className="admin-input"
-                    placeholder="At least 6 characters, different from current password..."
+                    placeholder={t('At least 6 characters, different from current password...')}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
@@ -520,6 +523,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowNewPassword((prev) => !prev)}
+                    aria-label={t(showNewPassword ? 'Hide password' : 'Show password')}
                     style={{
                       position: 'absolute',
                       right: '0.75rem',
@@ -540,13 +544,13 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
               {/* Confirm New Password */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '0.35rem' }}>
-                  Confirm New Password <span style={{ color: '#ef4444' }}>*</span>
+                  {t('Confirm New Password')} <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     className="admin-input"
-                    placeholder="Re-enter your new password..."
+                    placeholder={t('Re-enter your new password...')}
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                     required
@@ -556,6 +560,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    aria-label={t(showConfirmPassword ? 'Hide password' : 'Show password')}
                     style={{
                       position: 'absolute',
                       right: '0.75rem',
@@ -575,7 +580,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmittingPassword}>
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button
                   type="submit"
@@ -586,11 +591,11 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                   {isSubmittingPassword ? (
                     <>
                       <div className="sci-spinner" style={{ width: 14, height: 14, borderWidth: 2, margin: 0 }} />
-                      Updating...
+                      {t('Updating...')}
                     </>
                   ) : (
                     <>
-                      <KeyRound size={15} /> Update Password
+                      <KeyRound size={15} /> {t('Update Password')}
                     </>
                   )}
                 </button>

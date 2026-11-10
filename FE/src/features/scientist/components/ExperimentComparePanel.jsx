@@ -7,6 +7,7 @@ import {
   Info,
   Eye,
   PlusCircle,
+  Rocket,
 } from 'lucide-react'
 
 function formatMetric(val, digits = 4) {
@@ -26,7 +27,8 @@ function isCompatibleWithAnchor(exp, anchor) {
     String(exp.dataset_version_id) === String(anchor.dataset_version_id) &&
     String(exp.split_id) === String(anchor.split_id) &&
     String(exp.evaluation_mode) === String(anchor.evaluation_mode) &&
-    String(exp.evaluation_policy) === String(anchor.evaluation_policy)
+    String(exp.evaluation_policy) === String(anchor.evaluation_policy) &&
+    String(exp.forecast_horizons) === String(anchor.forecast_horizons)
   )
 }
 
@@ -44,6 +46,7 @@ export default function ExperimentComparePanel({
   onBackToList,
   onViewExperimentDetail,
   onCreateWithSameSplit,
+  onUseForPrediction,
 }) {
   const completedExperiments = useMemo(
     () => experiments.filter((e) => e.status === 'COMPLETED'),
@@ -99,7 +102,7 @@ export default function ExperimentComparePanel({
           </div>
           <div>
             <h2 className="admin-card__title">
-              Bước 5 · So sánh các thí nghiệm
+              So sánh các thí nghiệm
             </h2>
             <p className="admin-card__subtitle">
               Đối chiếu cấu hình Random Forest và chỉ số MAE / RMSE theo từng horizon (+1, +3, +5 phút) trên cùng tập dữ liệu Test.
@@ -139,7 +142,7 @@ export default function ExperimentComparePanel({
             <div>
               <strong>Chọn thí nghiệm COMPLETED để so sánh (tối thiểu 2 thí nghiệm cùng Split ID):</strong>
               <p>
-                Chỉ các thí nghiệm có cùng Dataset Version, cùng Split ID và cùng chế độ đánh giá mới được chọn cùng nhau.
+                Chỉ so sánh các thí nghiệm có cùng phiên bản Dataset, ROI, Split ID, tập Test, horizon và quy tắc đánh giá. Backend sẽ đối chiếu chính xác các mốc Test trước khi trả kết quả.
               </p>
             </div>
             <button
@@ -185,7 +188,7 @@ export default function ExperimentComparePanel({
                     title={
                       enabled
                         ? `${exp.experiment_name} · Split ${String(exp.split_id).slice(0, 8)}`
-                        : 'Khác Split ID hoặc chế độ đánh giá với thí nghiệm đã chọn'
+                        : 'Khác phiên bản Dataset, Split ID, horizon hoặc quy tắc đánh giá với thí nghiệm đã chọn'
                     }
                   >
                     <input
@@ -286,6 +289,7 @@ export default function ExperimentComparePanel({
                               <Eye size={12} /> Chi tiết
                             </button>
                           )}
+                          {onUseForPrediction && <button type="button" className="sci-compare-col-head__link" onClick={() => { const selected = experiments.find((item) => String(item.experiment_id) === String(exp.experiment_id)); if (selected) onUseForPrediction(selected) }}><Rocket size={12} /> Dùng ở Prediction</button>}
                         </div>
                       </th>
                     ))}
@@ -373,14 +377,16 @@ export default function ExperimentComparePanel({
                   {/* Horizon +1, +3, +5 MAE & RMSE Rows */}
                   {['1', '3', '5'].map((h) => {
                     const tied = isHorizonTied(h)
+                    const finiteMae = comparedList.map((exp) => Number(exp.performance?.[h]?.mae)).filter(Number.isFinite)
+                    const bestMae = finiteMae.length ? Math.min(...finiteMae) : null
                     return [
                       <tr key={`mae-${h}`}>
                         <td>
                           <strong>MAE +{h}</strong> (phút)
                         </td>
                         {comparedList.map((exp) => (
-                          <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                            {formatMetric(exp.performance?.[h]?.mae, 4)}
+                          <td key={exp.experiment_id} style={{ textAlign: 'right' }} className={bestMae !== null && Number(exp.performance?.[h]?.mae) === bestMae ? 'sci-compare-cell-best' : ''}>
+                            <strong>{formatMetric(exp.performance?.[h]?.mae, 4)}</strong>
                           </td>
                         ))}
                       </tr>,

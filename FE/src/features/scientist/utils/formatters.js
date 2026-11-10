@@ -31,6 +31,22 @@ export function formatRecordingTime(value) {
     : date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
+// Use the recording's explicit offset for experiment timestamps stored in UTC.
+// A recent feature or aggregation timestamp supplies that offset; without it,
+// keep the API clock unchanged rather than guessing a timezone from the browser.
+export function formatRecordingTimeAtSource(value, recordingReference) {
+  if (!value || !recordingReference) return formatRecordingTime(value)
+  const offset = /(Z|([+-])(\d{2}):(\d{2}))$/.exec(recordingReference)
+  if (!offset || !/(Z|[+-]\d{2}:\d{2})$/.test(value)) return formatRecordingTime(value)
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp)) return formatRecordingTime(value)
+  const offsetMinutes = offset[1] === 'Z'
+    ? 0
+    : (offset[2] === '-' ? -1 : 1) * (Number(offset[3]) * 60 + Number(offset[4]))
+  const dayMinute = ((Math.floor(timestamp / 60000) + offsetMinutes) % 1440 + 1440) % 1440
+  return `${String(Math.floor(dayMinute / 60)).padStart(2, '0')}:${String(dayMinute % 60).padStart(2, '0')}`
+}
+
 export function formatRecordingDateTime(value) {
   if (!value) return '—'
   const parts = recordingDateParts(value)
