@@ -6,8 +6,22 @@ import {
   AlertCircle,
   RefreshCw,
   X,
+  ShieldCheck,
+  CheckCircle2,
+  Ban,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+
+const ROLE_DESCRIPTIONS = {
+  data_engineer:
+    'Ingests raw pNEUMA UAV trajectories, executes 3-step pipeline QA, and submits canonical versions.',
+  data_scientist:
+    'Aggregates 1-min & 5-min intervals, trains Random Forest traffic flow models, and benchmarks accuracy.',
+  business_user:
+    'Monitors interactive Goong GIS corridors, investigates congestion hotspots, and exports KPI reports.',
+  admin:
+    'Manages platform RBAC, reviews dataset quality gate, issues research grants, and audits system trails.',
+}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([])
@@ -40,7 +54,7 @@ export default function AdminUsersPage() {
       ])
       setUsers(usersData)
       setRoles(rolesData)
-    } catch (err) {
+    } catch {
       setError('Failed to load user list from the server.')
     } finally {
       setIsLoading(false)
@@ -91,37 +105,159 @@ export default function AdminUsersPage() {
 
   const getRoleBadgeClass = (roleId) => {
     switch (roleId) {
-      case 'admin': return 'badge--admin'
-      case 'data_engineer': return 'badge--engineer'
-      case 'data_scientist': return 'badge--scientist'
-      case 'business_user': return 'badge--business'
-      default: return 'badge--inactive'
+      case 'admin':
+        return 'adm-badge--rose'
+      case 'data_engineer':
+        return 'adm-badge--blue'
+      case 'data_scientist':
+        return 'adm-badge--purple'
+      case 'business_user':
+        return 'adm-badge--emerald'
+      default:
+        return 'adm-badge--slate'
     }
+  }
+
+  const getAvatarBg = (roleId) => {
+    switch (roleId) {
+      case 'admin':
+        return '#e11d48'
+      case 'data_engineer':
+        return '#2563eb'
+      case 'data_scientist':
+        return '#7c3aed'
+      case 'business_user':
+        return '#059669'
+      default:
+        return '#475569'
+    }
+  }
+
+  const counts = {
+    all: users.length,
+    engineer: users.filter((u) => u.role_id === 'data_engineer').length,
+    scientist: users.filter((u) => u.role_id === 'data_scientist').length,
+    business: users.filter((u) => u.role_id === 'business_user').length,
   }
 
   return (
     <div>
-      {/* Top action bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '280px', maxWidth: '500px' }}>
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+      {/* 1. Interactive 4-Column Role Summary Strip */}
+      <div className="adm-bento-grid">
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'ALL' ? '#2563eb' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('ALL')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--slate">
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.all}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Total Accounts
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'data_engineer' ? '#2563eb' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('data_engineer')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--blue">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.engineer}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Data Engineers
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'data_scientist' ? '#7c3aed' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('data_scientist')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--purple">
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.scientist}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Data Scientists
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'business_user' ? '#059669' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('business_user')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--emerald">
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.business}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Business Users
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Search, Role Filter & Action Bar */}
+      <div className="adm-toolbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, flexWrap: 'wrap' }}>
+          <div className="adm-search-box">
+            <Search size={16} className="adm-search-box__icon" />
             <input
               type="text"
-              placeholder="Search by name or email..."
+              placeholder="Search user by name or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="admin-input"
-              style={{ width: '100%', paddingLeft: '2.25rem' }}
+              className="adm-input adm-input--search"
             />
           </div>
 
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
-            className="admin-select"
+            className="adm-select"
+            style={{ width: 'auto', minWidth: '180px' }}
           >
-            <option value="ALL">All Roles</option>
+            <option value="ALL">All Platform Roles</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -130,195 +266,257 @@ export default function AdminUsersPage() {
           </select>
         </div>
 
-        <button
-          type="button"
-          className="btn-action btn-action--primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.1rem' }}
-          onClick={() => setIsModalOpen(true)}
-        >
-          <UserPlus size={16} />
-          <span>Add User</span>
-        </button>
-      </div>
-
-      {/* Users Table */}
-      <div className="admin-card">
-        <div className="admin-card__header">
-          <h3 className="admin-card__title">
-            User Accounts ({filteredUsers.length})
-          </h3>
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            onClick={fetchUsersAndRoles}
-          >
-            <RefreshCw size={14} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <button type="button" className="adm-btn adm-btn--ghost" onClick={fetchUsersAndRoles}>
+            <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
             <span>Refresh</span>
           </button>
-        </div>
 
-        {isLoading ? (
-          <div className="empty-state">
-            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>Loading user accounts...</p>
-          </div>
-        ) : error ? (
-          <div className="empty-state">
-            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{error}</p>
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="empty-state">
-            <Users size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>No matching user accounts found.</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Full Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Created Date</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{user.full_name}</strong>
-                    </td>
-                    <td style={{ color: '#475569' }}>{user.email}</td>
-                    <td>
-                      <span className={`badge ${getRoleBadgeClass(user.role_id)}`}>
-                        {roles.find((r) => r.id === user.role_id)?.name || user.role_id}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${user.is_active ? 'badge--active' : 'badge--inactive'}`}>
-                        {user.is_active ? 'Active' : 'Suspended'}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString('en-US') : '—'}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={`btn-action ${user.is_active ? 'btn-action--danger' : 'btn-action--success'}`}
-                        onClick={() => handleToggleStatus(user)}
-                      >
-                        {user.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          <button
+            type="button"
+            className="adm-btn adm-btn--primary"
+            onClick={() => setIsModalOpen(true)}
+          >
+            <UserPlus size={16} />
+            <span>Provision Account</span>
+          </button>
+        </div>
       </div>
 
-      {/* Create New User Modal */}
+      {/* 3. Identity Directory Table */}
+      <div className="adm-panel">
+        <div className="adm-panel__header">
+          <div className="adm-panel__title-group">
+            <div className="adm-panel__icon adm-tone--blue">
+              <Users size={18} />
+            </div>
+            <div>
+              <h3 className="adm-panel__title">Identity & RBAC Directory ({filteredUsers.length})</h3>
+              <p className="adm-panel__subtitle">
+                Manage account lifecycle, role assignments, and platform access privileges
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="adm-panel__body--flush">
+          {isLoading ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--blue">
+                <RefreshCw size={24} className="animate-spin" />
+              </div>
+              <h4 className="adm-empty__title">Loading Identity Directory...</h4>
+            </div>
+          ) : error ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--rose">
+                <AlertCircle size={24} />
+              </div>
+              <h4 className="adm-empty__title">Failed to Load Users</h4>
+              <p className="adm-empty__desc">{error}</p>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--slate">
+                <Users size={24} />
+              </div>
+              <h4 className="adm-empty__title">No Matching Accounts Found</h4>
+              <p className="adm-empty__desc">Try adjusting your search query or role filter.</p>
+            </div>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Identity</th>
+                    <th>Email Address</th>
+                    <th>Assigned Role</th>
+                    <th>Status</th>
+                    <th>Provisioned Date</th>
+                    <th style={{ textAlign: 'right' }}>Access Control</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '10px',
+                              background: getAvatarBg(u.role_id),
+                              color: '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 800,
+                              fontSize: '0.85rem',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {u.full_name ? u.full_name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{u.full_name}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>ID: #{u.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: 600, color: '#334155' }}>{u.email}</td>
+                      <td>
+                        <span className={`adm-badge ${getRoleBadgeClass(u.role_id)}`}>
+                          {u.role?.name || u.role_id}
+                        </span>
+                      </td>
+                      <td>
+                        {u.is_active ? (
+                          <span className="adm-badge adm-badge--emerald">
+                            <CheckCircle2 size={12} />
+                            <span>Active</span>
+                          </span>
+                        ) : (
+                          <span className="adm-badge adm-badge--slate">
+                            <Ban size={12} />
+                            <span>Disabled</span>
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {new Date(u.created_at).toLocaleDateString('en-US')}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {u.role_id !== 'admin' ? (
+                          <button
+                            type="button"
+                            className={`adm-btn adm-btn--sm ${
+                              u.is_active ? 'adm-btn--danger' : 'adm-btn--emerald'
+                            }`}
+                            onClick={() => handleToggleStatus(u)}
+                          >
+                            {u.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        ) : (
+                          <span className="adm-code-tag">Protected Root</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Create User Modal */}
       {isModalOpen && (
         <div
-          className="modal-backdrop"
+          className="adm-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsModalOpen(false)
           }}
         >
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <h3>Create New User</h3>
+          <div className="adm-modal">
+            <div className="adm-modal__header">
+              <h3 className="adm-modal__title">Provision New Platform Account</h3>
               <button
                 type="button"
-                className="modal-close-btn"
+                className="adm-modal__close"
                 onClick={() => setIsModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit} className="modal-body">
-              {formError && (
-                <div style={{
-                  padding: '0.75rem',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '6px',
-                  color: '#dc2626',
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem',
-                }}>
-                  {formError}
+            <form onSubmit={handleCreateSubmit}>
+              <div className="adm-modal__body">
+                {formError && (
+                  <div
+                    style={{
+                      padding: '0.75rem 1rem',
+                      background: '#fff1f2',
+                      border: '1px solid #fecdd3',
+                      borderRadius: '10px',
+                      color: '#be123c',
+                      fontSize: '0.84rem',
+                      marginBottom: '1rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {formError}
+                  </div>
+                )}
+
+                <div className="adm-field">
+                  <label className="adm-label">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Nguyen Van A"
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                    className="adm-input"
+                  />
                 </div>
-              )}
 
-              <div className="form-field">
-                <label className="form-label">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Alex Morgan"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
+                <div className="adm-field">
+                  <label className="adm-label">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="user@capstone.vn"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="adm-input"
+                  />
+                </div>
+
+                <div className="adm-field">
+                  <label className="adm-label">Assigned Platform Role</label>
+                  <select
+                    value={formData.role_id}
+                    onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
+                    className="adm-select"
+                  >
+                    {roles
+                      .filter((r) => r.id !== 'admin')
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                  </select>
+                  <p
+                    style={{
+                      margin: '0.45rem 0 0',
+                      fontSize: '0.78rem',
+                      color: '#475569',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {ROLE_DESCRIPTIONS[formData.role_id] || ''}
+                  </p>
+                </div>
+
+                <div className="adm-field" style={{ marginBottom: 0 }}>
+                  <label className="adm-label">Initial Password</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter initial password..."
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="adm-input"
+                  />
+                </div>
               </div>
 
-              <div className="form-field">
-                <label className="form-label">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="user@metroflow.ai"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">Role</label>
-                <select
-                  value={formData.role_id}
-                  onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  {roles
-                    .filter((r) => r.id !== 'admin')
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Initial Password</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Enter initial password..."
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="modal-actions">
+              <div className="adm-modal__footer">
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="adm-btn adm-btn--ghost"
                   onClick={() => setIsModalOpen(false)}
                 >
                   Cancel
@@ -326,10 +524,10 @@ export default function AdminUsersPage() {
                 <button
                   type="submit"
                   disabled={formSubmitting}
-                  className="btn-action btn-action--primary"
-                  style={{ padding: '0.55rem 1.25rem' }}
+                  className="adm-btn adm-btn--primary"
                 >
-                  {formSubmitting ? 'Creating...' : 'Create Account'}
+                  <UserPlus size={15} />
+                  <span>{formSubmitting ? 'Provisioning...' : 'Create Account'}</span>
                 </button>
               </div>
             </form>

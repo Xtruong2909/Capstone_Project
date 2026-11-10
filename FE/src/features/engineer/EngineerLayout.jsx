@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
-  Database,
   LayoutDashboard,
   FileSpreadsheet,
   Upload,
@@ -142,32 +141,29 @@ export default function EngineerLayout() {
       <aside
         className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
       >
-        {/* Single Center-Edge Proximity Hover Zone & Floating Toggle Button */}
-        <div className="admin-sidebar__edge-zone">
-          <button
-            type="button"
-            className="admin-sidebar__floating-toggle"
-            onClick={toggleSidebar}
-            aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-            title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-          >
-            {isSidebarCollapsed ? (
-              <ChevronRight size={18} strokeWidth={2.6} />
-            ) : (
-              <ChevronLeft size={18} strokeWidth={2.6} />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="admin-sidebar__squircle-toggle"
+          onClick={toggleSidebar}
+          aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+          title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+        >
+          {isSidebarCollapsed ? (
+            <ChevronRight size={15} strokeWidth={2.4} />
+          ) : (
+            <ChevronLeft size={15} strokeWidth={2.4} />
+          )}
+        </button>
 
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge" title="Urban Traffic - Data Engineer">
-              <Database size={20} />
+            <div className="admin-sidebar__logo-badge admin-sidebar__logo-badge--engineer" title="Urban Traffic - Data Engineer">
+              <Workflow size={20} />
             </div>
             {!isSidebarCollapsed && (
               <div className="admin-sidebar__brand-text">
                 <h2>Urban Traffic</h2>
-                <span>pNEUMA Pipeline</span>
+                <span className="brand-role-tag--engineer">pNEUMA Pipeline</span>
               </div>
             )}
           </div>
@@ -222,65 +218,22 @@ export default function EngineerLayout() {
         </nav>
 
         <div className="admin-sidebar__footer">
-          {!isSidebarCollapsed ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.1rem 0.2rem',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Role
-              </span>
-              <span
-                className="badge badge--engineer"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '0.15rem 0.6rem',
-                  fontWeight: 700,
-                  borderRadius: '9999px',
-                }}
-              >
-                Data Engineer
-              </span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <span
-                className="badge badge--engineer"
-                title="Role: Data Engineer"
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '0.15rem 0.35rem',
-                  fontWeight: 800,
-                  borderRadius: '6px',
-                }}
-              >
-                DE
-              </span>
-            </div>
-          )}
-
           <div
             className="admin-user-profile"
-            title={`${user?.full_name || 'Data Engineer'} (${user?.email || 'engineer@gmail.com'})`}
+            title={`${user?.full_name || 'Data Engineer'} • Engineer (${user?.email || 'engineer@gmail.com'})`}
           >
-            <div className="admin-avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
+            <div className="admin-avatar-wrap">
+              <div className="admin-avatar">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
+              </div>
+              <span className="admin-avatar-status-dot" title="Online" />
             </div>
             {!isSidebarCollapsed && (
               <div className="admin-user-info">
-                <span className="admin-user-name">{user?.full_name || 'Data Engineer'}</span>
+                <div className="admin-user-name-row">
+                  <span className="admin-user-name">{user?.full_name || 'Data Engineer'}</span>
+                  <span className="admin-user-role-pill">Engineer</span>
+                </div>
                 <span className="admin-user-email">{user?.email || 'engineer@gmail.com'}</span>
               </div>
             )}
@@ -301,8 +254,15 @@ export default function EngineerLayout() {
       {/* Main Content */}
       <div className="admin-main">
         <header className="admin-header">
-          <div className="admin-header__title">
-            <h1>Data Engineer Workspace (pNEUMA Pipeline)</h1>
+          <div className="admin-header__left">
+            <div className="admin-header__project-tag">
+              <span className="project-tag-pill project-tag-pill--engineer">FA26SE155</span>
+              <span className="project-tag-divider">•</span>
+              <span className="project-tag-sub">UAV Trajectory Pipeline</span>
+            </div>
+            <h1 className="admin-header__heading">
+              Data Engineering & Schema QA Studio
+            </h1>
           </div>
         </header>
 

@@ -14,6 +14,8 @@ import {
   Eye,
   Info,
   Layers,
+  Sparkles,
+  Workflow,
 } from 'lucide-react'
 import {
   formatBytes,
@@ -21,6 +23,7 @@ import {
   resolveEffectiveRecordCount,
 } from '../utils/engineerHelpers'
 import DatasetDetailModal, { DatasetStatusBadge } from '../components/DatasetDetailModal'
+import PneumaSampleGeneratorModal from '../components/PneumaSampleGeneratorModal'
 
 export default function EngineerOverviewPage() {
   const navigate = useNavigate()
@@ -36,6 +39,7 @@ export default function EngineerOverviewPage() {
   } = useOutletContext()
 
   const [detailModalItem, setDetailModalItem] = useState(null)
+  const [isSampleModalOpen, setIsSampleModalOpen] = useState(false)
 
   const isOnline = dbStatus?.status === 'connected'
   const totalDatasetsCount = datasets.length
@@ -48,30 +52,40 @@ export default function EngineerOverviewPage() {
 
   const recentDatasets = datasets.slice(0, 6)
 
+  const handleSampleGenerated = (file, summary) => {
+    setIsSampleModalOpen(false)
+    navigate('/engineer/upload', { state: { sampleFile: file, sampleSummary: summary } })
+  }
+
   return (
     <>
       {/* 1. Hero Banner */}
       <div className="admin-hero-banner">
         <div className="admin-hero-banner__top">
           <div className="admin-hero-banner__content">
+            <span className="admin-hero-banner__eyebrow">
+              <Workflow size={13} />
+              pNEUMA Microscopic Trajectory Pipeline
+            </span>
             <h2 className="admin-hero-banner__title">
-              UAV Trajectory Data Ingestion & Schema QA
+              Data Engineering & Schema QA Studio
             </h2>
+            <p className="admin-hero-banner__subtitle">
+              Streamline raw UAV trajectory CSV ingestion, execute automated 3-step schema QA validation,
+              and package canonical dataset versions for Admin Quality Gate review.
+            </p>
           </div>
 
           <div className="admin-hero-banner__actions">
-            <div
-              className={`status-pill-live ${
-                isOnline ? 'status-pill-live--online' : 'status-pill-live--offline'
-              }`}
+            <button
+              type="button"
+              className="btn-hero-sample"
+              onClick={() => setIsSampleModalOpen(true)}
+              title="Generate synthetic pNEUMA CSV drone trajectory file"
             >
-              <span
-                className={`status-pulse-dot ${
-                  isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'
-                }`}
-              />
-              <span>{isOnline ? 'Database Online' : 'Database Offline'}</span>
-            </div>
+              <Sparkles size={15} />
+              <span>Generate pNEUMA Sample</span>
+            </button>
 
             <button
               type="button"
@@ -173,7 +187,113 @@ export default function EngineerOverviewPage() {
         </div>
       </div>
 
-      {/* 2. KPI Stat Cards */}
+      {/* 2. 3-Step UAV Trajectory Ingestion & Schema QA Pipeline Guide */}
+      <div className="pipeline-guide-card">
+        <div className="pipeline-guide-card__header">
+          <div className="pipeline-guide-card__title-group">
+            <div className="pipeline-guide-card__icon">
+              <Workflow size={20} />
+            </div>
+            <div>
+              <h3 className="pipeline-guide-card__title">3-Step Ingestion & Schema QA Pipeline</h3>
+              <p className="pipeline-guide-card__subtitle">
+                Transform raw pNEUMA drone logs into normalized, benchmark-grade spatial-temporal Parquet datasets.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-action btn-action--primary"
+            style={{ fontSize: '0.8rem', padding: '0.45rem 0.95rem' }}
+            onClick={() => navigate('/engineer/pipeline-studio')}
+          >
+            <span>Open Pipeline Studio</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+
+        <div className="pipeline-guide-grid">
+          {/* Step 1 */}
+          <div className="pipeline-step-item pipeline-step-item--1">
+            <div>
+              <div className="pipeline-step-item__top">
+                <div className="pipeline-step-item__number">01</div>
+                <div>
+                  <h4 className="pipeline-step-item__title">Column Mapping</h4>
+                  <p className="pipeline-step-item__desc">
+                    Align raw UAV CSV headers to the 10 canonical fields (<code>track_id</code>, <code>type</code>, <code>traveled_d</code>, <code>avg_speed</code>, <code>lat</code>, <code>lon</code>, <code>speed</code>, ...).
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="pipeline-step-item__footer">
+              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Schema Normalization</span>
+              <button
+                type="button"
+                className="btn-action"
+                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
+                onClick={() => navigate('/engineer/pipeline-studio?step=1')}
+              >
+                Configure Map →
+              </button>
+            </div>
+          </div>
+
+          {/* Step 2 */}
+          <div className="pipeline-step-item pipeline-step-item--2">
+            <div>
+              <div className="pipeline-step-item__top">
+                <div className="pipeline-step-item__number">02</div>
+                <div>
+                  <h4 className="pipeline-step-item__title">Quality Inspection</h4>
+                  <p className="pipeline-step-item__desc">
+                    Automated anomaly detection: coordinate bounding box checks, negative speed filter, timestamp jumps, and missing GPS fixes.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="pipeline-step-item__footer">
+              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Automated Anomaly Scan</span>
+              <button
+                type="button"
+                className="btn-action"
+                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}
+                onClick={() => navigate('/engineer/pipeline-studio?step=2')}
+              >
+                Run QA Scan →
+              </button>
+            </div>
+          </div>
+
+          {/* Step 3 */}
+          <div className="pipeline-step-item pipeline-step-item--3">
+            <div>
+              <div className="pipeline-step-item__top">
+                <div className="pipeline-step-item__number">03</div>
+                <div>
+                  <h4 className="pipeline-step-item__title">Normalization & Gate Packaging</h4>
+                  <p className="pipeline-step-item__desc">
+                    Unpivot wide trajectory time-slices into canonical records, generate QA report, and submit clean version (v1.0, v1.1) to Admin Quality Gate.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="pipeline-step-item__footer">
+              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Parquet Packaging & Submission</span>
+              <button
+                type="button"
+                className="btn-action"
+                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}
+                onClick={() => navigate('/engineer/pipeline-studio?step=3')}
+              >
+                Submit to Gate →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. KPI Stat Cards */}
       <div className="stats-grid">
         <div className="stat-card stat-card--blue">
           <Database size={96} className="stat-card__watermark" />
@@ -380,9 +500,26 @@ export default function EngineerOverviewPage() {
                               className="btn-action btn-action--primary"
                               style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
                               onClick={() => openPreviewForDataset(item.dataset_id)}
+                              title="Preview trajectory records & metadata"
                             >
                               <Eye size={13} />
                               <span>Preview</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-action"
+                              style={{
+                                padding: '0.35rem 0.65rem',
+                                fontSize: '0.75rem',
+                                background: '#eff6ff',
+                                color: '#1d4ed8',
+                                border: '1px solid #bfdbfe',
+                              }}
+                              onClick={() => navigate(`/engineer/pipeline-studio?datasetId=${item.dataset_id}`)}
+                              title="Open 3-Step Pipeline Studio"
+                            >
+                              <Workflow size={13} />
+                              <span>Pipeline</span>
                             </button>
                           </div>
                         </td>
@@ -565,6 +702,12 @@ export default function EngineerOverviewPage() {
         onClose={() => setDetailModalItem(null)}
         onStartNewVersion={startNewVersionIteration}
         onPreviewDataset={openPreviewForDataset}
+      />
+
+      <PneumaSampleGeneratorModal
+        isOpen={isSampleModalOpen}
+        onClose={() => setIsSampleModalOpen(false)}
+        onGenerate={handleSampleGenerated}
       />
     </>
   )

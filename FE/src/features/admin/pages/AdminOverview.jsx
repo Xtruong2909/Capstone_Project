@@ -15,7 +15,6 @@ import {
   Trash2,
   X,
   Activity,
-  Layers,
   ScrollText,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
@@ -60,7 +59,7 @@ export default function AdminOverview() {
       setDatasets(datasetsData)
       setExperimentsData(expData)
       setAccessGrants(grantsData)
-    } catch (err) {
+    } catch {
       setError('Failed to load system overview statistics.')
     } finally {
       setIsLoading(false)
@@ -111,26 +110,32 @@ export default function AdminOverview() {
 
   if (isLoading) {
     return (
-      <div className="empty-state">
-        <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 1rem', color: '#2563eb' }} />
-        <p>Loading system overview...</p>
+      <div className="adm-panel">
+        <div className="adm-empty">
+          <div className="adm-empty__icon adm-tone--blue">
+            <RefreshCw size={24} className="animate-spin" />
+          </div>
+          <h4 className="adm-empty__title">Synchronizing Governance Telemetry...</h4>
+          <p className="adm-empty__desc">Fetching RBAC accounts, pNEUMA quality queues, and audit logs.</p>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="empty-state">
-        <AlertCircle size={28} style={{ margin: '0 auto 1rem', color: '#dc2626' }} />
-        <p>{error}</p>
-        <button
-          type="button"
-          className="btn-action btn-action--primary"
-          style={{ marginTop: '1rem' }}
-          onClick={fetchData}
-        >
-          Retry
-        </button>
+      <div className="adm-panel">
+        <div className="adm-empty">
+          <div className="adm-empty__icon adm-tone--rose">
+            <AlertCircle size={24} />
+          </div>
+          <h4 className="adm-empty__title">Telemetry Connection Interrupted</h4>
+          <p className="adm-empty__desc">{error}</p>
+          <button type="button" className="adm-btn adm-btn--primary" onClick={fetchData}>
+            <RefreshCw size={15} />
+            <span>Retry Connection</span>
+          </button>
+        </div>
       </div>
     )
   }
@@ -155,35 +160,33 @@ export default function AdminOverview() {
   const expStats = experimentsData.stats || {}
   const experimentsList = experimentsData.experiments || []
 
-  // Meaningful Governance & Operational Health Rates (0% - 100%)
-  const activeUserRatePct = users.length > 0
-    ? Math.round((activeUsersCount / users.length) * 100)
-    : 100
-  const approvalRatePct = datasets.length > 0
-    ? Math.round((approvedDatasetsCount / datasets.length) * 100)
-    : 100
+  // Operational Health Rates
+  const activeUserRatePct = users.length > 0 ? Math.round((activeUsersCount / users.length) * 100) : 100
+  const approvalRatePct = datasets.length > 0 ? Math.round((approvedDatasetsCount / datasets.length) * 100) : 100
   const totalFinishedOrRunningExps = expStats.total_experiments || experimentsList.length
-  const completedExpsCount = expStats.completed_count ?? experimentsList.filter((e) => e.status === 'COMPLETED').length
-  const experimentSuccessRatePct = totalFinishedOrRunningExps > 0
-    ? Math.round((completedExpsCount / totalFinishedOrRunningExps) * 100)
-    : 100
+  const completedExpsCount =
+    expStats.completed_count ?? experimentsList.filter((e) => e.status === 'COMPLETED').length
+  const experimentSuccessRatePct =
+    totalFinishedOrRunningExps > 0 ? Math.round((completedExpsCount / totalFinishedOrRunningExps) * 100) : 100
   const nowTimestamp = Date.now()
   const validGrantsCount = accessGrants.filter(
     (g) => !g.expires_at || new Date(g.expires_at).getTime() > nowTimestamp
   ).length
-  const validGrantRatePct = accessGrants.length > 0
-    ? Math.round((validGrantsCount / accessGrants.length) * 100)
-    : 100
+  const validGrantRatePct =
+    accessGrants.length > 0 ? Math.round((validGrantsCount / accessGrants.length) * 100) : 100
 
-  // Candidate users for grant (exclude admin)
   const candidateUsers = users.filter((u) => u.role_id !== 'admin')
 
   const getRoleBadgeClass = (roleId) => {
     switch (roleId) {
-      case 'data_engineer': return 'badge--engineer'
-      case 'data_scientist': return 'badge--scientist'
-      case 'business_user': return 'badge--business'
-      default: return 'badge--inactive'
+      case 'data_engineer':
+        return 'adm-badge--blue'
+      case 'data_scientist':
+        return 'adm-badge--purple'
+      case 'business_user':
+        return 'adm-badge--emerald'
+      default:
+        return 'adm-badge--slate'
     }
   }
 
@@ -191,664 +194,653 @@ export default function AdminOverview() {
 
   return (
     <div>
-      {/* 1. Hero Banner */}
-      <div className="admin-hero-banner">
-        <div className="admin-hero-banner__top">
-          <div className="admin-hero-banner__content">
-            <h2 className="admin-hero-banner__title">Administration Overview</h2>
+      {/* 1. Executive Dark Command Banner */}
+      <section className="adm-command-hero">
+        <div className="adm-command-hero__top">
+          <div>
+            <span className="adm-command-hero__eyebrow">
+              <ShieldCheck size={14} />
+              UAV Traffic Governance & Quality Gate
+            </span>
+            <h2 className="adm-command-hero__title">Platform Control & Compliance Center</h2>
+            <p className="adm-command-hero__desc">
+              Centralized oversight for role-based account provisioning, pNEUMA drone trajectory quality
+              validation, version-scoped researcher permissions, and ML forecasting audits.
+            </p>
           </div>
 
-          <div className="admin-hero-banner__actions">
-            <div className={`status-pill-live ${isOnline ? 'status-pill-live--online' : 'status-pill-live--offline'}`}>
-              <span className={`status-pulse-dot ${isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'}`} />
-              <span>{isOnline ? 'Database Online' : 'Database Offline'}</span>
-            </div>
-
+          <div className="adm-command-hero__actions">
             <button
               type="button"
-              className="btn-hero-refresh"
-              onClick={fetchData}
+              className="adm-btn adm-btn--primary"
+              onClick={() => setIsGrantModalOpen(true)}
             >
-              <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
+              <KeyRound size={15} />
+              <span>Issue Access Grant</span>
+            </button>
+
+            <button type="button" className="adm-btn adm-btn--glass" onClick={fetchData}>
+              <RefreshCw size={15} />
+              <span>Sync</span>
             </button>
           </div>
         </div>
 
-        {/* Quick Navigation Tiles */}
-        <div className="hero-quick-grid">
-          <Link to="/admin/users" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--blue">
+        {/* 4-Column Glass Navigation Ribbon */}
+        <div className="adm-command-ribbon">
+          <Link to="/admin/users" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(59, 130, 246, 0.25)', color: '#93c5fd' }}>
+                <Users size={20} />
+              </div>
+              <div>
+                <div className="adm-ribbon-tile__val">{stats?.total_users ?? users.length}</div>
+                <div className="adm-ribbon-tile__lbl">Identity Accounts</div>
+              </div>
+            </div>
+            <ArrowRight size={16} style={{ color: '#93c5fd' }} />
+          </Link>
+
+          <Link to="/admin/datasets" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(245, 158, 11, 0.25)', color: '#fcd34d' }}>
+                <Clock size={20} />
+              </div>
+              <div>
+                <div className="adm-ribbon-tile__val">{stats?.pending_approvals ?? pendingDatasets.length}</div>
+                <div className="adm-ribbon-tile__lbl">Awaiting Quality Gate</div>
+              </div>
+            </div>
+            <ArrowRight size={16} style={{ color: '#fcd34d' }} />
+          </Link>
+
+          <Link to="/admin/datasets-available" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(16, 185, 129, 0.25)', color: '#6ee7b7' }}>
+                <Database size={20} />
+              </div>
+              <div>
+                <div className="adm-ribbon-tile__val">{stats?.total_datasets ?? datasets.length}</div>
+                <div className="adm-ribbon-tile__lbl">Cataloged Datasets</div>
+              </div>
+            </div>
+            <ArrowRight size={16} style={{ color: '#6ee7b7' }} />
+          </Link>
+
+          <Link to="/admin/audit-logs" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(168, 85, 247, 0.25)', color: '#d8b4fe' }}>
+                <ScrollText size={20} />
+              </div>
+              <div>
+                <div className="adm-ribbon-tile__val">{stats?.total_audit_logs ?? 0}</div>
+                <div className="adm-ribbon-tile__lbl">Security Audit Events</div>
+              </div>
+            </div>
+            <ArrowRight size={16} style={{ color: '#d8b4fe' }} />
+          </Link>
+        </div>
+      </section>
+
+      {/* 2. Bento Row 1: Operational Health Gauges (8 cols) + RBAC Distribution (4 cols) */}
+      <div className="adm-bento-grid">
+        <div className="adm-panel adm-col-8">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--blue">
+                <Activity size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">Governance & Pipeline Health Indicators</h3>
+                <p className="adm-panel__subtitle">Real-time operational compliance ratios across all subsystems</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="adm-panel__body">
+            <div className="adm-gauge-grid">
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <div>
+                    <div className="adm-gauge-card__val">{activeUserRatePct}%</div>
+                    <div className="adm-gauge-card__lbl">Active RBAC Accounts</div>
+                  </div>
+                  <span className="adm-badge adm-badge--blue">
+                    {activeUsersCount}/{users.length} Active
+                  </span>
+                </div>
+                <div className="adm-progress-track">
+                  <div
+                    className="adm-progress-fill"
+                    style={{ width: `${activeUserRatePct}%`, background: '#2563eb' }}
+                  />
+                </div>
+              </div>
+
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <div>
+                    <div className="adm-gauge-card__val">{approvalRatePct}%</div>
+                    <div className="adm-gauge-card__lbl">Quality Gate Pass Rate</div>
+                  </div>
+                  <span className="adm-badge adm-badge--emerald">
+                    {approvedDatasetsCount}/{datasets.length} Approved
+                  </span>
+                </div>
+                <div className="adm-progress-track">
+                  <div
+                    className="adm-progress-fill"
+                    style={{ width: `${approvalRatePct}%`, background: '#10b981' }}
+                  />
+                </div>
+              </div>
+
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <div>
+                    <div className="adm-gauge-card__val">{experimentSuccessRatePct}%</div>
+                    <div className="adm-gauge-card__lbl">ML Forecasting Completion</div>
+                  </div>
+                  <span className="adm-badge adm-badge--purple">
+                    {completedExpsCount}/{totalFinishedOrRunningExps} Runs
+                  </span>
+                </div>
+                <div className="adm-progress-track">
+                  <div
+                    className="adm-progress-fill"
+                    style={{ width: `${experimentSuccessRatePct}%`, background: '#7c3aed' }}
+                  />
+                </div>
+              </div>
+
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <div>
+                    <div className="adm-gauge-card__val">{validGrantRatePct}%</div>
+                    <div className="adm-gauge-card__lbl">Valid Dataset Grants</div>
+                  </div>
+                  <span className="adm-badge adm-badge--amber">
+                    {validGrantsCount}/{accessGrants.length} Valid
+                  </span>
+                </div>
+                <div className="adm-progress-track">
+                  <div
+                    className="adm-progress-fill"
+                    style={{ width: `${validGrantRatePct}%`, background: '#d97706' }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RBAC Role Distribution (4 cols) */}
+        <div className="adm-panel adm-col-4">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--purple">
                 <Users size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{stats?.total_users ?? users.length}</div>
-                <div className="hero-quick-tile__label">Users</div>
+                <h3 className="adm-panel__title">RBAC Distribution</h3>
+                <p className="adm-panel__subtitle">4 Platform Actor Roles</p>
               </div>
             </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
-          </Link>
-
-          <Link to="/admin/datasets" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--amber">
-                <Clock size={18} />
-              </div>
-              <div>
-                <div className="hero-quick-tile__value">{stats?.pending_approvals ?? pendingDatasets.length}</div>
-                <div className="hero-quick-tile__label">Pending Approvals</div>
-              </div>
-            </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
-          </Link>
-
-          <Link to="/admin/datasets" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--green">
-                <Database size={18} />
-              </div>
-              <div>
-                <div className="hero-quick-tile__value">{stats?.total_datasets ?? 0}</div>
-                <div className="hero-quick-tile__label">Datasets</div>
-              </div>
-            </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
-          </Link>
-
-          <Link to="/admin/audit-logs" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--purple">
-                <ScrollText size={18} />
-              </div>
-              <div>
-                <div className="hero-quick-tile__value">{stats?.total_audit_logs ?? 0}</div>
-                <div className="hero-quick-tile__label">Audit Logs</div>
-              </div>
-            </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
-          </Link>
-        </div>
-      </div>
-
-      {/* 2. Operational & Governance Health Rate Cards */}
-      <div className="stats-grid">
-        <div className="stat-card stat-card--blue">
-          <Users size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{activeUserRatePct}%</h3>
-              <p>Active Accounts</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--blue">
-              <Activity size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${activeUserRatePct}%`, background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }}
-            />
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--green">
-          <CheckCircle2 size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{approvalRatePct}%</h3>
-              <p>Approval Rate</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--green">
-              <CheckCircle2 size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${approvalRatePct}%`, background: 'linear-gradient(90deg, #059669, #34d399)' }}
-            />
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--purple">
-          <FlaskConical size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{experimentSuccessRatePct}%</h3>
-              <p>Training Success Rate</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--purple">
-              <FlaskConical size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${experimentSuccessRatePct}%`, background: 'linear-gradient(90deg, #7c3aed, #c084fc)' }}
-            />
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--amber">
-          <KeyRound size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{validGrantRatePct}%</h3>
-              <p>Valid Access Grants</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--amber">
-              <KeyRound size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${validGrantRatePct}%`, background: 'linear-gradient(90deg, #d97706, #fbbf24)' }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Middle Section: Pending Approvals & Role Breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1.35rem', marginBottom: '1.75rem' }}>
-        {/* Left: Pending Dataset Approvals Queue */}
-        <div className="admin-card" style={{ marginBottom: 0 }}>
-          <div className="admin-card__header">
-            <div className="admin-card__header-left">
-              <div className="admin-card__icon-box admin-card__icon-box--amber">
-                <Clock size={18} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <h3 className="admin-card__title">Pending Approvals</h3>
-                {pendingDatasets.length > 0 && (
-                  <span className="badge badge--pending">{pendingDatasets.length}</span>
-                )}
-              </div>
-            </div>
-            <Link
-              to="/admin/datasets"
-              style={{
-                fontSize: '0.8rem',
-                color: '#2563eb',
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '8px',
-                textDecoration: 'none',
-                fontWeight: 600,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-              }}
-            >
-              <span>View All</span>
-              <ArrowRight size={14} />
+            <Link to="/admin/users" className="adm-btn adm-btn--ghost adm-btn--sm">
+              <span>Manage</span>
+              <ArrowRight size={13} />
             </Link>
           </div>
 
-          {pendingDatasets.length === 0 ? (
-            <div className="vivid-empty-box">
+          <div className="adm-panel__body">
+            <div className="adm-rbac-stack">
               <div
-                className="vivid-empty-box__icon"
                 style={{
-                  background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)',
-                  color: '#15803d',
-                  border: '1px solid #86efac',
+                  width: `${(roleBreakdown.data_engineer / totalUsersCount) * 100}%`,
+                  background: '#2563eb',
                 }}
-              >
-                <CheckCircle2 size={26} />
-              </div>
-              <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                No pending datasets
-              </h4>
+              />
+              <div
+                style={{
+                  width: `${(roleBreakdown.data_scientist / totalUsersCount) * 100}%`,
+                  background: '#7c3aed',
+                }}
+              />
+              <div
+                style={{
+                  width: `${(roleBreakdown.business_user / totalUsersCount) * 100}%`,
+                  background: '#059669',
+                }}
+              />
+              <div
+                style={{
+                  width: `${(roleBreakdown.admin / totalUsersCount) * 100}%`,
+                  background: '#e11d48',
+                }}
+              />
             </div>
-          ) : (
-            <div className="mini-approval-list">
-              {pendingDatasets.slice(0, 3).map((item) => (
-                <div key={item.id} className="mini-approval-item">
-                  <div className="mini-approval-info">
-                    <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>{item.dataset_name}</strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#64748b' }}>
-                      <code style={{ background: '#ffffff', color: '#b45309', padding: '0.12rem 0.45rem', borderRadius: '6px', border: '1px solid #fcd34d', fontWeight: 600 }}>
-                        {item.version_tag}
-                      </code>
-                      <span>•</span>
-                      <span style={{ fontWeight: 600, color: '#334155' }}>{item.file_format}</span>
-                      <span>•</span>
-                      <span>{(item.total_records || 0).toLocaleString()} rows</span>
-                    </div>
-                  </div>
+
+            <div className="adm-rbac-list">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#2563eb' }} />
+                  <span className="adm-rbac-row__name">Data Engineer</span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Right: User Role Breakdown */}
-        <div className="admin-card" style={{ marginBottom: 0 }}>
-          <div className="admin-card__header">
-            <div className="admin-card__header-left">
-              <div className="admin-card__icon-box admin-card__icon-box--blue">
-                <ShieldCheck size={18} />
-              </div>
-              <h3 className="admin-card__title">Role Distribution</h3>
-            </div>
-            <span className="badge badge--active">
-              {activeUsersCount}/{users.length} active
-            </span>
-          </div>
-
-          <div className="role-breakdown-card">
-            {/* Visual Multi-color Progress Bar */}
-            <div className="role-stacked-bar-wrapper">
-              <div className="role-stacked-bar">
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.data_engineer / totalUsersCount) * 100}%`, background: '#2563eb' }}
-                  title={`Data Engineer: ${roleBreakdown.data_engineer}`}
-                />
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.data_scientist / totalUsersCount) * 100}%`, background: '#9333ea' }}
-                  title={`Data Scientist: ${roleBreakdown.data_scientist}`}
-                />
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.business_user / totalUsersCount) * 100}%`, background: '#16a34a' }}
-                  title={`Business User: ${roleBreakdown.business_user}`}
-                />
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.admin / totalUsersCount) * 100}%`, background: '#e11d48' }}
-                  title={`Administrator: ${roleBreakdown.admin}`}
-                />
-              </div>
-            </div>
-
-            {/* Vivid Role Stat Items */}
-            <div className="role-stat-grid">
-              <div className="role-stat-item role-stat-item--blue">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#2563eb' }} />
-                    Data Engineer
-                  </span>
-                  <span className="role-stat-item__pct">
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.data_engineer}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.data_engineer / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.data_engineer}</h4>
-                </div>
               </div>
 
-              <div className="role-stat-item role-stat-item--purple">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#9333ea' }} />
-                    Data Scientist
-                  </span>
-                  <span className="role-stat-item__pct">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#7c3aed' }} />
+                  <span className="adm-rbac-row__name">Data Scientist</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.data_scientist}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.data_scientist / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.data_scientist}</h4>
-                </div>
               </div>
 
-              <div className="role-stat-item role-stat-item--green">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#16a34a' }} />
-                    Business User
-                  </span>
-                  <span className="role-stat-item__pct">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#059669' }} />
+                  <span className="adm-rbac-row__name">Business User</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.business_user}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.business_user / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.business_user}</h4>
-                </div>
               </div>
 
-              <div className="role-stat-item role-stat-item--rose">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#e11d48' }} />
-                    Administrator
-                  </span>
-                  <span className="role-stat-item__pct">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#e11d48' }} />
+                  <span className="adm-rbac-row__name">Administrator</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.admin}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.admin / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.admin}</h4>
-                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. ML Forecasting Experiments Monitor */}
-      <div className="admin-card">
-        <div className="admin-card__header">
-          <div className="admin-card__header-left">
-            <div className="admin-card__icon-box admin-card__icon-box--purple">
+      {/* 3. Bento Row 2: Pending Quality Gate Queue (5 cols) + Granular Access Permissions (7 cols) */}
+      <div className="adm-bento-grid">
+        <div className="adm-panel adm-col-5">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--amber">
+                <Clock size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">Quality Gate Queue</h3>
+                <p className="adm-panel__subtitle">
+                  {pendingDatasets.length} version(s) awaiting inspection
+                </p>
+              </div>
+            </div>
+            <Link to="/admin/datasets" className="adm-btn adm-btn--ghost adm-btn--sm">
+              <span>Inspect All</span>
+              <ArrowRight size={13} />
+            </Link>
+          </div>
+
+          <div className="adm-panel__body">
+            {pendingDatasets.length === 0 ? (
+              <div className="adm-empty" style={{ padding: '2rem 1rem' }}>
+                <div className="adm-empty__icon adm-tone--emerald">
+                  <CheckCircle2 size={24} />
+                </div>
+                <h4 className="adm-empty__title">Quality Gate Clear</h4>
+                <p className="adm-empty__desc">
+                  All submitted UAV trajectory datasets have been inspected.
+                </p>
+              </div>
+            ) : (
+              <div className="adm-queue-list">
+                {pendingDatasets.slice(0, 4).map((item) => (
+                  <div key={item.id} className="adm-queue-item">
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.9rem' }}>
+                        {item.dataset_name}
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          marginTop: '0.3rem',
+                          fontSize: '0.75rem',
+                          color: '#64748b',
+                        }}
+                      >
+                        <span className="adm-code-tag">{item.version_tag}</span>
+                        <span>•</span>
+                        <strong>{item.file_format}</strong>
+                        <span>•</span>
+                        <span>{(item.total_records || 0).toLocaleString()} rows</span>
+                      </div>
+                    </div>
+                    <Link to="/admin/datasets" className="adm-btn adm-btn--primary adm-btn--sm">
+                      <span>Review</span>
+                      <ArrowRight size={12} />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Granular Access Permissions (7 cols) */}
+        <div className="adm-panel adm-col-7">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--emerald">
+                <KeyRound size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">Dataset Access Permissions</h3>
+                <p className="adm-panel__subtitle">
+                  {accessGrants.length} active version-specific permission grant(s)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="adm-btn adm-btn--primary adm-btn--sm"
+              onClick={() => setIsGrantModalOpen(true)}
+            >
+              <Plus size={14} />
+              <span>Grant Access</span>
+            </button>
+          </div>
+
+          <div className="adm-panel__body--flush">
+            {accessGrants.length === 0 ? (
+              <div className="adm-empty" style={{ padding: '2rem 1rem' }}>
+                <div className="adm-empty__icon adm-tone--blue">
+                  <KeyRound size={24} />
+                </div>
+                <h4 className="adm-empty__title">No Access Grants Issued</h4>
+                <p className="adm-empty__desc">
+                  Grant version-scoped dataset access to Data Scientists or Business Users.
+                </p>
+              </div>
+            ) : (
+              <div className="adm-table-wrap">
+                <table className="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Recipient</th>
+                      <th>Role</th>
+                      <th>Dataset & Version</th>
+                      <th>Expires</th>
+                      <th style={{ textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accessGrants.slice(0, 5).map((grant) => (
+                      <tr key={grant.id}>
+                        <td>
+                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{grant.user_name}</div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748b' }}>{grant.user_email}</div>
+                        </td>
+                        <td>
+                          <span className={`adm-badge ${getRoleBadgeClass(grant.user_role)}`}>
+                            {grant.user_role}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 700, color: '#0f172a' }}>
+                            {grant.dataset_name}
+                          </span>{' '}
+                          <span className="adm-code-tag">{grant.version_tag}</span>
+                        </td>
+                        <td>
+                          {grant.expires_at ? (
+                            <span className="adm-badge adm-badge--amber">
+                              {new Date(grant.expires_at).toLocaleDateString('en-US')}
+                            </span>
+                          ) : (
+                            <span className="adm-badge adm-badge--emerald">Unlimited</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn--danger adm-btn--sm"
+                            disabled={actionLoading === grant.id}
+                            onClick={() => handleRevokeGrant(grant.id)}
+                          >
+                            <Trash2 size={13} />
+                            <span>Revoke</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Full-Width Row: AI/ML Forecasting Experiments Monitor */}
+      <div className="adm-panel">
+        <div className="adm-panel__header">
+          <div className="adm-panel__title-group">
+            <div className="adm-panel__icon adm-tone--purple">
               <FlaskConical size={18} />
             </div>
-            <h3 className="admin-card__title">AI/ML Experiments</h3>
+            <div>
+              <h3 className="adm-panel__title">Short-Term Traffic Flow Forecasting Audit</h3>
+              <p className="adm-panel__subtitle">
+                Tracking Random Forest, Persistence, and Historical Average experiments across 1-min & 5-min intervals
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <span className="adm-badge adm-badge--slate">
+              Total: {expStats.total_experiments ?? 0}
+            </span>
+            <span className="adm-badge adm-badge--blue">
+              Running: {expStats.running_count ?? 0}
+            </span>
+            <span className="adm-badge adm-badge--emerald">
+              Completed: {expStats.completed_count ?? 0}
+            </span>
+            <span className="adm-badge adm-badge--rose">
+              <AlertCircle size={12} />
+              <span>Failed: {expStats.failed_count ?? 0}</span>
+            </span>
           </div>
         </div>
 
-        {/* 4-Box KPI Ribbon */}
-        <div className="exp-kpi-ribbon">
-          <div className="exp-kpi-box exp-kpi-box--slate">
-            <div className="admin-card__icon-box" style={{ background: '#e2e8f0', color: '#334155' }}>
-              <Layers size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val">{expStats.total_experiments ?? 0}</div>
-              <div className="exp-kpi-box__lbl">Total</div>
-            </div>
-          </div>
-
-          <div className="exp-kpi-box exp-kpi-box--blue">
-            <div className="admin-card__icon-box admin-card__icon-box--blue">
-              <Activity size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val">{expStats.running_count ?? 0}</div>
-              <div className="exp-kpi-box__lbl">Running</div>
-            </div>
-          </div>
-
-          <div className="exp-kpi-box exp-kpi-box--green">
-            <div className="admin-card__icon-box admin-card__icon-box--green">
-              <CheckCircle2 size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val">{expStats.completed_count ?? 0}</div>
-              <div className="exp-kpi-box__lbl">Completed</div>
-            </div>
-          </div>
-
-          <div className="exp-kpi-box exp-kpi-box--purple">
-            <div className="admin-card__icon-box admin-card__icon-box--purple">
-              <AlertCircle size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val" style={{ fontSize: '1rem' }}>
-                {expStats.failed_count ?? 0}
+        <div className="adm-panel__body--flush">
+          {experimentsList.length === 0 ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--purple">
+                <FlaskConical size={24} />
               </div>
-              <div className="exp-kpi-box__lbl">Failed</div>
+              <h4 className="adm-empty__title">No Forecasting Experiments Logged</h4>
+              <p className="adm-empty__desc">
+                Experiments trained by Data Scientists will automatically appear in this audit ledger.
+              </p>
             </div>
-          </div>
-        </div>
-
-        {experimentsList.length === 0 ? (
-          <div className="vivid-empty-box">
-            <div
-              className="vivid-empty-box__icon"
-              style={{
-                background: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)',
-                color: '#7e22ce',
-                border: '1px solid #d8b4fe',
-              }}
-            >
-              <FlaskConical size={26} />
-            </div>
-            <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              No experiments recorded yet
-            </h4>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Experiment Name</th>
-                  <th>Model</th>
-                  <th>Target Variable</th>
-                  <th>Aggregation Window</th>
-                  <th>Status</th>
-                  <th>Created By</th>
-                  <th>Evaluation Metrics</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {experimentsList.map((exp) => (
-                  <tr key={exp.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{exp.name}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {exp.dataset_name} ({exp.dataset_version_tag})
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge--scientist">{exp.model_type}</span>
-                    </td>
-                    <td>{exp.target_variable}</td>
-                    <td>{exp.temporal_aggregation_sec / 60} min</td>
-                    <td>
-                      <span className={`badge ${
-                        exp.status === 'COMPLETED' ? 'badge--active' :
-                        exp.status === 'RUNNING' ? 'badge--pending' : 'badge--rejected'
-                      }`}>
-                        {exp.status === 'COMPLETED' ? 'Completed' :
-                         exp.status === 'RUNNING' ? 'Running' : exp.status}
-                      </span>
-                    </td>
-                    <td>{exp.creator_name || '—'}</td>
-                    <td>
-                      {exp.metrics ? (
-                        <div style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                          <span>MAE: <strong>{exp.metrics.mae}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Experiment & Dataset</th>
+                    <th>Model Architecture</th>
+                    <th>Target Variable</th>
+                    <th>Horizon</th>
+                    <th>Status</th>
+                    <th>Researcher</th>
+                    <th>Evaluation Metrics</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {experimentsList.map((exp) => (
+                    <tr key={exp.id}>
+                      <td>
+                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{exp.name}</div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                          {exp.dataset_name} ({exp.dataset_version_tag})
                         </div>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>No metrics</span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {new Date(exp.created_at).toLocaleDateString('en-US')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Dataset Access Governance Matrix */}
-      <div className="admin-card" style={{ marginBottom: 0 }}>
-        <div className="admin-card__header">
-          <div className="admin-card__header-left">
-            <div className="admin-card__icon-box admin-card__icon-box--green">
-              <KeyRound size={18} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <h3 className="admin-card__title">Dataset Access Permissions</h3>
-              <span className="badge badge--engineer">{accessGrants.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {accessGrants.length === 0 ? (
-          <div className="vivid-empty-box">
-            <div
-              className="vivid-empty-box__icon"
-              style={{
-                background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                color: '#1d4ed8',
-                border: '1px solid #93c5fd',
-              }}
-            >
-              <KeyRound size={26} />
-            </div>
-            <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              No access grants issued yet
-            </h4>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Granted User</th>
-                  <th>Role</th>
-                  <th>Dataset & Version</th>
-                  <th>Granted By</th>
-                  <th>Expiration</th>
-                  <th>Granted Date</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accessGrants.map((grant) => (
-                  <tr key={grant.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{grant.user_name}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{grant.user_email}</div>
-                    </td>
-                    <td>
-                      <span className={`badge ${getRoleBadgeClass(grant.user_role)}`}>
-                        {grant.user_role}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 600, color: '#0f172a' }}>{grant.dataset_name}</span>{' '}
-                      <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.12rem 0.4rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
-                        {grant.version_tag}
-                      </code>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{grant.granted_by_email || 'System'}</td>
-                    <td>
-                      {grant.expires_at ? (
-                        <span style={{ fontSize: '0.8rem', color: '#d97706', fontWeight: 600 }}>
-                          {new Date(grant.expires_at).toLocaleDateString('en-US')}
+                      </td>
+                      <td>
+                        <span className="adm-badge adm-badge--purple">{exp.model_type}</span>
+                      </td>
+                      <td>
+                        <span className="adm-code-tag">{exp.target_variable}</span>
+                      </td>
+                      <td style={{ fontWeight: 700 }}>{exp.temporal_aggregation_sec / 60} min</td>
+                      <td>
+                        <span
+                          className={`adm-badge ${
+                            exp.status === 'COMPLETED'
+                              ? 'adm-badge--emerald'
+                              : exp.status === 'RUNNING'
+                              ? 'adm-badge--amber'
+                              : 'adm-badge--rose'
+                          }`}
+                        >
+                          {exp.status}
                         </span>
-                      ) : (
-                        <span className="badge badge--active">Unlimited</span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(grant.created_at).toLocaleDateString('en-US')}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-action btn-action--danger"
-                        style={{ padding: '0.38rem 0.75rem', fontSize: '0.75rem' }}
-                        disabled={actionLoading === grant.id}
-                        onClick={() => handleRevokeGrant(grant.id)}
-                      >
-                        <Trash2 size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                        Revoke
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      </td>
+                      <td>{exp.creator_name || '—'}</td>
+                      <td>
+                        {exp.metrics ? (
+                          <span className="adm-code-tag">
+                            MAE: {exp.metrics.mae} | RMSE: {exp.metrics.rmse}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Pending</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        {new Date(exp.created_at).toLocaleDateString('en-US')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Grant Dataset Access Modal */}
       {isGrantModalOpen && (
         <div
-          className="modal-backdrop"
+          className="adm-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsGrantModalOpen(false)
           }}
         >
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <h3>Grant Dataset Access</h3>
+          <div className="adm-modal">
+            <div className="adm-modal__header">
+              <h3 className="adm-modal__title">Issue Version-Scoped Dataset Grant</h3>
               <button
                 type="button"
-                className="modal-close-btn"
+                className="adm-modal__close"
                 onClick={() => setIsGrantModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleGrantSubmit} className="modal-body">
-              {grantError && (
-                <div style={{
-                  padding: '0.75rem',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '6px',
-                  color: '#dc2626',
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem',
-                }}>
-                  {grantError}
-                </div>
-              )}
-
-              <div className="form-field">
-                <label className="form-label">Select Recipient User</label>
-                <select
-                  required
-                  value={grantForm.user_id}
-                  onChange={(e) => setGrantForm({ ...grantForm, user_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  <option value="">-- Select team member --</option>
-                  {candidateUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name} ({u.email}) - [{u.role_id}]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">Select Dataset Version</label>
-                <select
-                  required
-                  value={grantForm.dataset_version_id}
-                  onChange={(e) => setGrantForm({ ...grantForm, dataset_version_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  <option value="">-- Select dataset version --</option>
-                  {datasets.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.dataset_name} ({d.version_tag}) - [{d.approval_status}]
-                    </option>
-                  ))}
-                </select>
-                {datasets.length === 0 && (
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
-                    * No dataset versions have been created in the system yet.
-                  </p>
+            <form onSubmit={handleGrantSubmit}>
+              <div className="adm-modal__body">
+                {grantError && (
+                  <div
+                    style={{
+                      padding: '0.75rem 1rem',
+                      background: '#fff1f2',
+                      border: '1px solid #fecdd3',
+                      borderRadius: '10px',
+                      color: '#be123c',
+                      fontSize: '0.84rem',
+                      marginBottom: '1rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {grantError}
+                  </div>
                 )}
+
+                <div className="adm-field">
+                  <label className="adm-label">Recipient Team Member</label>
+                  <select
+                    required
+                    value={grantForm.user_id}
+                    onChange={(e) => setGrantForm({ ...grantForm, user_id: e.target.value })}
+                    className="adm-select"
+                  >
+                    <option value="">-- Select researcher or analyst --</option>
+                    {candidateUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name} ({u.email}) — [{u.role_id}]
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="adm-field">
+                  <label className="adm-label">Target Dataset Version</label>
+                  <select
+                    required
+                    value={grantForm.dataset_version_id}
+                    onChange={(e) =>
+                      setGrantForm({ ...grantForm, dataset_version_id: e.target.value })
+                    }
+                    className="adm-select"
+                  >
+                    <option value="">-- Select dataset version --</option>
+                    {datasets.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.dataset_name} ({d.version_tag}) — [{d.approval_status}]
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="adm-field" style={{ marginBottom: 0 }}>
+                  <label className="adm-label">
+                    Access Expiration Date (Leave blank for permanent access)
+                  </label>
+                  <input
+                    type="date"
+                    value={grantForm.expires_at}
+                    onChange={(e) => setGrantForm({ ...grantForm, expires_at: e.target.value })}
+                    className="adm-input"
+                  />
+                </div>
               </div>
 
-              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Expiration Date (Leave blank for unlimited access)</label>
-                <input
-                  type="date"
-                  value={grantForm.expires_at}
-                  onChange={(e) => setGrantForm({ ...grantForm, expires_at: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="modal-actions">
+              <div className="adm-modal__footer">
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="adm-btn adm-btn--ghost"
                   onClick={() => setIsGrantModalOpen(false)}
                 >
                   Cancel
@@ -856,10 +848,10 @@ export default function AdminOverview() {
                 <button
                   type="submit"
                   disabled={grantSubmitting}
-                  className="btn-action btn-action--primary"
-                  style={{ padding: '0.55rem 1.25rem' }}
+                  className="adm-btn adm-btn--primary"
                 >
-                  {grantSubmitting ? 'Granting...' : 'Confirm Grant'}
+                  <KeyRound size={15} />
+                  <span>{grantSubmitting ? 'Issuing Grant...' : 'Confirm Access Grant'}</span>
                 </button>
               </div>
             </form>
