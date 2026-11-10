@@ -20,7 +20,7 @@ class AssistantAction(StrEnum):
 class AssistantRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: AssistantAction
+    action: AssistantAction = AssistantAction.CHAT
     experiment_ids: list[UUID] = Field(default_factory=list, max_length=20)
     prediction_id: int | None = Field(default=None, ge=1)
     model_id: UUID | None = None

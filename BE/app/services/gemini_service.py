@@ -53,6 +53,10 @@ ACTION_INSTRUCTIONS = {
     AssistantAction.CHAT: (
         "Trả về JSON chỉ gồm message. "
         "Chỉ trả lời kiến thức về phân tích dữ liệu và dự báo giao thông trong phạm vi đồ án. "
+        "Khi người dùng yêu cầu phân tích dataset hiện tại, dùng metadata, quality_check và "
+        "traffic_overview trong context để nêu nhận xét cụ thể, phân biệt số bản ghi file "
+        "với số điểm tổng hợp theo thời gian. Nếu chưa có báo cáo hay dữ liệu tổng hợp, "
+        "nói rõ phần đó chưa có. "
         "Nếu không có dữ liệu dự án, có thể giải thích khái niệm liên quan nhưng không bịa số liệu."
     ),
 }

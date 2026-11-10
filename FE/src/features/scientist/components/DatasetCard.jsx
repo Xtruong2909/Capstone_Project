@@ -1,21 +1,10 @@
 import { Eye, MapPin, ShieldCheck, Database, FlaskConical, TrendingUp } from 'lucide-react'
 
-function formatDatasetCode(code) {
-  if (!code) return 'DATASET'
-  if (/^DATASET_[0-9A-F]{16,}$/i.test(code)) {
-    return `DS-${code.slice(8, 14).toUpperCase()}`
-  }
-  return code
-}
-
 export default function DatasetCard({ item, onPreview, onTrain, onPredict }) {
   return (
     <article className="sci-card">
       <div className="sci-card__top">
         <div style={{ minWidth: 0 }}>
-          <span className="sci-card__code" title={item.dataset_code}>
-            {formatDatasetCode(item.dataset_code)}
-          </span>
           <h3 className="sci-card__title" title={item.dataset_name}>
             {item.dataset_name}
           </h3>

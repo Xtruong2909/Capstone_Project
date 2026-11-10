@@ -12,6 +12,7 @@ from google.genai import errors
 from app.schemas.ai_assistant import AssistantAction, AssistantRequest, AssistantResult
 from app.services import ai_assistant_service as service
 from app.services import gemini_service
+from app.services.ai_intent_service import infer_action, prediction_id_from_question
 
 
 def _experiment(experiment_id, split_id, *, mae=12.0, eligible=False, test_origin=None):
@@ -150,6 +151,122 @@ def test_incomparable_experiments_have_no_best(facts, monkeypatch):
     ), user)
     assert result.result.best_experiment_id is None
     assert len(result.result.comparison) == 2
+
+
+def test_chat_automatically_analyzes_current_dataset(facts, monkeypatch):
+    version_id, _, _, _, user = facts
+    dataset = SimpleNamespace(
+        name="pNEUMA Athens", description="Dữ liệu quỹ đạo UAV",
+        location_name="Athens",
+    )
+    version = SimpleNamespace(
+        dataset_id=uuid4(), dataset=dataset, version_tag="v1", file_format="CSV",
+        total_records=1200, approval_status="APPROVED",
+    )
+    monkeypatch.setattr(service.repo, "get_dataset_version", lambda db, key: version)
+    monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key: [])
+    monkeypatch.setattr(service.repo, "list_final_models", lambda db, key: [])
+    monkeypatch.setattr(service.repo, "get_latest_quality_check", lambda db, key: SimpleNamespace(
+        status="completed", report={"total_rows": 1200, "invalid_rows": 12,
+                                    "total_errors": 12, "detected_structure": "pneuma_trajectory"},
+    ))
+    monkeypatch.setattr(service.repo, "get_traffic_overview", lambda db, key: {
+        "aggregation_points": 60, "average_traffic_flow": 22.5,
+    })
+    captured = {}
+
+    def fake_gemini(action, context, message):
+        captured.update({"action": action, "context": context, "message": message})
+        return AssistantResult(message="Dataset có 1.200 bản ghi và 12 dòng lỗi.")
+
+    monkeypatch.setattr(service, "generate_analysis", fake_gemini)
+    response = service.run_assistant(None, AssistantRequest(
+        message="Phân tích dataset này", dataset_version_id=version_id,
+    ), user)
+
+    assert response.action == AssistantAction.CHAT
+    assert captured["context"]["dataset"]["name"] == "pNEUMA Athens"
+    assert captured["context"]["quality_check"]["invalid_rows"] == 12
+    assert captured["context"]["traffic_overview"]["aggregation_points"] == 60
+
+
+@pytest.mark.parametrize(("question", "expected_action", "expected_count"), [
+    ("Phân tích thí nghiệm này", AssistantAction.EXPERIMENT_ANALYSIS, 1),
+    ("So sánh các thí nghiệm", AssistantAction.EXPERIMENT_COMPARISON, 2),
+])
+def test_chat_automatically_selects_experiment_action(
+    facts, monkeypatch, question, expected_action, expected_count,
+):
+    version_id, first_id, second_id, _, user = facts
+    monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key: [
+        SimpleNamespace(id=first_id), SimpleNamespace(id=second_id),
+    ])
+    captured = {}
+
+    def fake_gemini(action, context, message):
+        captured.update({"action": action, "context": context})
+        return AssistantResult(summary="Đã phân tích dữ liệu đã lưu.")
+
+    monkeypatch.setattr(service, "generate_analysis", fake_gemini)
+    response = service.run_assistant(None, AssistantRequest(
+        message=question, dataset_version_id=version_id,
+    ), user)
+
+    assert response.action == expected_action
+    assert captured["action"] == expected_action
+    assert len(captured["context"]["experiments"]) == expected_count
+
+
+def test_forecast_id_detection_does_not_confuse_horizon_with_record_id():
+    assert infer_action("Giải thích dự báo này") == AssistantAction.FORECAST_EXPLANATION
+    assert prediction_id_from_question("Giải thích dự báo +1, +3, +5 phút") is None
+    assert prediction_id_from_question("Giải thích dự báo ID #42") == 42
+
+
+def test_chat_automatically_recommends_from_latest_experiment(facts, monkeypatch):
+    version_id, first_id, _, _, user = facts
+    monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key: [
+        SimpleNamespace(id=first_id),
+    ])
+    config = {"n_estimators": 150, "max_depth": 12, "min_samples_split": 2,
+              "min_samples_leaf": 1, "max_features": 1.0, "bootstrap": True,
+              "random_state": 42}
+    monkeypatch.setattr(service, "generate_analysis", lambda action, context, message:
+                        AssistantResult(summary="Cấu hình đề xuất",
+                                        suggested_configuration=config, reason="MAE đã lưu"))
+
+    response = service.run_assistant(None, AssistantRequest(
+        message="Gợi ý cấu hình Random Forest", dataset_version_id=version_id,
+    ), user)
+
+    assert response.action == AssistantAction.MODEL_RECOMMENDATION
+    assert response.result.suggested_configuration.n_estimators == 150
+
+
+def test_chat_automatically_explains_latest_forecast(facts, monkeypatch):
+    version_id, first_id, _, _, user = facts
+    origin = datetime(2018, 10, 24, 6, 41, tzinfo=UTC)
+    model = SimpleNamespace(id=uuid4(), experiment_id=first_id,
+                            dataset_version_id=version_id)
+    rows = [SimpleNamespace(horizon_minutes=h, timestamp=origin + timedelta(minutes=h),
+                            predicted_value=100 + h, actual_value=None) for h in (1, 3, 5)]
+    monkeypatch.setattr(service.repo, "get_latest_forecast_for_version", lambda db, key:
+                        SimpleNamespace(id=7))
+    monkeypatch.setattr(service.repo, "get_forecast", lambda db, key: SimpleNamespace(
+        model_id=model.id, last_observed_time=origin,
+    ))
+    monkeypatch.setattr(service.repo, "get_final_model", lambda db, key: model)
+    monkeypatch.setattr(service.repo, "get_forecast_group", lambda db, key, time: rows)
+    monkeypatch.setattr(service, "generate_analysis", lambda action, context, message:
+                        AssistantResult(summary="Xu hướng dự báo", forecast_trends=["Tăng"],
+                                        explanation="Dự báo đã lưu tăng theo thời gian."))
+
+    response = service.run_assistant(None, AssistantRequest(
+        message="Giải thích dự báo này", dataset_version_id=version_id,
+    ), user)
+
+    assert response.action == AssistantAction.FORECAST_EXPLANATION
+    assert response.result.forecast_trends == ["Tăng"]
 
 
 def test_invalid_request_and_missing_experiment(facts):

@@ -18,6 +18,8 @@ CLARIFICATION_MESSAGE = (
 
 _PROJECT_TERMS = (
     "pneuma",
+    "dataset",
+    "dữ liệu",
     "uav",
     "random forest",
     "lag feature",
@@ -78,7 +80,7 @@ class KnowledgeChunk(BaseModel):
 
 
 def _normalize(text: str) -> str:
-    decomposed = unicodedata.normalize("NFD", text.casefold())
+    decomposed = unicodedata.normalize("NFD", text.casefold()).replace("đ", "d")
     without_marks = "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
     return re.sub(r"[^a-z0-9]+", " ", without_marks).strip()
 
