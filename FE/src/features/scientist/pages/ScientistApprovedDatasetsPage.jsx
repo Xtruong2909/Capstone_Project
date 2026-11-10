@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, RefreshCw, FileSearch, LayoutGrid, List, Eye, ShieldCheck, MapPin, Database, FlaskConical, TrendingUp } from 'lucide-react'
+import { Search, RefreshCw, FileSearch, LayoutGrid, List, ShieldCheck, MapPin, Database, FlaskConical, TrendingUp } from 'lucide-react'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import DatasetCard from '../components/DatasetCard'
 
@@ -211,7 +211,7 @@ export default function ScientistApprovedDatasetsPage() {
                           onClick={() => openPreview(item)}
                           title="Open Dataset Detail & Preview"
                         >
-                          <Eye size={14} />
+                          <FileSearch size={15} strokeWidth={2} />
                           <span>Preview</span>
                         </button>
                       </div>

@@ -585,6 +585,7 @@ export default function TrafficPredictionPanel({
   versionId,
   datasetMeta,
   experiments = [],
+  preferredExperimentId = null,
   savedSplitId = null,
   forecastData,
   isPredicting,
@@ -594,12 +595,16 @@ export default function TrafficPredictionPanel({
   onAskAiAboutForecast,
 }) {
   const [selectedSplitId, setSelectedSplitId] = useState('')
-  const [selectedExperimentId, setSelectedExperimentId] = useState('')
+  const [selectedExperimentId, setSelectedExperimentId] = useState(preferredExperimentId || '')
 
   const completedExperiments = useMemo(
     () => experiments.filter((exp) => exp.status === 'COMPLETED'),
     [experiments]
   )
+
+  const selectedExperiment = completedExperiments.find((exp) => String(exp.experiment_id) === String(selectedExperimentId))
+  const effectiveExperimentId = selectedExperiment ? selectedExperimentId : ''
+  const effectiveSplitId = selectedSplitId || selectedExperiment?.split_id || ''
 
   const availableSplitIds = useMemo(() => {
     const set = new Set()
@@ -614,8 +619,8 @@ export default function TrafficPredictionPanel({
     e.preventDefault()
     onRunPrediction({
       datasetVersionId: versionId,
-      splitId: selectedSplitId || undefined,
-      experimentId: selectedExperimentId || undefined,
+      splitId: effectiveSplitId || undefined,
+      experimentId: effectiveExperimentId || undefined,
     })
   }
 
@@ -699,7 +704,7 @@ export default function TrafficPredictionPanel({
             <select
               id="pred-split-id"
               className="sci-input"
-              value={selectedSplitId}
+              value={effectiveSplitId}
               onChange={(e) => setSelectedSplitId(e.target.value)}
               disabled={isPredicting}
             >
@@ -717,7 +722,7 @@ export default function TrafficPredictionPanel({
             <select
               id="pred-exp-id"
               className="sci-input"
-              value={selectedExperimentId}
+              value={effectiveExperimentId}
               onChange={(e) => {
                 const nextExpId = e.target.value
                 setSelectedExperimentId(nextExpId)

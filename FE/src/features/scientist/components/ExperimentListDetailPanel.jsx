@@ -13,8 +13,10 @@ import {
   Table2,
   ChevronLeft,
   ChevronRight,
+  Search,
+  Rocket,
 } from 'lucide-react'
-import { formatDate, formatNumber, formatRecordingTime as formatTimeOnly } from '../utils/formatters'
+import { formatDate, formatNumber, formatRecordingTimeAtSource } from '../utils/formatters'
 
 const DETAIL_PAGE_SIZE = 15
 
@@ -40,15 +42,14 @@ function formatSec(sec) {
   return `${Number(sec).toFixed(4)}s`
 }
 
-function isCompatibleWithAnchor(exp, anchor) {
-  if (!exp || exp.status !== 'COMPLETED') return false
-  if (!anchor) return true
-  return (
-    String(exp.dataset_version_id) === String(anchor.dataset_version_id) &&
-    String(exp.split_id) === String(anchor.split_id) &&
-    String(exp.evaluation_mode) === String(anchor.evaluation_mode) &&
-    String(exp.evaluation_policy) === String(anchor.evaluation_policy)
-  )
+function incompatibilityReason(exp, anchor) {
+  if (exp.status !== 'COMPLETED') return 'Chỉ có thể so sánh thí nghiệm đã hoàn thành.'
+  if (!anchor) return ''
+  if (String(exp.dataset_version_id) !== String(anchor.dataset_version_id)) return 'Khác phiên bản Dataset.'
+  if (String(exp.split_id) !== String(anchor.split_id)) return 'Khác Split ID hoặc tập Test.'
+  if (String(exp.evaluation_mode) !== String(anchor.evaluation_mode) || String(exp.evaluation_policy) !== String(anchor.evaluation_policy)) return 'Khác chế độ hoặc quy tắc đánh giá.'
+  if (String(exp.forecast_horizons) !== String(anchor.forecast_horizons)) return 'Khác horizon dự báo.'
+  return ''
 }
 
 /**
@@ -58,6 +59,7 @@ function isCompatibleWithAnchor(exp, anchor) {
  */
 export default function ExperimentListDetailPanel({
   datasetMeta,
+  recordingReference,
   versionId,
   experiments = [],
   isLoadingList,
@@ -73,11 +75,23 @@ export default function ExperimentListDetailPanel({
   onChangeCompareIds,
   onCompareSelected,
   isComparing,
+  onUseForPrediction,
 }) {
+  const formatTimeOnly = (value) => formatRecordingTimeAtSource(value, recordingReference)
   const [copiedSplitId, setCopiedSplitId] = useState(false)
   const [modelFilter, setModelFilter] = useState('ALL')
   const [horizonFilter, setHorizonFilter] = useState('ALL')
   const [detailPage, setDetailPage] = useState(1)
+  const [searchText, setSearchText] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [sortOrder, setSortOrder] = useState('newest')
+
+  const visibleExperiments = useMemo(() => {
+    const query = searchText.trim().toLocaleLowerCase()
+    return experiments
+      .filter((exp) => (statusFilter === 'ALL' || exp.status === statusFilter) && (!query || [exp.experiment_name, exp.experiment_id, exp.split_id].some((value) => String(value || '').toLocaleLowerCase().includes(query))))
+      .sort((a, b) => sortOrder === 'oldest' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at))
+  }, [experiments, searchText, statusFilter, sortOrder])
 
   const selectedSet = useMemo(() => new Set(selectedCompareIds.map(String)), [selectedCompareIds])
 
@@ -93,7 +107,7 @@ export default function ExperimentListDetailPanel({
       onChangeCompareIds?.(selectedCompareIds.filter((id) => String(id) !== idStr))
       return
     }
-    if (!isCompatibleWithAnchor(exp, anchorExperiment)) return
+    if (incompatibilityReason(exp, anchorExperiment)) return
     onChangeCompareIds?.([...selectedCompareIds, exp.experiment_id])
   }
 
@@ -152,7 +166,7 @@ export default function ExperimentListDetailPanel({
             </div>
             <div>
               <h2 className="admin-card__title">
-                Bước 4 · Chi tiết thí nghiệm {exp?.experiment_name || ''}
+                Chi tiết thí nghiệm {exp?.experiment_name || ''}
               </h2>
               <p className="admin-card__subtitle">
                 Thông tin cấu hình, thời gian thực thi và 3 bảng đánh giá kết quả dự báo trên tập Test.
@@ -170,7 +184,7 @@ export default function ExperimentListDetailPanel({
               <span>Quay lại danh sách</span>
             </button>
 
-            {exp?.split_id && (
+            {exp?.split_id && onCreateWithSameSplit && (
               <button
                 type="button"
                 className="btn-action btn-action--primary sci-train-btn"
@@ -180,6 +194,7 @@ export default function ExperimentListDetailPanel({
                 <span>Tạo thí nghiệm khác với cùng Split</span>
               </button>
             )}
+            {exp?.status === 'COMPLETED' && onUseForPrediction && <button type="button" className="btn-secondary sci-train-btn" onClick={() => onUseForPrediction(exp)}><Rocket size={16} /> Dùng ở Prediction</button>}
           </div>
         </div>
 
@@ -350,7 +365,7 @@ export default function ExperimentListDetailPanel({
                         <div>
                           <h4>Bảng 1 · Dự báo theo Horizon (Random Forest tại mốc cuối tập Test)</h4>
                           <p>
-                            Giá trị dự báo tại mốc thời gian cuối cùng của tập Test cho +1, +3, +5 phút, kèm MSE/RMSE tính trên toàn bộ mẫu Test của từng horizon.
+                            Giá trị dự báo tại mốc thời gian cuối cùng của tập Test cho +1, +3, +5 phút, kèm MAE/RMSE tính trên toàn bộ mẫu Test của từng mốc dự báo.
                           </p>
                         </div>
                       </div>
@@ -363,11 +378,8 @@ export default function ExperimentListDetailPanel({
                               <th>Mốc mục tiêu (Target)</th>
                               <th>Thực tế (Actual)</th>
                               <th>Dự báo (Predicted)</th>
-                              <th>Sai số tuyệt đối (|e|)</th>
-                              <th>Số mẫu Test</th>
-                              <th>MAE (Horizon)</th>
-                              <th>MSE (Horizon)</th>
-                              <th>RMSE (Horizon)</th>
+                              <th>MAE</th>
+                              <th>RMSE</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -390,12 +402,9 @@ export default function ExperimentListDetailPanel({
                                   <td className="sci-td-x">
                                     <strong>{formatMetric(row.predicted_traffic_flow, 2)}</strong>
                                   </td>
-                                  <td>{formatMetric(row.absolute_error, 2)}</td>
-                                  <td>{formatNumber(row.sample_count)}</td>
                                   <td>
                                     <strong>{formatMetric(horizonMae, 4)}</strong>
                                   </td>
-                                  <td>{formatMetric(row.mse, 4)}</td>
                                   <td className="sci-td-y">
                                     <strong>{formatMetric(row.rmse, 4)}</strong>
                                   </td>
@@ -415,7 +424,7 @@ export default function ExperimentListDetailPanel({
                             Bảng 2 · Chi tiết dự đoán của ba mô hình (Random Forest, Persistence, Historical Average)
                           </h4>
                           <p>
-                            Toàn bộ dự đoán trên từng dòng tập Test và từng horizon (+1, +3, +5 phút).
+                            Toàn bộ dự đoán trên từng dòng tập Test. MAE và RMSE là chỉ số của mô hình theo từng khoảng dự báo, nên lặp lại ở các dòng cùng nhóm.
                           </p>
                         </div>
 
@@ -461,13 +470,14 @@ export default function ExperimentListDetailPanel({
                               <th>Mốc mục tiêu (Target)</th>
                               <th>Thực tế (Actual)</th>
                               <th>Dự đoán (Predicted)</th>
-                              <th>Sai số tuyệt đối (Absolute Error)</th>
-                              <th>Sai số bình phương (Squared Error)</th>
+                              <th>MAE</th>
+                              <th>RMSE</th>
                             </tr>
                           </thead>
                           <tbody>
                             {pagedPredictionDetails.map((row, idx) => {
                               const rowNum = (detailPage - 1) * DETAIL_PAGE_SIZE + idx + 1
+                              const metrics = exp.performance_by_horizon?.[String(row.horizon_minutes)]?.[String(row.model).toLowerCase()]
                               return (
                                 <tr
                                   key={`${row.model}-${row.horizon_minutes}-${row.forecast_origin_time}-${idx}`}
@@ -493,8 +503,8 @@ export default function ExperimentListDetailPanel({
                                   <td className="sci-td-x">
                                     <strong>{formatMetric(row.predicted_traffic_flow, 2)}</strong>
                                   </td>
-                                  <td>{formatMetric(row.absolute_error, 4)}</td>
-                                  <td>{formatMetric(row.squared_error, 4)}</td>
+                                  <td><strong>{formatMetric(metrics?.mae, 4)}</strong></td>
+                                  <td className="sci-td-y"><strong>{formatMetric(metrics?.rmse, 4)}</strong></td>
                                 </tr>
                               )
                             })}
@@ -542,11 +552,11 @@ export default function ExperimentListDetailPanel({
                       )}
                     </div>
 
-                    {/* Bảng 3.3: Tổng hợp MAE / MSE / RMSE (model_summary) */}
+                    {/* Bảng 3.3: Tổng hợp MAE / RMSE (model_summary) */}
                     <div className="sci-subtable-box">
                       <div className="sci-subtable-box__head">
                         <div>
-                          <h4>Bảng 3 · Tổng hợp MAE / MSE / RMSE theo mô hình</h4>
+                          <h4>Bảng 3 · Tổng hợp MAE / RMSE theo mô hình</h4>
                           <p>
                             Sai số gộp trên tất cả cặp mẫu Test và cả 3 horizon (+1, +3, +5 phút) với trọng số bằng nhau.
                           </p>
@@ -558,9 +568,8 @@ export default function ExperimentListDetailPanel({
                             <tr>
                               <th>Mô hình</th>
                               <th>Tổng số điểm dự đoán</th>
-                              <th>MAE (Gộp)</th>
-                              <th>MSE (Gộp)</th>
-                              <th>RMSE (Gộp)</th>
+                              <th>MAE</th>
+                              <th>RMSE</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -580,7 +589,6 @@ export default function ExperimentListDetailPanel({
                                 <td>
                                   <strong>{formatMetric(row.mae, 4)}</strong>
                                 </td>
-                                <td>{formatMetric(row.mse, 4)}</td>
                                 <td className="sci-td-y">
                                   <strong>{formatMetric(row.rmse, 4)}</strong>
                                 </td>
@@ -611,7 +619,7 @@ export default function ExperimentListDetailPanel({
                     <span>Quay lại danh sách</span>
                   </button>
 
-                  {exp.split_id && (
+                  {exp.split_id && onCreateWithSameSplit && (
                     <button
                       type="button"
                       className="btn-action btn-action--primary sci-train-btn"
@@ -642,7 +650,7 @@ export default function ExperimentListDetailPanel({
           </div>
           <div>
             <h2 className="admin-card__title">
-              Bước 4 · Danh sách thí nghiệm ({experiments.length})
+              Danh sách thí nghiệm ({experiments.length})
             </h2>
             <p className="admin-card__subtitle">
               Danh sách các thí nghiệm của Dataset Version đang chọn. Đánh dấu ít nhất 2 thí nghiệm COMPLETED cùng Split ID để so sánh.
@@ -672,12 +680,18 @@ export default function ExperimentListDetailPanel({
             ) : (
               <GitCompareArrows size={16} />
             )}
-            <span>So sánh đã chọn ({selectedCompareIds.length})</span>
+            <span>So sánh các thí nghiệm đã chọn ({selectedCompareIds.length})</span>
           </button>
         </div>
       </div>
 
       <div className="sci-card-body">
+        <div className="sci-exp-list-filters">
+          <label className="sci-exp-list-search"><Search size={17} /><input type="search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Tìm mã hoặc tên thí nghiệm..." aria-label="Tìm thí nghiệm" /></label>
+          <select className="sci-dataset-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Lọc trạng thái"><option value="ALL">Mọi trạng thái</option><option value="COMPLETED">Hoàn thành</option><option value="RUNNING">Đang chạy</option><option value="PENDING">Chờ xử lý</option><option value="FAILED">Thất bại</option></select>
+          <select className="sci-dataset-select" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} aria-label="Sắp xếp"><option value="newest">Mới nhất trước</option><option value="oldest">Cũ nhất trước</option></select>
+        </div>
+        {selectedCompareIds.length < 2 && experiments.length > 0 && <p className="sci-workspace-help">Chọn ít nhất 2 thí nghiệm hoàn thành có cùng Split ID và quy tắc đánh giá để bật nút so sánh.</p>}
         {anchorExperiment && (
           <div className="sci-notice" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <span>
@@ -721,22 +735,24 @@ export default function ExperimentListDetailPanel({
               Chưa có thí nghiệm nào cho Dataset Version này
             </div>
             <div style={{ fontSize: '0.84rem' }}>
-              Hãy thực hiện <strong>Bước 2: Chia Train/Test 70/30</strong> và{' '}
-              <strong>Bước 3: Cấu hình &amp; chạy thí nghiệm</strong> để tạo thí nghiệm đầu tiên.
+              Hãy chuẩn bị dữ liệu, chia Train/Test 70/30 rồi mở tab{' '}
+              <strong>Thí nghiệm mô hình</strong> để tạo thí nghiệm đầu tiên.
             </div>
           </div>
         )}
 
-        {!isLoadingList && !listError && experiments.length > 0 && (
+        {!isLoadingList && !listError && experiments.length > 0 && visibleExperiments.length === 0 && <div className="sci-state">Không có thí nghiệm phù hợp bộ lọc.</div>}
+
+        {!isLoadingList && !listError && visibleExperiments.length > 0 && (
           <div className="sci-table-wrap">
             <table className="sci-table">
               <thead>
                 <tr>
                   <th style={{ width: '44px', textAlign: 'center' }}>Chọn</th>
+                  <th>Mã thí nghiệm</th>
                   <th>Tên</th>
                   <th>Split ID</th>
-                  <th>Số cây</th>
-                  <th>Độ sâu</th>
+                  <th>Cấu hình Random Forest</th>
                   <th>Trạng thái</th>
                   <th className="sci-th-x">MAE / RMSE (+1m)</th>
                   <th className="sci-th-x">MAE / RMSE (+3m)</th>
@@ -747,11 +763,11 @@ export default function ExperimentListDetailPanel({
                 </tr>
               </thead>
               <tbody>
-                {experiments.map((exp) => {
+                {visibleExperiments.map((exp) => {
                   const idStr = String(exp.experiment_id)
                   const isChecked = selectedSet.has(idStr)
-                  const isCompatible = isCompatibleWithAnchor(exp, anchorExperiment)
-                  const canCheck = isChecked || isCompatible
+                  const reason = incompatibilityReason(exp, anchorExperiment)
+                  const canCheck = isChecked || !reason
 
                   const m1 = exp.performance_by_horizon?.['1']?.random_forest
                   const m3 = exp.performance_by_horizon?.['3']?.random_forest
@@ -772,11 +788,12 @@ export default function ExperimentListDetailPanel({
                           title={
                             canCheck
                               ? `Chọn ${exp.experiment_name} để so sánh`
-                              : 'Chỉ chọn được thí nghiệm COMPLETED có cùng Split ID và chế độ đánh giá'
+                              : reason
                           }
                           style={{ width: '16px', height: '16px', cursor: canCheck ? 'pointer' : 'not-allowed' }}
                         />
                       </td>
+                      <td><code className="sci-mono" title={String(exp.experiment_id)}>{String(exp.experiment_id).slice(0, 8)}…</code></td>
                       <td>
                         <strong style={{ color: '#1d4ed8', fontSize: '0.9rem' }}>
                           {exp.experiment_name}
@@ -787,13 +804,9 @@ export default function ExperimentListDetailPanel({
                           {String(exp.split_id || '').slice(0, 8)}…
                         </code>
                       </td>
-                      <td>
-                        <strong>{exp.hyperparameters?.n_estimators ?? '—'}</strong>
-                      </td>
-                      <td>
-                        {exp.hyperparameters?.max_depth != null
-                          ? exp.hyperparameters.max_depth
-                          : '∞'}
+                      <td className="sci-exp-config-summary" title="n_estimators · max_depth · min_samples_split · min_samples_leaf · random_state">
+                        {exp.hyperparameters?.n_estimators ?? '—'} cây · sâu {exp.hyperparameters?.max_depth ?? '∞'}<br />
+                        split {exp.hyperparameters?.min_samples_split ?? '—'} · leaf {exp.hyperparameters?.min_samples_leaf ?? '—'} · seed {exp.hyperparameters?.random_state ?? '—'}
                       </td>
                       <td>
                         <span
@@ -851,11 +864,13 @@ export default function ExperimentListDetailPanel({
                             type="button"
                             className="sci-action-chip"
                             title="Tạo thí nghiệm mới với cùng Split ID"
+                            disabled={!exp.split_id}
                             onClick={() => onCreateWithSameSplit?.(exp)}
                           >
                             <PlusCircle size={14} />
                             <span>Cùng Split</span>
                           </button>
+                          {exp.status === 'COMPLETED' && onUseForPrediction && <button type="button" className="sci-action-chip" onClick={() => onUseForPrediction(exp)} title="Chọn thí nghiệm cho trang Prediction"><Rocket size={14} /><span>Prediction</span></button>}
                         </div>
                       </td>
                     </tr>

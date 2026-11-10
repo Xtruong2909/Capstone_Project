@@ -29,6 +29,7 @@ from app.schemas.model_training import (
     TrainingSplit,
     TrainingSplitInput,
 )
+from app.services.experiment_service import create_experiment_name
 
 logger = logging.getLogger(__name__)
 EVALUATION_POLICY = "traffic-v2:train-target-before-test-history;HA=train-target-mean"
@@ -258,7 +259,13 @@ def create_and_run(db: Session, request: TrainingExperimentRequest, user: User) 
             evaluation = evaluate_validity(split, request.evaluation_mode)
         configuration = request.model_dump(mode="json", exclude={"split_result"})
         configuration["split_id"] = str(stored_split.id)
-        experiment = repository.create_experiment(db, stored_split.id, user.id, configuration, evaluation)
+        dataset_id = repository.lock_dataset_for_experiment(db, request.dataset_version_id)
+        if dataset_id is None:
+            raise HTTPException(404, "Dataset not found for this dataset version")
+        name = create_experiment_name(repository.list_dataset_experiment_names(db, dataset_id))
+        experiment = repository.create_experiment(
+            db, stored_split.id, user.id, configuration, evaluation, dataset_id, name,
+        )
         logs = [
             {
                 "timestamp": datetime.now(UTC).isoformat(),

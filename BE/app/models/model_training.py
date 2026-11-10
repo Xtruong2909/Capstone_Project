@@ -6,7 +6,6 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Column,
-    Computed,
     DateTime,
     Float,
     ForeignKey,
@@ -14,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -32,14 +32,17 @@ class ModelTrainingSplit(Base):
 
 class ModelTrainingExperiment(Base):
     __tablename__ = "model_training_experiments"
-    __table_args__ = (CheckConstraint(
-        "status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')", name="ck_training_status"
-    ),)
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')",
+            name="ck_training_status",
+        ),
+        UniqueConstraint("dataset_id", "name", name="uq_training_experiment_dataset_name"),
+    )
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     number = Column(BigInteger, Identity(), nullable=False, unique=True)
-    name = Column(String(64), Computed(
-        "'Ex-' || lpad(number::text, greatest(3, length(number::text)), '0')"
-    ), unique=True, nullable=False)
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id"), nullable=False)
+    name = Column(String(64), nullable=False)
     split_id = Column(UUID(as_uuid=True), ForeignKey("model_training_splits.id"), nullable=False, index=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     configuration = Column(JSONB, nullable=False)

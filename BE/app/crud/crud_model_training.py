@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models.dataset import DatasetAccessGrant, DatasetVersion
+from app.models.dataset import Dataset, DatasetAccessGrant, DatasetVersion
 from app.models.experiment import ForecastResult
 from app.models.model_training import (
     FinalModel,
@@ -30,10 +30,28 @@ def get_split(db: Session, split_id: UUID) -> ModelTrainingSplit | None:
     return db.get(ModelTrainingSplit, split_id)
 
 
+def lock_dataset_for_experiment(db: Session, version_id: UUID) -> UUID | None:
+    return db.scalar(
+        select(Dataset.id)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .where(DatasetVersion.id == version_id)
+        .with_for_update(of=Dataset)
+    )
+
+
+def list_dataset_experiment_names(db: Session, dataset_id: UUID) -> list[str]:
+    return list(
+        db.scalars(
+            select(ModelTrainingExperiment.name).where(ModelTrainingExperiment.dataset_id == dataset_id)
+        )
+    )
+
+
 def create_experiment(db: Session, split_id: UUID, user_id: UUID, configuration: dict,
-                      evaluation: dict) -> ModelTrainingExperiment:
+                      evaluation: dict, dataset_id: UUID, name: str) -> ModelTrainingExperiment:
     experiment = ModelTrainingExperiment(
-        split_id=split_id, created_by=user_id, configuration=configuration, evaluation=evaluation,
+        split_id=split_id, dataset_id=dataset_id, name=name, created_by=user_id,
+        configuration=configuration, evaluation=evaluation,
     )
     db.add(experiment)
     db.commit()

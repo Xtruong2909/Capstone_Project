@@ -16,6 +16,16 @@ uv run uvicorn app.main:app --reload --port 8000
 
 API Documentation: `http://localhost:8000/docs`
 
+For an existing database, apply the model-training migrations after updating the backend:
+
+```powershell
+Push-Location BE
+uv run python -m scripts.apply_model_training_migration
+Pop-Location
+```
+
+This includes the per-dataset experiment-name migration required by the experiment browser.
+
 ## Administrator audit logs
 
 The append-only audit history is exposed at `GET /api/v1/admin/audit-logs` and requires

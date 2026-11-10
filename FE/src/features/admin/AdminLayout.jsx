@@ -12,9 +12,12 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useLanguage } from '../../hooks/useLanguage'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
 import './AdminLayout.css'
 
 export default function AdminLayout() {
+  const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -68,13 +71,13 @@ export default function AdminLayout() {
 
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge" title="Urban Traffic - Admin Portal">
+            <div className="admin-sidebar__logo-badge" title={t('Urban Traffic - Admin Portal')}>
               <Shield size={20} />
             </div>
             {!isSidebarCollapsed && (
               <div className="admin-sidebar__brand-text">
                 <h2>Urban Traffic</h2>
-                <span>Admin Portal</span>
+                <span>{t('Admin Portal')}</span>
               </div>
             )}
           </div>
@@ -84,48 +87,48 @@ export default function AdminLayout() {
           <NavLink
             to="/admin"
             end
-            title="System Overview"
+            title={t('System Overview')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
-            <span>System Overview</span>
+            <span>{t('System Overview')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/users"
-            title="User Management"
+            title={t('User Management')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Users size={19} style={{ flexShrink: 0 }} />
-            <span>User Management</span>
+            <span>{t('User Management')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/datasets"
             end
-            title="Dataset Approvals"
+            title={t('Dataset Approvals')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <CheckCircle size={19} style={{ flexShrink: 0 }} />
-            <span>Dataset Approvals</span>
+            <span>{t('Dataset Approvals')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/datasets-available"
-            title="Dataset Available"
+            title={t('Dataset Available')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Database size={19} style={{ flexShrink: 0 }} />
-            <span>Dataset Available</span>
+            <span>{t('Dataset Available')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/audit-logs"
-            title="Audit Logs"
+            title={t('Audit Logs')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <ScrollText size={19} style={{ flexShrink: 0 }} />
-            <span>Audit Logs</span>
+            <span>{t('Audit Logs')}</span>
           </NavLink>
         </nav>
 
@@ -148,7 +151,7 @@ export default function AdminLayout() {
                   letterSpacing: '0.04em',
                 }}
               >
-                Role
+                {t('Role')}
               </span>
               <span
                 className="badge badge--admin"
@@ -159,14 +162,14 @@ export default function AdminLayout() {
                   borderRadius: '9999px',
                 }}
               >
-                Administrator
+                {t('Administrator')}
               </span>
             </div>
           ) : (
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <span
                 className="badge badge--admin"
-                title="Role: Administrator"
+                title={t('Role: Administrator')}
                 style={{
                   fontSize: '0.65rem',
                   padding: '0.15rem 0.35rem',
@@ -198,10 +201,10 @@ export default function AdminLayout() {
             type="button"
             className="admin-logout-btn"
             onClick={handleLogout}
-            title="Sign Out"
+            title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isSidebarCollapsed && <span>Sign Out</span>}
+            {!isSidebarCollapsed && <span>{t('Sign Out')}</span>}
           </button>
         </div>
       </aside>
@@ -210,8 +213,9 @@ export default function AdminLayout() {
       <div className="admin-main">
         <header className="admin-header">
           <div className="admin-header__title">
-            <h1>Administrator Dashboard</h1>
+            <h1>{t('Administrator Dashboard')}</h1>
           </div>
+          <LanguageSwitcher />
         </header>
 
         <main className="admin-content">

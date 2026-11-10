@@ -8,8 +8,10 @@ import {
   X,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 export default function AdminUsersPage() {
+  const { t, language } = useLanguage()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -41,7 +43,7 @@ export default function AdminUsersPage() {
       setUsers(usersData)
       setRoles(rolesData)
     } catch (err) {
-      setError('Failed to load user list from the server.')
+      setError(t('Failed to load user list from the server.'))
     } finally {
       setIsLoading(false)
     }
@@ -56,7 +58,7 @@ export default function AdminUsersPage() {
       const updated = await adminService.updateUserStatus(user.id, !user.is_active)
       setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)))
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to update user status.')
+      alert(err.response?.data?.detail || t('Failed to update user status.'))
     }
   }
 
@@ -75,7 +77,7 @@ export default function AdminUsersPage() {
         password: '',
       })
     } catch (err) {
-      setFormError(err.response?.data?.detail || 'Failed to create new user.')
+      setFormError(err.response?.data?.detail || t('Failed to create new user.'))
     } finally {
       setFormSubmitting(false)
     }
@@ -108,7 +110,7 @@ export default function AdminUsersPage() {
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
             <input
               type="text"
-              placeholder="Search by name or email..."
+              placeholder={t('Search by name or email...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="admin-input"
@@ -121,7 +123,7 @@ export default function AdminUsersPage() {
             onChange={(e) => setSelectedRole(e.target.value)}
             className="admin-select"
           >
-            <option value="ALL">All Roles</option>
+            <option value="ALL">{t('All Roles')}</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -137,7 +139,7 @@ export default function AdminUsersPage() {
           onClick={() => setIsModalOpen(true)}
         >
           <UserPlus size={16} />
-          <span>Add User</span>
+          <span>{t('Add User')}</span>
         </button>
       </div>
 
@@ -145,7 +147,7 @@ export default function AdminUsersPage() {
       <div className="admin-card">
         <div className="admin-card__header">
           <h3 className="admin-card__title">
-            User Accounts ({filteredUsers.length})
+            {t('User Accounts')} ({filteredUsers.length})
           </h3>
           <button
             type="button"
@@ -154,36 +156,36 @@ export default function AdminUsersPage() {
             onClick={fetchUsersAndRoles}
           >
             <RefreshCw size={14} />
-            <span>Refresh</span>
+            <span>{t('Refresh')}</span>
           </button>
         </div>
 
         {isLoading ? (
           <div className="empty-state">
             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>Loading user accounts...</p>
+            <p>{t('Loading user accounts...')}</p>
           </div>
         ) : error ? (
           <div className="empty-state">
             <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{error}</p>
+            <p>{t(error)}</p>
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="empty-state">
             <Users size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>No matching user accounts found.</p>
+            <p>{t('No matching user accounts found.')}</p>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Full Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Created Date</th>
-                  <th>Action</th>
+                  <th>{t('Full Name')}</th>
+                  <th>{t('Email')}</th>
+                  <th>{t('Role')}</th>
+                  <th>{t('Status')}</th>
+                  <th>{t('Created Date')}</th>
+                  <th>{t('Action')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -195,16 +197,16 @@ export default function AdminUsersPage() {
                     <td style={{ color: '#475569' }}>{user.email}</td>
                     <td>
                       <span className={`badge ${getRoleBadgeClass(user.role_id)}`}>
-                        {roles.find((r) => r.id === user.role_id)?.name || user.role_id}
+                        {t(roles.find((r) => r.id === user.role_id)?.name || user.role_id)}
                       </span>
                     </td>
                     <td>
                       <span className={`badge ${user.is_active ? 'badge--active' : 'badge--inactive'}`}>
-                        {user.is_active ? 'Active' : 'Suspended'}
+                        {t(user.is_active ? 'Active' : 'Suspended')}
                       </span>
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString('en-US') : '—'}
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US') : '—'}
                     </td>
                     <td>
                       <button
@@ -212,7 +214,7 @@ export default function AdminUsersPage() {
                         className={`btn-action ${user.is_active ? 'btn-action--danger' : 'btn-action--success'}`}
                         onClick={() => handleToggleStatus(user)}
                       >
-                        {user.is_active ? 'Deactivate' : 'Activate'}
+                        {t(user.is_active ? 'Deactivate' : 'Activate')}
                       </button>
                     </td>
                   </tr>
@@ -233,7 +235,7 @@ export default function AdminUsersPage() {
         >
           <div className="modal-dialog">
             <div className="modal-header">
-              <h3>Create New User</h3>
+              <h3>{t('Create New User')}</h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -254,16 +256,16 @@ export default function AdminUsersPage() {
                   fontSize: '0.85rem',
                   marginBottom: '1rem',
                 }}>
-                  {formError}
+                  {t(formError)}
                 </div>
               )}
 
               <div className="form-field">
-                <label className="form-label">Full Name</label>
+                <label className="form-label">{t('Full Name')}</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Alex Morgan"
+                  placeholder={t('e.g. Alex Morgan')}
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   className="admin-input"
@@ -272,7 +274,7 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">Email Address</label>
+                <label className="form-label">{t('Email Address')}</label>
                 <input
                   type="email"
                   required
@@ -285,7 +287,7 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">Role</label>
+                <label className="form-label">{t('Role')}</label>
                 <select
                   value={formData.role_id}
                   onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
@@ -296,18 +298,18 @@ export default function AdminUsersPage() {
                     .filter((r) => r.id !== 'admin')
                     .map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.name}
+                        {t(r.name)}
                       </option>
                     ))}
                 </select>
               </div>
 
               <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Initial Password</label>
+                <label className="form-label">{t('Initial Password')}</label>
                 <input
                   type="password"
                   required
-                  placeholder="Enter initial password..."
+                  placeholder={t('Enter initial password...')}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="admin-input"
@@ -321,7 +323,7 @@ export default function AdminUsersPage() {
                   className="btn-secondary"
                   onClick={() => setIsModalOpen(false)}
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button
                   type="submit"
@@ -329,7 +331,7 @@ export default function AdminUsersPage() {
                   className="btn-action btn-action--primary"
                   style={{ padding: '0.55rem 1.25rem' }}
                 >
-                  {formSubmitting ? 'Creating...' : 'Create Account'}
+                  {t(formSubmitting ? 'Creating...' : 'Create Account')}
                 </button>
               </div>
             </form>

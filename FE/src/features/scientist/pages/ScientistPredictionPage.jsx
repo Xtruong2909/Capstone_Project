@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import {
   usePredictionFeatureEngineering,
@@ -20,6 +20,8 @@ import AggregationExplorer from '../components/AggregationExplorer'
  */
 export default function ScientistPredictionPage() {
   const { datasetId, versionId } = useParams()
+  const { search } = useLocation()
+  const preferredExperimentId = new URLSearchParams(search).get('experimentId')
   const predictSectionRef = useRef(null)
 
   const { datasets, isLoading: isLoadingList } = useApprovedDatasets('')
@@ -77,12 +79,20 @@ export default function ScientistPredictionPage() {
         isLoading={isLoadingList}
       />
 
+      {/* Historical Traffic Aggregation Explorer */}
+      <AggregationExplorer
+        key={`aggregation:${datasetId}:${versionId}`}
+        datasetId={datasetId}
+        versionId={versionId}
+        title="Prediction · Traffic Flow & Speed Forecast Insight"
+        subtitle="Analyze historical traffic trends and time-bucket metrics for forecasting."
+      />
+
       {/* Step 1: Tạo Đặc trưng cho Dự báo (POST /api/feature-engineering/prediction) */}
       <PredictionFeaturePanel
         key={`pred-features:${datasetId}:${versionId}`}
+        datasetId={datasetId}
         featureData={featureData}
-        datasetMeta={meta}
-        forecastData={forecastData}
         isLoading={isGeneratingFeatures}
         error={featureError}
         onGenerate={generatePredictionFeatures}
@@ -96,6 +106,7 @@ export default function ScientistPredictionPage() {
           versionId={versionId}
           datasetMeta={meta}
           experiments={experiments}
+          preferredExperimentId={preferredExperimentId}
           savedSplitId={splitData?.split_id || null}
           forecastData={forecastData}
           isPredicting={isPredicting}
@@ -105,15 +116,6 @@ export default function ScientistPredictionPage() {
           onAskAiAboutForecast={handleAskAiAboutForecast}
         />
       </div>
-
-      {/* Historical Traffic Aggregation Explorer */}
-      <AggregationExplorer
-        key={`aggregation:${datasetId}:${versionId}`}
-        datasetId={datasetId}
-        versionId={versionId}
-        title="Prediction · Traffic Flow & Speed Forecast Insight"
-        subtitle="Analyze historical traffic trends and time-bucket metrics for forecasting."
-      />
     </div>
   )
 }

@@ -15,6 +15,7 @@ from app.models.model_training import ModelTrainingExperiment
 from app.schemas.admin import ExperimentsOverviewResponse
 from app.schemas.model_training import Hyperparameters, TrainingExperimentRequest, TrainingSplit
 from app.services import model_training_service as service
+from app.services.experiment_service import create_experiment_name
 
 
 def make_split(count: int = 10, gap: int = 0) -> TrainingSplit:
@@ -34,6 +35,12 @@ def make_split(count: int = 10, gap: int = 0) -> TrainingSplit:
         X_train=x[:n_train], X_test=x[n_train:], y_train=y[:n_train], y_test=y[n_train:],
         train_times=origins[:n_train], test_times=origins[n_train:],
     )
+
+
+def test_experiment_names_restart_for_an_empty_dataset_and_skip_existing_numbers() -> None:
+    assert create_experiment_name() == "Ex-001"
+    assert create_experiment_name(["Ex-001", "Ex-003"]) == "Ex-002"
+    assert create_experiment_name([f"Ex-{number:03d}" for number in range(1, 1001)]) == "Ex-1001"
 
 
 @pytest.mark.parametrize("count", [2, 5, 10])

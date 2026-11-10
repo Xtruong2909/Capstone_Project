@@ -12,7 +12,7 @@ import {
   Search,
   RefreshCw,
   Info,
-  Eye,
+  FileSearch,
   FlaskConical,
   TrendingUp,
 } from 'lucide-react'
@@ -145,7 +145,7 @@ export default function ScientistDatasetPreviewPage() {
                 to={`/scientist/datasets/${effectiveDatasetId}/versions/${effectiveVersionId}`}
                 className="sci-mode-switch__btn active"
               >
-                <Eye size={14} /> Data Preview
+                <FileSearch size={15} strokeWidth={2} /> Data Preview
               </Link>
               <Link
                 to={`/scientist/datasets/${effectiveDatasetId}/versions/${effectiveVersionId}/train`}

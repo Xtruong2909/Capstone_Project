@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import HTTPException
@@ -51,6 +52,23 @@ def test_prediction_example_and_shared_order() -> None:
     assert "y" not in prediction.model_dump()
     history = service.build_prediction_features(series()[:5])
     assert history.features == service.build_training_features(series())[0].features
+
+
+def test_lag_features_keep_recording_local_time() -> None:
+    recording_start = datetime(2018, 10, 24, 9, 30, tzinfo=ZoneInfo("Europe/Athens"))
+    rows = [
+        row.model_copy(update={"time_bucket": recording_start + timedelta(minutes=index)})
+        for index, row in enumerate(series(10))
+    ]
+
+    training = service.build_training_features(rows)
+    assert training[0].history_start_time.isoformat() == "2018-10-24T09:30:00+03:00"
+    assert training[0].time_bucket.isoformat() == "2018-10-24T09:34:00+03:00"
+    assert training[0].target_times.target_h1.isoformat() == "2018-10-24T09:35:00+03:00"
+
+    prediction = service.build_prediction_features(rows[:5])
+    assert prediction.latest_time_bucket.isoformat() == "2018-10-24T09:34:00+03:00"
+    assert prediction.target_times[0].isoformat() == "2018-10-24T09:35:00+03:00"
 
 
 @pytest.mark.parametrize("missing", [0, 4, 5, 6, 8, 9])
@@ -216,6 +234,7 @@ def test_adapter_rebases_legacy_minutes(monkeypatch: pytest.MonkeyPatch) -> None
         MagicMock(), FeatureRequest(dataset_version_id=VERSION), MagicMock(), prediction=True,
     )
     assert result.latest_time_bucket == datetime(2018, 10, 24, 5, 34, tzinfo=UTC)
+    assert result.latest_time_bucket.isoformat() == "2018-10-24T08:34:00+03:00"
 
 
 def test_non_scientist_cannot_read_features(monkeypatch: pytest.MonkeyPatch) -> None:

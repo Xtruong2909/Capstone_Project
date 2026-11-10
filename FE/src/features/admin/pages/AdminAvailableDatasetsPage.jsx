@@ -14,8 +14,10 @@ import {
   FolderCheck,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 export default function AdminAvailableDatasetsPage() {
+  const { t, language } = useLanguage()
   const [datasets, setDatasets] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -184,7 +186,7 @@ export default function AdminAvailableDatasetsPage() {
               {stats.approvedCount}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              Approved Dataset Versions
+              {t('Approved Dataset Versions')}
             </div>
           </div>
         </div>
@@ -208,7 +210,7 @@ export default function AdminAvailableDatasetsPage() {
               {stats.uniqueDatasets}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              Active Traffic Datasets
+              {t('Active Traffic Datasets')}
             </div>
           </div>
         </div>
@@ -235,7 +237,7 @@ export default function AdminAvailableDatasetsPage() {
               {stats.totalRecords.toLocaleString()}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              Approved Trajectory Records
+              {t('Approved Trajectory Records')}
             </div>
           </div>
         </div>
@@ -253,13 +255,13 @@ export default function AdminAvailableDatasetsPage() {
             </div>
             <div>
               <h3 className="admin-card__title">
-                Dataset Available ({filteredDatasets.length})
+                {t('Dataset Available')} ({filteredDatasets.length})
               </h3>
               <p
                 className="admin-card__subtitle"
                 style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: '#64748b' }}
               >
-                Catalog of standardized dataset versions officially approved for analytics and AI/ML forecasting.
+                {t('Catalog of standardized dataset versions officially approved for analytics and AI/ML forecasting.')}
               </p>
             </div>
           </div>
@@ -279,7 +281,7 @@ export default function AdminAvailableDatasetsPage() {
               <input
                 type="text"
                 className="admin-input"
-                placeholder="Search approved dataset or version..."
+                placeholder={t('Search approved dataset or version...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
@@ -298,7 +300,7 @@ export default function AdminAvailableDatasetsPage() {
               onClick={fetchApprovedDatasets}
             >
               <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
+              <span>{t('Refresh')}</span>
             </button>
           </div>
         </div>
@@ -310,19 +312,19 @@ export default function AdminAvailableDatasetsPage() {
               className="animate-spin"
               style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
             />
-            <p>Loading approved datasets...</p>
+            <p>{t('Loading approved datasets...')}</p>
           </div>
         ) : error ? (
           <div className="empty-state">
             <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{error}</p>
+            <p>{t(error)}</p>
           </div>
         ) : filteredDatasets.length === 0 ? (
           <div className="empty-state">
             <Database size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>No approved datasets available yet.</p>
+            <p>{t('No approved datasets available yet.')}</p>
             <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              Datasets approved in the Dataset Approvals section will automatically appear here.
+              {t('Datasets approved in the Dataset Approvals section will automatically appear here.')}
             </span>
           </div>
         ) : (
@@ -330,14 +332,14 @@ export default function AdminAvailableDatasetsPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Dataset Name</th>
-                  <th>Version</th>
-                  <th>Format</th>
-                  <th>Total Records</th>
-                  <th>Status</th>
-                  <th>Review Note</th>
-                  <th>Approved At</th>
-                  <th>Actions</th>
+                  <th>{t('Dataset Name')}</th>
+                  <th>{t('Version')}</th>
+                  <th>{t('Format')}</th>
+                  <th>{t('Total Records')}</th>
+                  <th>{t('Status')}</th>
+                  <th>{t('Review Note')}</th>
+                  <th>{t('Approved At')}</th>
+                  <th>{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -345,7 +347,7 @@ export default function AdminAvailableDatasetsPage() {
                   <tr key={item.id}>
                     <td>
                       <strong style={{ color: '#0f172a', fontSize: '0.9rem' }}>
-                        {item.dataset_name || 'Traffic Dataset'}
+                        {item.dataset_name || t('Traffic Dataset')}
                       </strong>
                     </td>
                     <td>
@@ -415,7 +417,7 @@ export default function AdminAvailableDatasetsPage() {
                     </td>
                     <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
                       {item.reviewed_at || item.created_at
-                        ? new Date(item.reviewed_at || item.created_at).toLocaleString('en-US')
+                        ? new Date(item.reviewed_at || item.created_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
                         : '—'}
                     </td>
                     <td>
@@ -435,10 +437,10 @@ export default function AdminAvailableDatasetsPage() {
                             gap: '0.32rem',
                           }}
                           onClick={() => handleOpenPreview(item)}
-                          title="Inspect approved dataset rows"
+                          title={t('Inspect approved dataset rows')}
                         >
                           <Eye size={13} />
-                          <span>Preview</span>
+                          <span>{t('Preview')}</span>
                         </button>
                       )}
                     </td>
@@ -472,7 +474,7 @@ export default function AdminAvailableDatasetsPage() {
                     </span>
                   </h3>
                   <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-                    Status: <strong style={{ color: '#15803d' }}>APPROVED</strong> • Format:{' '}
+                    {t('Status:')} <strong style={{ color: '#15803d' }}>{t('Approved')}</strong> • {t('Format')}:{' '}
                     <strong>{previewState.item.file_format}</strong> • Records:{' '}
                     <strong>
                       {Number(previewState.item.total_records || 0).toLocaleString()}
@@ -532,7 +534,7 @@ export default function AdminAvailableDatasetsPage() {
                     }}
                     onClick={() => handleToggleRepresentation('raw')}
                   >
-                    Raw Source
+                    {t('Raw Source')}
                   </button>
                 </div>
 
@@ -553,7 +555,7 @@ export default function AdminAvailableDatasetsPage() {
                     className="animate-spin"
                     style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
                   />
-                  <p>Loading {previewState.representation} preview data...</p>
+                  <p>{t(`Loading ${previewState.representation} preview data...`)}</p>
                 </div>
               ) : previewState.error ? (
                 <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
@@ -561,7 +563,7 @@ export default function AdminAvailableDatasetsPage() {
                     size={26}
                     style={{ margin: '0 auto 0.75rem', color: '#dc2626' }}
                   />
-                  <p style={{ color: '#dc2626' }}>{previewState.error}</p>
+                  <p style={{ color: '#dc2626' }}>{t(previewState.error)}</p>
                 </div>
               ) : !previewState.data ||
                 !previewState.data.rows ||
@@ -571,7 +573,7 @@ export default function AdminAvailableDatasetsPage() {
                     size={26}
                     style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }}
                   />
-                  <p>No preview rows available for this representation.</p>
+                  <p>{t('No preview rows available for this representation.')}</p>
                 </div>
               ) : (
                 <div>
@@ -586,7 +588,7 @@ export default function AdminAvailableDatasetsPage() {
                     }}
                   >
                     <span>
-                      Showing page <strong>{previewState.page}</strong> •{' '}
+                      {t('Showing page')} <strong>{previewState.page}</strong> •{' '}
                       {previewState.data.columns?.length || 0} columns
                     </span>
                     <div style={{ display: 'flex', gap: '0.35rem' }}>
@@ -687,7 +689,7 @@ export default function AdminAvailableDatasetsPage() {
                 className="btn-secondary"
                 onClick={handleClosePreview}
               >
-                Close Preview
+                {t('Close Preview')}
               </button>
             </div>
           </div>

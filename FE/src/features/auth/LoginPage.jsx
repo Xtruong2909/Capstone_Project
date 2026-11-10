@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../hooks/useAuth";
+import { useLanguage } from "../../hooks/useLanguage";
 import "./LoginPage.css";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const { login, isLoading, error, setError, isAuthenticated, role } = useAuth();
 
@@ -53,20 +55,19 @@ export default function LoginPage() {
               <div>
                 <h1>Urban Traffic</h1>
                 <h2>Analytics</h2>
-                <span>Traffic Dataset Management & Forecasting</span>
+                <span>{t("Traffic Dataset Management & Forecasting")}</span>
               </div>
             </div>
 
             <div className="brand-content">
               <h3>
-                Smarter Traffic
+                {t("Smarter Traffic")}
                 <br />
-                for a Better Tomorrow
+                {t("for a Better Tomorrow")}
               </h3>
 
               <p>
-                Analyze real traffic data, discover patterns, and forecast
-                future trends to build smarter and more sustainable cities.
+                {t("Analyze real traffic data, discover patterns, and forecast future trends to build smarter and more sustainable cities.")}
               </p>
             </div>
 
@@ -76,9 +77,9 @@ export default function LoginPage() {
                   <BarChart3 size={22} />
                 </div>
                 <span>
-                  Data-Driven
+                  {t("Data-Driven")}
                   <br />
-                  Insights
+                  {t("Insights")}
                 </span>
               </div>
 
@@ -87,9 +88,9 @@ export default function LoginPage() {
                   <Network size={22} />
                 </div>
                 <span>
-                  Accurate
+                  {t("Accurate")}
                   <br />
-                  Forecasting
+                  {t("Forecasting")}
                 </span>
               </div>
 
@@ -98,9 +99,9 @@ export default function LoginPage() {
                   <ShieldCheck size={22} />
                 </div>
                 <span>
-                  Safer & Smarter
+                  {t("Safer & Smarter")}
                   <br />
-                  Cities
+                  {t("Cities")}
                 </span>
               </div>
             </div>
@@ -119,18 +120,18 @@ export default function LoginPage() {
             className="login-back-home"
             onClick={() => navigate("/")}
           >
-            ← Back to Home
+            {t("← Back to Home")}
           </button>
           <div className="login-form-content">
-            <h2>Welcome Back</h2>
+            <h2>{t("Welcome Back")}</h2>
 
             <p className="login-description">
-              Sign in to access the Urban Traffic Analytics system.
+              {t("Sign in to access the Urban Traffic Analytics system.")}
             </p>
 
             <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label htmlFor="auth-email">Email</label>
+                <label htmlFor="auth-email">{t("Email")}</label>
 
                 <div className="input-wrapper">
                   <Mail size={18} />
@@ -140,7 +141,7 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your email"
+                    placeholder={t("Enter your email")}
                     autoComplete="email"
                     required
                   />
@@ -148,7 +149,7 @@ export default function LoginPage() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="auth-password">Password</label>
+                <label htmlFor="auth-password">{t("Password")}</label>
 
                 <div className="input-wrapper">
                   <Lock size={18} />
@@ -158,7 +159,7 @@ export default function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
+                    placeholder={t("Enter your password")}
                     autoComplete="current-password"
                     required
                   />
@@ -167,7 +168,7 @@ export default function LoginPage() {
                     type="button"
                     className="password-toggle"
                     aria-label={
-                      showPassword ? "Hide password" : "Show password"
+                      t(showPassword ? "Hide password" : "Show password")
                     }
                     onClick={() => setShowPassword((prev) => !prev)}
                   >
@@ -183,7 +184,7 @@ export default function LoginPage() {
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
                   />
-                  <span>Remember me</span>
+                  <span>{t("Remember me")}</span>
                 </label>
 
                 <button
@@ -191,7 +192,7 @@ export default function LoginPage() {
                   className="forgot-password"
                   onClick={() => navigate("/forgot-password")}
                 >
-                  Forgot password?
+                  {t("Forgot password?")}
                 </button>
               </div>
 
@@ -207,7 +208,7 @@ export default function LoginPage() {
                 className="login-submit"
                 disabled={isLoading}
               >
-                {isLoading ? "Đang đăng nhập..." : "Sign In"}
+                {t(isLoading ? "Signing in..." : "Sign In")}
               </button>
             </form>
 

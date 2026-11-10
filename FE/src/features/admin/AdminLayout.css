@@ -223,6 +223,13 @@
   letter-spacing: -0.015em;
 }
 
+.admin-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
 .admin-header__badge {
   background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
   color: #047857;
@@ -1560,4 +1567,3 @@
     0 12px 28px -8px rgba(15, 23, 42, 0.08),
     0 4px 12px -4px rgba(15, 23, 42, 0.04);
 }
-
