@@ -175,7 +175,7 @@ def evaluate_experiment_models(
 
 
 def create_experiment_name(existing_names: Sequence[str] | None = None) -> str:
-    pattern = re.compile(r"^Ex-(\d{3})$")
+    pattern = re.compile(r"^Ex-(\d+)$")
     used_numbers: set[int] = set()
     if existing_names:
         for name in existing_names:

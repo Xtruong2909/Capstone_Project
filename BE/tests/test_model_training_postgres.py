@@ -31,13 +31,20 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def storage() -> tuple:
     schema = "training_test_" + uuid4().hex
-    version_id, user_id = uuid4(), uuid4()
+    dataset_id, version_id, user_id = uuid4(), uuid4(), uuid4()
     with engine.connect() as connection:
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         connection.execute(text(f'SET search_path TO "{schema}"'))
-        connection.execute(text("CREATE TABLE dataset_versions (id UUID PRIMARY KEY)"))
+        connection.execute(text("CREATE TABLE datasets (id UUID PRIMARY KEY)"))
+        connection.execute(text(
+            "CREATE TABLE dataset_versions (id UUID PRIMARY KEY, "
+            "dataset_id UUID NOT NULL REFERENCES datasets(id))"
+        ))
         connection.execute(text("CREATE TABLE users (id UUID PRIMARY KEY)"))
-        connection.execute(text("INSERT INTO dataset_versions VALUES (:id)"), {"id": version_id})
+        connection.execute(text("INSERT INTO datasets VALUES (:id)"), {"id": dataset_id})
+        connection.execute(text(
+            "INSERT INTO dataset_versions (id, dataset_id) VALUES (:id, :dataset_id)"
+        ), {"id": version_id, "dataset_id": dataset_id})
         connection.execute(text("INSERT INTO users VALUES (:id)"), {"id": user_id})
         connection.commit()
         migration = Path("migrations/20261106_model_training.sql").read_text(encoding="utf-8")
@@ -53,10 +60,17 @@ def storage() -> tuple:
         connection.commit()
         connection.exec_driver_sql(logs_migration)
         connection.commit()
+        names_migration = Path(
+            "migrations/20261110_experiment_names_per_dataset.sql"
+        ).read_text(encoding="utf-8")
+        connection.exec_driver_sql(names_migration)
+        connection.commit()
+        connection.exec_driver_sql(names_migration)
+        connection.commit()
         connection.execute(text("SET search_path TO public"))
         connection.commit()
     try:
-        yield schema, version_id, user_id
+        yield schema, version_id, user_id, dataset_id
     finally:
         with engine.begin() as connection:
             connection.execute(text("SET search_path TO public"))
@@ -64,7 +78,7 @@ def storage() -> tuple:
 
 
 def test_persist_reload_compare_and_concurrent_names(storage: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
-    schema, version_id, user_id = storage
+    schema, version_id, user_id, _ = storage
     monkeypatch.setattr(service, "require_version", lambda *args, **kwargs: None)
     user = SimpleNamespace(id=user_id, role_id="admin")
     split = make_split()
@@ -116,6 +130,23 @@ def test_persist_reload_compare_and_concurrent_names(storage: tuple, monkeypatch
                 assert reused.experiment_name == "Ex-004"
                 assert reused.split_id == results[0].split_id
                 assert repository.get_split(db, reused.split_id).payload == split.model_dump(mode="json")
+
+                new_dataset_id, new_version_id = uuid4(), uuid4()
+                db.execute(text("INSERT INTO datasets (id) VALUES (:id)"), {"id": new_dataset_id})
+                db.execute(text(
+                    "INSERT INTO dataset_versions (id, dataset_id) VALUES (:id, :dataset_id)"
+                ), {"id": new_version_id, "dataset_id": new_dataset_id})
+                new_split = make_split()
+                new_split.dataset_version_id = new_version_id
+                first_for_new_dataset = service.create_and_run(
+                    db,
+                    TrainingExperimentRequest(
+                        dataset_version_id=new_version_id, split_result=new_split,
+                        hyperparameters={"n_estimators": 3},
+                    ),
+                    user,
+                )
+                assert first_for_new_dataset.experiment_name == "Ex-001"
         finally:
             connection.rollback()
             connection.execute(text("SET search_path TO public"))
@@ -123,7 +154,7 @@ def test_persist_reload_compare_and_concurrent_names(storage: tuple, monkeypatch
 
 
 def test_split_api_saves_id_before_first_experiment(storage: tuple, monkeypatch: pytest.MonkeyPatch) -> None:
-    schema, version_id, user_id = storage
+    schema, version_id, user_id, _ = storage
     monkeypatch.setattr(splitting.crud_dataset_access, "get_version", lambda *a: SimpleNamespace(dataset_id=uuid4()))
     monkeypatch.setattr(splitting, "require_dataset_scientist", lambda **kw: None)
     monkeypatch.setattr(service, "require_version", lambda *a, **kw: None)
@@ -160,7 +191,7 @@ def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
 
     from app.models.model_training import FinalModel, ModelTrainingExperiment, ModelValidationResult
 
-    schema, version_id, user_id = storage
+    schema, version_id, user_id, dataset_id = storage
     split = make_split()
     split.dataset_version_id = version_id
     origin = datetime(2018, 10, 24, 6, 48, tzinfo=UTC)
@@ -188,7 +219,8 @@ def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
                 saved_split = repository.save_split(db, version_id, uuid4().hex,
                                                     split.model_dump(mode="json"))
                 experiment = ModelTrainingExperiment(
-                    split_id=saved_split.id, created_by=user_id, status="COMPLETED",
+                    dataset_id=dataset_id, name="Ex-001", split_id=saved_split.id,
+                    created_by=user_id, status="COMPLETED",
                     configuration={"model": "RANDOM_FOREST"}, evaluation={},
                 )
                 db.add(experiment)
