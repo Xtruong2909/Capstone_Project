@@ -20,6 +20,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 const APPROVAL_NOTE_PRESETS = [
   'Meets pNEUMA UAV trajectory schema and data quality standards.',
@@ -34,6 +35,7 @@ const REJECTION_NOTE_PRESETS = [
 ]
 
 export default function AdminDatasetsPage() {
+  const { t, language } = useLanguage()
   const [datasets, setDatasets] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -260,23 +262,40 @@ export default function AdminDatasetsPage() {
         return (
           <span className="adm-badge adm-badge--emerald">
             <CheckCircle2 size={12} />
-            <span>Approved</span>
+            <span>{t('Approved')}</span>
           </span>
         )
       case 'REJECTED':
         return (
           <span className="adm-badge adm-badge--rose">
             <XCircle size={12} />
-            <span>Rejected</span>
+            <span>{t('Rejected')}</span>
           </span>
         )
       case 'SUBMITTED':
+        return (
+          <span
+            className="badge badge--pending"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              background: '#fef3c7',
+              color: '#b45309',
+              border: '1px solid #fde68a',
+              fontWeight: 700,
+            }}
+          >
+            <Clock size={12} />
+            <span>{t('Awaiting Review')}</span>
+          </span>
+        )
       case 'PENDING':
       default:
         return (
           <span className="adm-badge adm-badge--amber">
             <Clock size={12} />
-            <span>Awaiting Gate</span>
+            <span>{t('Pending')}</span>
           </span>
         )
     }
@@ -291,13 +310,8 @@ export default function AdminDatasetsPage() {
             <div className="adm-panel__icon adm-tone--amber">
               <Clock size={20} />
             </div>
-            <div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-                {stats.awaiting}
-              </div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
-                Awaiting Quality Gate
-              </div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
+              {t('Awaiting Approval')}
             </div>
           </div>
         </div>
@@ -323,13 +337,8 @@ export default function AdminDatasetsPage() {
             <div className="adm-panel__icon adm-tone--purple">
               <Layers size={20} />
             </div>
-            <div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-                {stats.totalRecords.toLocaleString()}
-              </div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
-                Trajectory Rows to Inspect
-              </div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
+              {t('Total Trajectory Points in Queue')}
             </div>
           </div>
         </div>
@@ -419,134 +428,227 @@ export default function AdminDatasetsPage() {
               </p>
             </div>
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+            {/* Search Input */}
+            <div style={{ position: 'relative', minWidth: '220px' }}>
+              <Search
+                size={14}
+                style={{
+                  position: 'absolute',
+                  left: '0.7rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#94a3b8',
+                }}
+              />
+              <input
+                type="text"
+                className="admin-input"
+                placeholder={t('Search dataset or version...')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  padding: '0.42rem 0.75rem 0.42rem 2rem',
+                  fontSize: '0.8rem',
+                  borderRadius: '8px',
+                  width: '100%',
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="btn-action btn-action--primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+              onClick={fetchDatasets}
+            >
+              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+              <span>{t('Refresh')}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="adm-panel__body--flush">
-          {isLoading ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--blue">
-                <RefreshCw size={24} className="animate-spin" />
-              </div>
-              <h4 className="adm-empty__title">Loading Quality Gate Queue...</h4>
-            </div>
-          ) : error ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--rose">
-                <AlertCircle size={24} />
-              </div>
-              <h4 className="adm-empty__title">Error Loading Datasets</h4>
-              <p className="adm-empty__desc">{error}</p>
-            </div>
-          ) : filteredDatasets.length === 0 ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--emerald">
-                <FileCheck size={24} />
-              </div>
-              <h4 className="adm-empty__title">No Dataset Versions Pending Review</h4>
-              <p className="adm-empty__desc">
-                All submitted pNEUMA trajectory versions have been processed.
-              </p>
-            </div>
-          ) : (
-            <div className="adm-table-wrap">
-              <table className="adm-table">
-                <thead>
-                  <tr>
-                    <th>Dataset Name</th>
-                    <th>Version</th>
-                    <th>Format</th>
-                    <th>Trajectory Rows</th>
-                    <th>Gate Status</th>
-                    <th>Review Note</th>
-                    <th>Submitted</th>
-                    <th style={{ textAlign: 'right' }}>Quality Gate Decision</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredDatasets.map((item) => {
-                    const isProcessing = actionLoading === item.id
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          <div style={{ fontWeight: 800, color: '#0f172a' }}>
-                            {item.dataset_name}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                            ID: {String(item.dataset_id || '').slice(0, 12)}
-                          </div>
-                        </td>
-                        <td>
-                          <span className="adm-code-tag">{item.version_tag}</span>
-                        </td>
-                        <td>
-                          <span className="adm-badge adm-badge--blue">{item.file_format}</span>
-                        </td>
-                        <td style={{ fontWeight: 700 }}>
-                          {(item.total_records || 0).toLocaleString()}
-                        </td>
-                        <td>{getStatusBadge(item.approval_status)}</td>
-                        <td style={{ maxWidth: '220px' }}>
-                          {item.approval_note ? (
-                            <span style={{ fontSize: '0.78rem', color: '#334155' }}>
-                              {item.approval_note}
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                              Pending inspection
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                          {item.created_at
-                            ? new Date(item.created_at).toLocaleDateString('en-US')
-                            : '—'}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
+        {isLoading ? (
+          <div className="empty-state">
+            <RefreshCw
+              size={24}
+              className="animate-spin"
+              style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
+            />
+            <p>{t('Loading dataset versions...')}</p>
+          </div>
+        ) : error ? (
+          <div className="empty-state">
+            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
+            <p>{t(error)}</p>
+          </div>
+        ) : filteredDatasets.length === 0 ? (
+          <div className="empty-state">
+            <Database size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
+            <p>{t('No dataset versions match your current filter.')}</p>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              {t('When a Data Engineer exports and submits a standardized version, it will appear here for approval.')}
+            </span>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>{t('Dataset Name')}</th>
+                  <th>{t('Version')}</th>
+                  <th>{t('Format')}</th>
+                  <th>{t('Total Records')}</th>
+                  <th>{t('Status')}</th>
+                  <th>{t('Submitted At')}</th>
+                  <th>{t('Inspection & Review')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDatasets.map((item) => {
+                  const canReview = isAwaitingReview(item.approval_status)
+                  const isRowLoading = actionLoading === item.id
+
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <strong style={{ color: '#0f172a', fontSize: '0.9rem' }}>
+                          {item.dataset_name}
+                        </strong>
+                        {item.approval_note && (
                           <div
+                            style={{
+                              fontSize: '0.74rem',
+                              color: '#64748b',
+                              marginTop: '0.2rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                            }}
+                          >
+                            <MessageSquare size={11} />
+                            <span>{item.approval_note}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <code
+                          style={{
+                            background: '#f1f5f9',
+                            color: '#0f172a',
+                            border: '1px solid #e2e8f0',
+                            padding: '0.22rem 0.5rem',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
+                          }}
+                        >
+                          {item.version_tag}
+                        </code>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '5px',
+                            background:
+                              item.file_format === 'PARQUET' ? '#eff6ff' : '#f8fafc',
+                            color:
+                              item.file_format === 'PARQUET' ? '#1d4ed8' : '#334155',
+                            border:
+                              item.file_format === 'PARQUET'
+                                ? '1px solid #bfdbfe'
+                                : '1px solid #e2e8f0',
+                          }}
+                        >
+                          {item.file_format}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600, color: '#1e293b' }}>
+                        {item.total_records != null
+                          ? Number(item.total_records).toLocaleString()
+                          : 'N/A'}
+                      </td>
+                      <td>{getStatusBadge(item.approval_status)}</td>
+                      <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {item.submitted_at
+                          ? new Date(item.submitted_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
+                          : item.created_at
+                          ? new Date(item.created_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')
+                          : '—'}
+                      </td>
+                      <td>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          {/* Preview Button */}
+                          <button
+                            type="button"
+                            className="btn-action"
+                            style={{
+                              background: '#eff6ff',
+                              color: '#1d4ed8',
+                              border: '1px solid #bfdbfe',
+                              padding: '0.38rem 0.7rem',
+                              fontSize: '0.76rem',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.32rem',
+                            }}
+                            onClick={() => handleOpenPreview(item)}
+                            title="Inspect dataset rows (Normalized or Raw)"
+                          >
+                            <Eye size={13} />
+                            <span>{t('Preview')}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn-action btn-action--success"
+                            style={{
+                              padding: '0.38rem 0.75rem',
+                              fontSize: '0.76rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                            }}
+                            disabled={isRowLoading}
+                            onClick={() => handleOpenReviewModal(item, 'APPROVED')}
+                          >
+                            <CheckCircle2 size={13} />
+                            <span>{t('Approve')}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-action btn-action--danger"
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '0.45rem',
                             }}
                           >
-                            <button
-                              type="button"
-                              className="adm-btn adm-btn--ghost adm-btn--sm"
-                              onClick={() => handleOpenPreview(item)}
-                            >
-                              <Eye size={13} />
-                              <span>Inspect</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isProcessing}
-                              className="adm-btn adm-btn--emerald adm-btn--sm"
-                              onClick={() => handleOpenReviewModal(item, 'APPROVED')}
-                            >
-                              <CheckCircle2 size={13} />
-                              <span>Approve</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isProcessing}
-                              className="adm-btn adm-btn--danger adm-btn--sm"
-                              onClick={() => handleOpenReviewModal(item, 'REJECTED')}
-                            >
-                              <XCircle size={13} />
-                              <span>Reject</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                            <XCircle size={13} />
+                            <span>{t('Reject')}</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* 5. Review Decision Modal */}
@@ -557,16 +659,46 @@ export default function AdminDatasetsPage() {
             if (e.target === e.currentTarget) handleCloseReviewModal()
           }}
         >
-          <div className="adm-modal" style={{ maxWidth: '560px' }}>
-            <div className="adm-modal__header">
-              <div>
-                <h3 className="adm-modal__title">
-                  {reviewModal.decision === 'APPROVED'
-                    ? 'Approve Dataset Version'
-                    : 'Reject Dataset Version'}
-                </h3>
-                <div style={{ fontSize: '0.78rem', color: '#cbd5e1', marginTop: '0.2rem' }}>
-                  {reviewModal.item.dataset_name} ({reviewModal.item.version_tag})
+          <div className="modal-dialog" style={{ maxWidth: '560px', width: '94%' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div
+                  className="admin-card__icon-box"
+                  style={{
+                    background:
+                      reviewModal.decision === 'APPROVED' ? '#dcfce7' : '#fee2e2',
+                    color:
+                      reviewModal.decision === 'APPROVED' ? '#15803d' : '#dc2626',
+                  }}
+                >
+                  {reviewModal.decision === 'APPROVED' ? (
+                    <CheckCircle2 size={20} />
+                  ) : (
+                    <XCircle size={20} />
+                  )}
+                </div>
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: '1.05rem',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                    }}
+                  >
+                    {reviewModal.decision === 'APPROVED'
+                      ? t('Approve Dataset Version')
+                      : t('Reject Dataset Version')}
+                  </h3>
+                  <div
+                    style={{
+                      fontSize: '0.76rem',
+                      color: '#64748b',
+                      marginTop: '0.12rem',
+                    }}
+                  >
+                    {reviewModal.item.dataset_name} ({reviewModal.item.version_tag})
+                  </div>
                 </div>
               </div>
               <button
@@ -596,53 +728,62 @@ export default function AdminDatasetsPage() {
                 </div>
               )}
 
-              {/* Decision Switcher */}
-              <div className="adm-field">
-                <label className="adm-label">Quality Gate Verdict</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <button
-                    type="button"
-                    className={`adm-btn ${
-                      reviewModal.decision === 'APPROVED' ? 'adm-btn--emerald' : 'adm-btn--ghost'
-                    }`}
-                    onClick={() =>
-                      setReviewModal((prev) => ({
-                        ...prev,
-                        decision: 'APPROVED',
-                        note: APPROVAL_NOTE_PRESETS[0],
-                      }))
-                    }
-                  >
-                    <CheckCircle2 size={16} />
-                    <span>Approve for ML</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`adm-btn ${
-                      reviewModal.decision === 'REJECTED' ? 'adm-btn--danger' : 'adm-btn--ghost'
-                    }`}
-                    onClick={() =>
-                      setReviewModal((prev) => ({
-                        ...prev,
-                        decision: 'REJECTED',
-                        note: REJECTION_NOTE_PRESETS[0],
-                      }))
-                    }
-                  >
-                    <XCircle size={16} />
-                    <span>Reject & Request Fix</span>
-                  </button>
+              {/* Dataset Metadata Summary */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '0.75rem',
+                  padding: '0.85rem 1rem',
+                  background: '#f8fafc',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '1.15rem',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                    {t('VERSION TAG')}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', marginTop: '0.15rem' }}>
+                    {reviewModal.item.version_tag}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                    {t('FILE FORMAT')}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#1d4ed8', marginTop: '0.15rem' }}>
+                    {reviewModal.item.file_format}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                    {t('TOTAL RECORDS')}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', marginTop: '0.15rem' }}>
+                    {Number(reviewModal.item.total_records || 0).toLocaleString()}
+                  </div>
                 </div>
               </div>
 
-              {/* Quick Presets */}
-              <div className="adm-field">
-                <label className="adm-label">
-                  <Sparkles size={13} style={{ display: 'inline', marginRight: '0.3rem' }} />
-                  Standard Audit Note Templates
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+              {/* Quick Note Templates */}
+              <div style={{ marginBottom: '0.9rem' }}>
+                <div
+                  style={{
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    color: '#475569',
+                    marginBottom: '0.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                  }}
+                >
+                  <Sparkles size={13} color="#2563eb" />
+                  <span>{t('Quick Review Note Templates:')}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                   {(reviewModal.decision === 'APPROVED'
                     ? APPROVAL_NOTE_PRESETS
                     : REJECTION_NOTE_PRESETS
@@ -672,15 +813,33 @@ export default function AdminDatasetsPage() {
                 </div>
               </div>
 
-              {/* Custom Note */}
-              <div className="adm-field" style={{ marginBottom: 0 }}>
-                <label className="adm-label">Official Audit Note</label>
+              {/* Review Note Textarea */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    marginBottom: '0.35rem',
+                  }}
+                >
+                  {t('Administrator Review Note')}
+                </label>
                 <textarea
                   rows={3}
                   value={reviewModal.note}
-                  onChange={(e) => setReviewModal((prev) => ({ ...prev, note: e.target.value }))}
-                  className="adm-textarea"
-                  placeholder="Enter detailed quality review feedback..."
+                  onChange={(e) =>
+                    setReviewModal((prev) => ({ ...prev, note: e.target.value }))
+                  }
+                  placeholder={t('Enter feedback or approval note for the Data Engineer...')}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '8px',
+                    fontSize: '0.84rem',
+                    resize: 'vertical',
+                  }}
                 />
               </div>
             </div>
@@ -691,7 +850,7 @@ export default function AdminDatasetsPage() {
                 className="adm-btn adm-btn--ghost"
                 onClick={handleCloseReviewModal}
               >
-                Cancel
+                {t('Cancel')}
               </button>
               <button
                 type="button"
@@ -703,12 +862,22 @@ export default function AdminDatasetsPage() {
                   executeReviewDecision(reviewModal.item, reviewModal.decision, reviewModal.note)
                 }
               >
-                <Check size={15} />
-                <span>
-                  {actionLoading === reviewModal.item.id
-                    ? 'Submitting...'
-                    : `Confirm ${reviewModal.decision}`}
-                </span>
+                {actionLoading === reviewModal.item.id ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>{t('Processing...')}</span>
+                  </>
+                ) : reviewModal.decision === 'APPROVED' ? (
+                  <>
+                    <Check size={15} />
+                    <span>{t('Confirm Approval')}</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle size={15} />
+                    <span>{t('Confirm Rejection')}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -723,15 +892,83 @@ export default function AdminDatasetsPage() {
             if (e.target === e.currentTarget) handleClosePreview()
           }}
         >
-          <div className="adm-modal adm-modal--xl">
-            <div className="adm-modal__header">
-              <div>
-                <h3 className="adm-modal__title">
-                  Trajectory Schema & Record Inspector — {previewState.item?.dataset_name}
-                </h3>
-                <div style={{ fontSize: '0.78rem', color: '#cbd5e1', marginTop: '0.2rem' }}>
-                  Version: {previewState.item?.version_tag} • Format:{' '}
-                  {previewState.item?.file_format}
+          <div className="modal-dialog" style={{ maxWidth: '1020px', width: '94%' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div className="admin-card__icon-box admin-card__icon-box--blue">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
+                    {previewState.item.dataset_name}{' '}
+                    <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>
+                      ({previewState.item.version_tag})
+                    </span>
+                  </h3>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
+                    {t('Status:')} <strong>{t(previewState.item.approval_status)}</strong> • {t('Format')}:{' '}
+                    <strong>{previewState.item.file_format}</strong> • Records:{' '}
+                    <strong>
+                      {Number(previewState.item.total_records || 0).toLocaleString()}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {/* Representation Switcher: raw vs normalized */}
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    background: '#f1f5f9',
+                    padding: '0.2rem',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={{
+                      padding: '0.3rem 0.75rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background:
+                        previewState.representation === 'normalized' ? '#ffffff' : 'transparent',
+                      color:
+                        previewState.representation === 'normalized' ? '#1d4ed8' : '#64748b',
+                      boxShadow:
+                        previewState.representation === 'normalized'
+                          ? '0 1px 3px rgba(0,0,0,0.08)'
+                          : 'none',
+                    }}
+                    onClick={() => handleToggleRepresentation('normalized')}
+                  >
+                    {t('Normalized (pNEUMA)')}
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      padding: '0.3rem 0.75rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background:
+                        previewState.representation === 'raw' ? '#ffffff' : 'transparent',
+                      color: previewState.representation === 'raw' ? '#1d4ed8' : '#64748b',
+                      boxShadow:
+                        previewState.representation === 'raw'
+                          ? '0 1px 3px rgba(0,0,0,0.08)'
+                          : 'none',
+                    }}
+                    onClick={() => handleToggleRepresentation('raw')}
+                  >
+                    {t('Raw Source')}
+                  </button>
                 </div>
               </div>
               <button type="button" className="adm-modal__close" onClick={handleClosePreview}>
@@ -741,6 +978,137 @@ export default function AdminDatasetsPage() {
 
             {/* Representation Toggle & Quick Decision Bar */}
             <div
+              className="modal-body"
+              style={{ maxHeight: '60vh', overflowY: 'auto', padding: '1.25rem' }}
+            >
+              {previewState.isLoading ? (
+                <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
+                  <RefreshCw
+                    size={26}
+                    className="animate-spin"
+                    style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
+                  />
+                  <p>{t(`Loading ${previewState.representation} preview data...`)}</p>
+                </div>
+              ) : previewState.error ? (
+                <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
+                  <AlertCircle
+                    size={26}
+                    style={{ margin: '0 auto 0.75rem', color: '#dc2626' }}
+                  />
+                  <p style={{ color: '#dc2626' }}>{t(previewState.error)}</p>
+                </div>
+              ) : !previewState.data ||
+                !previewState.data.rows ||
+                previewState.data.rows.length === 0 ? (
+                <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
+                  <Database
+                    size={26}
+                    style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }}
+                  />
+                  <p>{t('No preview rows available for this representation.')}</p>
+                </div>
+              ) : (
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.75rem',
+                      fontSize: '0.8rem',
+                      color: '#64748b',
+                    }}
+                  >
+                    <span>
+                      {t('Showing page')} <strong>{previewState.page}</strong> •{' '}
+                      {previewState.data.columns?.length || 0} columns
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={previewState.page <= 1 || previewState.isLoading}
+                        style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }}
+                        onClick={() => handlePageChange(previewState.page - 1)}
+                      >
+                        <ChevronLeft size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        disabled={
+                          previewState.data.rows.length < previewState.pageSize ||
+                          previewState.isLoading
+                        }
+                        style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }}
+                        onClick={() => handlePageChange(previewState.page + 1)}
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      overflowX: 'auto',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                    }}
+                  >
+                    <table
+                      className="admin-table"
+                      style={{ margin: 0, fontSize: '0.82rem' }}
+                    >
+                      <thead>
+                        <tr>
+                          {previewState.data.columns?.map((col) => (
+                            <th key={col.name || col} style={{ whiteSpace: 'nowrap' }}>
+                              {col.name || col}
+                              {col.type && (
+                                <span
+                                  style={{
+                                    display: 'block',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 500,
+                                    color: '#94a3b8',
+                                  }}
+                                >
+                                  {col.type}
+                                </span>
+                              )}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewState.data.rows.map((row, rIdx) => (
+                          <tr key={rIdx}>
+                            {previewState.data.columns?.map((col) => {
+                              const colName = col.name || col
+                              const val = row[colName]
+                              return (
+                                <td key={colName} style={{ whiteSpace: 'nowrap' }}>
+                                  {val !== null && val !== undefined ? (
+                                    String(val)
+                                  ) : (
+                                    <em style={{ color: '#cbd5e1' }}>null</em>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Embedded Review Action Bar inside Preview Modal */}
+            <div
+              className="modal-actions"
               style={{
                 padding: '0.85rem 1.5rem',
                 background: '#f8fafc',
@@ -752,13 +1120,24 @@ export default function AdminDatasetsPage() {
                 flexWrap: 'wrap',
               }}
             >
-              <div className="adm-filter-pills">
-                <button
-                  type="button"
-                  className={`adm-filter-pill ${
-                    previewState.representation === 'normalized' ? 'active' : ''
-                  }`}
-                  onClick={() => handleToggleRepresentation('normalized')}
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleClosePreview}
+              >
+                {t('Close Preview')}
+              </button>
+
+              {isAwaitingReview(previewState.item.approval_status) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    flex: '1 1 420px',
+                    justifyContent: 'flex-end',
+                    flexWrap: 'wrap',
+                  }}
                 >
                   Normalized Schema (Parquet)
                 </button>
@@ -798,7 +1177,8 @@ export default function AdminDatasetsPage() {
                       )
                     }
                   >
-                    Approve
+                    <XCircle size={14} />
+                    <span>{t('Reject Version')}</span>
                   </button>
                   <button
                     type="button"
@@ -812,7 +1192,8 @@ export default function AdminDatasetsPage() {
                       )
                     }
                   >
-                    Reject
+                    <CheckCircle2 size={14} />
+                    <span>{t('Approve Version')}</span>
                   </button>
                 </div>
               )}

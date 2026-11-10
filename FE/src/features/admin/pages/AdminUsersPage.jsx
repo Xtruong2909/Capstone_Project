@@ -11,6 +11,7 @@ import {
   Ban,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 const ROLE_DESCRIPTIONS = {
   data_engineer:
@@ -24,6 +25,7 @@ const ROLE_DESCRIPTIONS = {
 }
 
 export default function AdminUsersPage() {
+  const { t, language } = useLanguage()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -54,8 +56,8 @@ export default function AdminUsersPage() {
       ])
       setUsers(usersData)
       setRoles(rolesData)
-    } catch {
-      setError('Failed to load user list from the server.')
+    } catch (err) {
+      setError(t('Failed to load user list from the server.'))
     } finally {
       setIsLoading(false)
     }
@@ -70,7 +72,7 @@ export default function AdminUsersPage() {
       const updated = await adminService.updateUserStatus(user.id, !user.is_active)
       setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)))
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to update user status.')
+      alert(err.response?.data?.detail || t('Failed to update user status.'))
     }
   }
 
@@ -89,7 +91,7 @@ export default function AdminUsersPage() {
         password: '',
       })
     } catch (err) {
-      setFormError(err.response?.data?.detail || 'Failed to create new user.')
+      setFormError(err.response?.data?.detail || t('Failed to create new user.'))
     } finally {
       setFormSubmitting(false)
     }
@@ -244,7 +246,7 @@ export default function AdminUsersPage() {
             <Search size={16} className="adm-search-box__icon" />
             <input
               type="text"
-              placeholder="Search user by name or email..."
+              placeholder={t('Search by name or email...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="adm-input adm-input--search"
@@ -257,7 +259,7 @@ export default function AdminUsersPage() {
             className="adm-select"
             style={{ width: 'auto', minWidth: '180px' }}
           >
-            <option value="ALL">All Platform Roles</option>
+            <option value="ALL">{t('All Roles')}</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -266,74 +268,91 @@ export default function AdminUsersPage() {
           </select>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-          <button type="button" className="adm-btn adm-btn--ghost" onClick={fetchUsersAndRoles}>
-            <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
+        <button
+          type="button"
+          className="btn-action btn-action--primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.1rem' }}
+          onClick={() => setIsModalOpen(true)}
+        >
+          <UserPlus size={16} />
+          <span>{t('Add User')}</span>
+        </button>
+      </div>
 
+      {/* Users Table */}
+      <div className="admin-card">
+        <div className="admin-card__header">
+          <h3 className="admin-card__title">
+            {t('User Accounts')} ({filteredUsers.length})
+          </h3>
           <button
             type="button"
             className="adm-btn adm-btn--primary"
             onClick={() => setIsModalOpen(true)}
           >
-            <UserPlus size={16} />
-            <span>Provision Account</span>
+            <RefreshCw size={14} />
+            <span>{t('Refresh')}</span>
           </button>
         </div>
       </div>
 
-      {/* 3. Identity Directory Table */}
-      <div className="adm-panel">
-        <div className="adm-panel__header">
-          <div className="adm-panel__title-group">
-            <div className="adm-panel__icon adm-tone--blue">
-              <Users size={18} />
-            </div>
-            <div>
-              <h3 className="adm-panel__title">Identity & RBAC Directory ({filteredUsers.length})</h3>
-              <p className="adm-panel__subtitle">
-                Manage account lifecycle, role assignments, and platform access privileges
-              </p>
-            </div>
+        {isLoading ? (
+          <div className="empty-state">
+            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
+            <p>{t('Loading user accounts...')}</p>
           </div>
-        </div>
-
-        <div className="adm-panel__body--flush">
-          {isLoading ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--blue">
-                <RefreshCw size={24} className="animate-spin" />
-              </div>
-              <h4 className="adm-empty__title">Loading Identity Directory...</h4>
-            </div>
-          ) : error ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--rose">
-                <AlertCircle size={24} />
-              </div>
-              <h4 className="adm-empty__title">Failed to Load Users</h4>
-              <p className="adm-empty__desc">{error}</p>
-            </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--slate">
-                <Users size={24} />
-              </div>
-              <h4 className="adm-empty__title">No Matching Accounts Found</h4>
-              <p className="adm-empty__desc">Try adjusting your search query or role filter.</p>
-            </div>
-          ) : (
-            <div className="adm-table-wrap">
-              <table className="adm-table">
-                <thead>
-                  <tr>
-                    <th>Identity</th>
-                    <th>Email Address</th>
-                    <th>Assigned Role</th>
-                    <th>Status</th>
-                    <th>Provisioned Date</th>
-                    <th style={{ textAlign: 'right' }}>Access Control</th>
+        ) : error ? (
+          <div className="empty-state">
+            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
+            <p>{t(error)}</p>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="empty-state">
+            <Users size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
+            <p>{t('No matching user accounts found.')}</p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>{t('Full Name')}</th>
+                  <th>{t('Email')}</th>
+                  <th>{t('Role')}</th>
+                  <th>{t('Status')}</th>
+                  <th>{t('Created Date')}</th>
+                  <th>{t('Action')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((user) => (
+                  <tr key={user.id}>
+                    <td>
+                      <strong style={{ color: '#0f172a' }}>{user.full_name}</strong>
+                    </td>
+                    <td style={{ color: '#475569' }}>{user.email}</td>
+                    <td>
+                      <span className={`badge ${getRoleBadgeClass(user.role_id)}`}>
+                        {t(roles.find((r) => r.id === user.role_id)?.name || user.role_id)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${user.is_active ? 'badge--active' : 'badge--inactive'}`}>
+                        {t(user.is_active ? 'Active' : 'Suspended')}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      {user.created_at ? new Date(user.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US') : '—'}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={`btn-action ${user.is_active ? 'btn-action--danger' : 'btn-action--success'}`}
+                        onClick={() => handleToggleStatus(user)}
+                      >
+                        {t(user.is_active ? 'Deactivate' : 'Activate')}
+                      </button>
+                    </td>
                   </tr>
                 </thead>
                 <tbody>
@@ -418,9 +437,9 @@ export default function AdminUsersPage() {
             if (e.target === e.currentTarget) setIsModalOpen(false)
           }}
         >
-          <div className="adm-modal">
-            <div className="adm-modal__header">
-              <h3 className="adm-modal__title">Provision New Platform Account</h3>
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>{t('Create New User')}</h3>
               <button
                 type="button"
                 className="adm-modal__close"
@@ -430,87 +449,76 @@ export default function AdminUsersPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateSubmit}>
-              <div className="adm-modal__body">
-                {formError && (
-                  <div
-                    style={{
-                      padding: '0.75rem 1rem',
-                      background: '#fff1f2',
-                      border: '1px solid #fecdd3',
-                      borderRadius: '10px',
-                      color: '#be123c',
-                      fontSize: '0.84rem',
-                      marginBottom: '1rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {formError}
-                  </div>
-                )}
-
-                <div className="adm-field">
-                  <label className="adm-label">Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g., Nguyen Van A"
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    className="adm-input"
-                  />
+            <form onSubmit={handleCreateSubmit} className="modal-body">
+              {formError && (
+                <div style={{
+                  padding: '0.75rem',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '6px',
+                  color: '#dc2626',
+                  fontSize: '0.85rem',
+                  marginBottom: '1rem',
+                }}>
+                  {t(formError)}
                 </div>
+              )}
 
-                <div className="adm-field">
-                  <label className="adm-label">Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="user@capstone.vn"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="adm-input"
-                  />
-                </div>
+              <div className="form-field">
+                <label className="form-label">{t('Full Name')}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder={t('e.g. Alex Morgan')}
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  className="admin-input"
+                  style={{ width: '100%' }}
+                />
+              </div>
 
-                <div className="adm-field">
-                  <label className="adm-label">Assigned Platform Role</label>
-                  <select
-                    value={formData.role_id}
-                    onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
-                    className="adm-select"
-                  >
-                    {roles
-                      .filter((r) => r.id !== 'admin')
-                      .map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                  </select>
-                  <p
-                    style={{
-                      margin: '0.45rem 0 0',
-                      fontSize: '0.78rem',
-                      color: '#475569',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {ROLE_DESCRIPTIONS[formData.role_id] || ''}
-                  </p>
-                </div>
+              <div className="form-field">
+                <label className="form-label">{t('Email Address')}</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="user@metroflow.ai"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="admin-input"
+                  style={{ width: '100%' }}
+                />
+              </div>
 
-                <div className="adm-field" style={{ marginBottom: 0 }}>
-                  <label className="adm-label">Initial Password</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Enter initial password..."
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="adm-input"
-                  />
-                </div>
+              <div className="form-field">
+                <label className="form-label">{t('Role')}</label>
+                <select
+                  value={formData.role_id}
+                  onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
+                  className="admin-select"
+                  style={{ width: '100%' }}
+                >
+                  {roles
+                    .filter((r) => r.id !== 'admin')
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {t(r.name)}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label">{t('Initial Password')}</label>
+                <input
+                  type="password"
+                  required
+                  placeholder={t('Enter initial password...')}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="admin-input"
+                  style={{ width: '100%' }}
+                />
               </div>
 
               <div className="adm-modal__footer">
@@ -519,15 +527,14 @@ export default function AdminUsersPage() {
                   className="adm-btn adm-btn--ghost"
                   onClick={() => setIsModalOpen(false)}
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={formSubmitting}
                   className="adm-btn adm-btn--primary"
                 >
-                  <UserPlus size={15} />
-                  <span>{formSubmitting ? 'Provisioning...' : 'Create Account'}</span>
+                  {t(formSubmitting ? 'Creating...' : 'Create Account')}
                 </button>
               </div>
             </form>

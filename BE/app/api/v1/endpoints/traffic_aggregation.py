@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.dataset_access import require_dataset_scientist
@@ -18,6 +18,7 @@ from app.schemas.traffic_aggregation import (
     TrafficAggregationStarted,
     TrafficAggregationStatusResponse,
 )
+from app.services.audit_log_service import record_audit_event
 from app.services.traffic_aggregation_service import (
     get_traffic_aggregation_job_status,
     get_traffic_aggregation_status,
@@ -39,6 +40,7 @@ def run_traffic_aggregation(
     dataset_id: UUID,
     payload: TemporalAggregationRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_dataset_scientist),
 ) -> TrafficAggregationStarted:
@@ -70,21 +72,36 @@ def run_traffic_aggregation(
         created_at=started_at,
         started_at=started_at,
     )
-    db.add(job)
-    db.commit()
-    db.refresh(job)
+    try:
+        db.add(job)
+        db.commit()
+        db.refresh(job)
 
-    background_tasks.add_task(
-        run_traffic_aggregation_job,
-        db_session_factory=SessionLocal,
-        dataset_id=dataset_id,
-        version_id=version.id,
-        aggregation_interval=payload.aggregation_interval,
-        roi_identifier=payload.roi_identifier,
-        replace_existing=payload.replace_existing,
-        job_id=job_id,
-    )
-
+        background_tasks.add_task(
+            run_traffic_aggregation_job,
+            db_session_factory=SessionLocal,
+            dataset_id=dataset_id,
+            version_id=version.id,
+            aggregation_interval=payload.aggregation_interval,
+            roi_identifier=payload.roi_identifier,
+            replace_existing=payload.replace_existing,
+            job_id=job_id,
+            actor_id=current_user.id,
+            actor_username=current_user.full_name,
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception as exc:
+        record_audit_event(
+            user=current_user,
+            action="AGGREGATE_DATA",
+            module="Data Processing",
+            status="FAILED",
+            description="Traffic flow aggregation could not be queued",
+            resource_id=job_id,
+            ip_address=request.client.host if request.client else None,
+            details={"error_type": type(exc).__name__},
+        )
+        raise
     return TrafficAggregationStarted(
         dataset_id=dataset_id,
         dataset_version_id=version.id,

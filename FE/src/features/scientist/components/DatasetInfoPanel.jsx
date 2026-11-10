@@ -2,36 +2,20 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   Database,
-  MapPin,
   ShieldCheck,
-  FileSpreadsheet,
-  HardDrive,
-  Layers,
-  Eye,
+  FileSearch,
   FlaskConical,
   TrendingUp,
-  Info,
 } from 'lucide-react'
-import { formatBytes, formatNumber } from '../utils/formatters'
-
-/** Format dataset_code so auto-generated 32-char hex codes don't look like raw hashes. */
-function formatDatasetCode(code) {
-  if (!code) return 'DATASET'
-  if (/^DATASET_[0-9A-F]{16,}$/i.test(code)) {
-    return `DS-${code.slice(8, 14).toUpperCase()}`
-  }
-  return code
-}
 
 /**
- * Top navigation bar + Dataset detail card shared by Training and Prediction pages.
+ * Dataset navigation and context shared by Training and Prediction pages.
  */
 export default function DatasetInfoPanel({
   item,
   datasets = [],
   datasetId,
   versionId,
-  preview,
   isLoading,
 }) {
   const navigate = useNavigate()
@@ -52,15 +36,6 @@ export default function DatasetInfoPanel({
     const suffix = activeMode === 'train' ? '/train' : activeMode === 'predict' ? '/predict' : ''
     navigate(`/scientist/datasets/${dId}/versions/${vId}${suffix}`)
   }
-
-  const totalRows = preview?.pagination?.total_rows
-  const returnedRows = preview?.pagination?.returned_rows ?? preview?.rows?.length ?? 0
-  const rowCountLabel =
-    totalRows != null
-      ? `${formatNumber(totalRows)} rows`
-      : returnedRows > 0
-        ? `${formatNumber(returnedRows)}+ rows`
-        : '—'
 
   return (
     <>
@@ -93,7 +68,7 @@ export default function DatasetInfoPanel({
       </div>
 
       {isLoading && !item ? (
-        <div className="sci-skeleton" style={{ height: 150 }} />
+        <div className="sci-skeleton" style={{ height: 90 }} />
       ) : !item ? (
         <div className="sci-state sci-state--error">
           <p style={{ margin: 0, fontWeight: 700 }}>
@@ -109,9 +84,6 @@ export default function DatasetInfoPanel({
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <span className="sci-card__code" title={item.dataset_code}>
-                    {formatDatasetCode(item.dataset_code)}
-                  </span>
                   <h2 className="admin-card__title">{item.dataset_name}</h2>
                   <span className="sci-pill sci-pill--version">{item.version_tag}</span>
                   <span className="sci-pill sci-pill--approved">
@@ -121,7 +93,7 @@ export default function DatasetInfoPanel({
                 <p className="admin-card__subtitle">
                   {item.location_name && `${item.location_name} • `}
                   {item.source && `Source: ${item.source.toUpperCase()} • `}
-                  {preview?.original_filename ? `File: ${preview.original_filename}` : 'Approved UAV traffic dataset'}
+                  Approved UAV traffic dataset
                 </p>
               </div>
             </div>
@@ -132,7 +104,7 @@ export default function DatasetInfoPanel({
                 to={basePath}
                 className={`sci-mode-switch__btn ${activeMode === 'preview' ? 'active' : ''}`}
               >
-                <Eye size={14} /> Data Preview
+                <FileSearch size={15} strokeWidth={2} /> Data Preview
               </Link>
               <Link
                 to={`${basePath}/train`}
@@ -147,77 +119,6 @@ export default function DatasetInfoPanel({
                 <TrendingUp size={14} /> Prediction
               </Link>
             </div>
-          </div>
-
-          <div className="sci-card-body">
-            {/* 4 Clean Summary Tiles */}
-            <div className="sci-info-grid">
-              <div className="sci-info-tile">
-                <div className="sci-info-tile__icon sci-info-tile__icon--blue">
-                  <MapPin size={17} />
-                </div>
-                <div className="sci-info-tile__content">
-                  <small>Location & Source</small>
-                  <span>{item.location_name || '—'}</span>
-                  <em>Source: {(item.source || 'uav').toUpperCase()}</em>
-                </div>
-              </div>
-
-              <div className="sci-info-tile">
-                <div className="sci-info-tile__icon sci-info-tile__icon--purple">
-                  <FileSpreadsheet size={17} />
-                </div>
-                <div className="sci-info-tile__content">
-                  <small>Dataset File</small>
-                  <span title={preview?.original_filename || ''}>
-                    {preview?.original_filename || 'Loading file info…'}
-                  </span>
-                  <em>Version {item.version_tag}</em>
-                </div>
-              </div>
-
-              <div className="sci-info-tile">
-                <div className="sci-info-tile__icon sci-info-tile__icon--green">
-                  <HardDrive size={17} />
-                </div>
-                <div className="sci-info-tile__content">
-                  <small>Format & Storage</small>
-                  <span>
-                    {(preview?.file_format || 'Parquet').toUpperCase()}
-                    {preview?.file_size != null ? ` · ${formatBytes(preview.file_size)}` : ''}
-                  </span>
-                  <em>{preview?.detected_structure || 'Normalized trajectory'}</em>
-                </div>
-              </div>
-
-              <div className="sci-info-tile">
-                <div className="sci-info-tile__icon sci-info-tile__icon--amber">
-                  <Layers size={17} />
-                </div>
-                <div className="sci-info-tile__content">
-                  <small>Records & Schema</small>
-                  <span>{rowCountLabel}</span>
-                  <em>{preview?.columns ? `${preview.columns.length} schema columns` : 'Approved by Admin'}</em>
-                </div>
-              </div>
-            </div>
-
-            {/* Compact Schema Columns Bar */}
-            {preview?.columns && preview.columns.length > 0 && (
-              <div className="sci-schema-bar">
-                <div className="sci-schema-bar__label">
-                  <Info size={14} style={{ color: '#1668e3', flexShrink: 0 }} />
-                  <span>Schema Columns ({preview.columns.length}):</span>
-                </div>
-                <div className="sci-chips">
-                  {preview.columns.map((c) => (
-                    <span key={c.name} className="sci-chip" title={`Data type: ${c.type}`}>
-                      {c.name} <small>{c.type}</small>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </section>
       )}

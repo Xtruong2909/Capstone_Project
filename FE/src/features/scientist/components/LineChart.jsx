@@ -1,5 +1,6 @@
 import { useId, useMemo } from 'react'
 import { useChartHover } from '../../../hooks/useChartHover'
+import { formatRecordingDateTime, formatRecordingTime } from '../utils/formatters'
 
 const WIDTH = 560
 const HEIGHT = 195
@@ -233,16 +234,10 @@ export default function LineChart({ title, unit, labels = [], values = [], color
 
 function formatTooltipTime(label) {
   if (!label) return ''
-  const date = new Date(label)
-  if (Number.isNaN(date.getTime())) return String(label)
-  return date.toLocaleString('en-GB', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+  return formatRecordingDateTime(label)
 }
 
 function formatTick(label) {
   if (!label) return ''
-  const d = new Date(label)
-  if (Number.isNaN(d.getTime())) return String(label)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return formatRecordingTime(label)
 }

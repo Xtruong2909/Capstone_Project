@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, RefreshCw, FileSearch, LayoutGrid, List, Eye, ShieldCheck, MapPin, Database, FlaskConical, TrendingUp } from 'lucide-react'
+import { Search, RefreshCw, FileSearch, LayoutGrid, List, ShieldCheck, MapPin, Database, FlaskConical, TrendingUp } from 'lucide-react'
 import { useApprovedDatasets } from '../../../hooks/useScientistData'
 import DatasetCard from '../components/DatasetCard'
 
@@ -47,7 +47,7 @@ export default function ScientistApprovedDatasetsPage() {
               <Search size={16} />
               <input
                 className="admin-input"
-                placeholder="Search by dataset name, code, or location..."
+                placeholder="Search by dataset name..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
               />
@@ -151,7 +151,7 @@ export default function ScientistApprovedDatasetsPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Code / Name</th>
+                  <th>Dataset</th>
                   <th>Version</th>
                   <th>Source</th>
                   <th>Location</th>
@@ -163,7 +163,6 @@ export default function ScientistApprovedDatasetsPage() {
                 {datasets.map((item) => (
                   <tr key={item.version_id}>
                     <td>
-                      <span className="sci-card__code">{item.dataset_code}</span>
                       <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.dataset_name}</div>
                     </td>
                     <td>
@@ -212,7 +211,7 @@ export default function ScientistApprovedDatasetsPage() {
                           onClick={() => openPreview(item)}
                           title="Open Dataset Detail & Preview"
                         >
-                          <Eye size={14} />
+                          <FileSearch size={15} strokeWidth={2} />
                           <span>Preview</span>
                         </button>
                       </div>

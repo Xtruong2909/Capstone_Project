@@ -1,8 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { ScrollText, RefreshCw, AlertCircle, Search, ShieldAlert, CheckCircle2, Activity } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 export default function AdminAuditLogsPage() {
+  const { t, language } = useLanguage()
   const [logs, setLogs] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -14,9 +16,9 @@ export default function AdminAuditLogsPage() {
     setError(null)
     try {
       const data = await adminService.getAuditLogs()
-      setLogs(Array.isArray(data) ? data : [])
-    } catch {
-      setError('Failed to load system audit logs.')
+      setLogs(data)
+    } catch (err) {
+      setError(t('Failed to load system audit logs.'))
     } finally {
       setIsLoading(false)
     }
@@ -67,175 +69,73 @@ export default function AdminAuditLogsPage() {
 
   return (
     <div>
-      {/* 1. 3-Column Bento Summary Strip */}
-      <div className="adm-bento-grid">
-        <div className="adm-panel adm-col-4">
-          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="adm-panel__icon adm-tone--purple">
-              <ScrollText size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-                {logs.length}
-              </div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
-                Total Logged Events
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="adm-panel adm-col-4">
-          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="adm-panel__icon adm-tone--emerald">
-              <CheckCircle2 size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-                {
-                  logs.filter((l) => {
-                    const a = (l.action || '').toUpperCase()
-                    return a.includes('CREATE') || a.includes('APPROVE') || a.includes('GRANT')
-                  }).length
-                }
-              </div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
-                Provisioning & Approvals
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="adm-panel adm-col-4">
-          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="adm-panel__icon adm-tone--rose">
-              <ShieldAlert size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-                {
-                  logs.filter((l) => {
-                    const a = (l.action || '').toUpperCase()
-                    return a.includes('REJECT') || a.includes('DELETE') || a.includes('REVOKE')
-                  }).length
-                }
-              </div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
-                Revocations & Rejections
-              </div>
-            </div>
-          </div>
+      <div className="admin-card">
+        <div className="admin-card__header">
+          <h3 className="admin-card__title">
+            {t('System Audit Logs')} ({logs.length})
+          </h3>
+          <button
+            type="button"
+            className="btn-action btn-action--primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            onClick={fetchLogs}
+          >
+            <RefreshCw size={14} />
+            <span>{t('Refresh')}</span>
+          </button>
         </div>
       </div>
 
-      {/* 2. Search & Filter Toolbar */}
-      <div className="adm-toolbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, flexWrap: 'wrap' }}>
-          <div className="adm-search-box">
-            <Search size={16} className="adm-search-box__icon" />
-            <input
-              type="text"
-              placeholder="Search actor email, action, resource, or IP..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="adm-input adm-input--search"
-            />
+        {isLoading ? (
+          <div className="empty-state">
+            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
+            <p>{t('Loading audit logs...')}</p>
           </div>
-
-          <div className="adm-filter-pills">
-            <button
-              type="button"
-              className={`adm-filter-pill ${actionFilter === 'ALL' ? 'active' : ''}`}
-              onClick={() => setActionFilter('ALL')}
-            >
-              All Events
-            </button>
-            <button
-              type="button"
-              className={`adm-filter-pill ${actionFilter === 'CREATE' ? 'active' : ''}`}
-              onClick={() => setActionFilter('CREATE')}
-            >
-              Provisioning
-            </button>
-            <button
-              type="button"
-              className={`adm-filter-pill ${actionFilter === 'UPDATE' ? 'active' : ''}`}
-              onClick={() => setActionFilter('UPDATE')}
-            >
-              Updates
-            </button>
-            <button
-              type="button"
-              className={`adm-filter-pill ${actionFilter === 'SECURITY' ? 'active' : ''}`}
-              onClick={() => setActionFilter('SECURITY')}
-            >
-              Revocations
-            </button>
+        ) : error ? (
+          <div className="empty-state">
+            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
+            <p>{t(error)}</p>
           </div>
-        </div>
-
-        <button type="button" className="adm-btn adm-btn--primary" onClick={fetchLogs}>
-          <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-          <span>Refresh Ledger</span>
-        </button>
-      </div>
-
-      {/* 3. Audit Logs Table */}
-      <div className="adm-panel">
-        <div className="adm-panel__header">
-          <div className="adm-panel__title-group">
-            <div className="adm-panel__icon adm-tone--purple">
-              <Activity size={18} />
-            </div>
-            <div>
-              <h3 className="adm-panel__title">
-                Immutable Security & Governance Ledger ({filteredLogs.length})
-              </h3>
-              <p className="adm-panel__subtitle">
-                Chronological trace of user provisioning, dataset quality gate verdicts, and permission changes
-              </p>
-            </div>
+        ) : logs.length === 0 ? (
+          <div className="empty-state">
+            <ScrollText size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
+            <p>{t('No audit log entries recorded yet.')}</p>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              {t('All user creation, status updates, and dataset approval actions are automatically logged here.')}
+            </span>
           </div>
-        </div>
-
-        <div className="adm-panel__body--flush">
-          {isLoading ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--blue">
-                <RefreshCw size={24} className="animate-spin" />
-              </div>
-              <h4 className="adm-empty__title">Loading Security Audit Trail...</h4>
-            </div>
-          ) : error ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--rose">
-                <AlertCircle size={24} />
-              </div>
-              <h4 className="adm-empty__title">Failed to Load Audit Logs</h4>
-              <p className="adm-empty__desc">{error}</p>
-            </div>
-          ) : filteredLogs.length === 0 ? (
-            <div className="adm-empty">
-              <div className="adm-empty__icon adm-tone--slate">
-                <ScrollText size={24} />
-              </div>
-              <h4 className="adm-empty__title">No Audit Log Entries Found</h4>
-              <p className="adm-empty__desc">
-                All user creation, status updates, and dataset approval actions are automatically logged here.
-              </p>
-            </div>
-          ) : (
-            <div className="adm-table-wrap">
-              <table className="adm-table">
-                <thead>
-                  <tr>
-                    <th>Event ID</th>
-                    <th>Timestamp</th>
-                    <th>Actor Account</th>
-                    <th>Operation</th>
-                    <th>Resource Target</th>
-                    <th>Source IP</th>
-                    <th>Payload Details</th>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>{t('#ID')}</th>
+                  <th>{t('Timestamp')}</th>
+                  <th>{t('Account')}</th>
+                  <th>{t('Action')}</th>
+                  <th>{t('Resource Type')}</th>
+                  <th>{t('IP Address')}</th>
+                  <th>{t('Details')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id}>
+                    <td>#{log.id}</td>
+                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      {new Date(log.created_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                    </td>
+                    <td>{log.user_email || t('System')}</td>
+                    <td>
+                      <span className={`badge ${getActionBadgeClass(log.action)}`}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td>{log.resource_type}</td>
+                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{log.ip_address || '—'}</td>
+                    <td style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#334155' }}>
+                      {log.details ? JSON.stringify(log.details) : '—'}
+                    </td>
                   </tr>
                 </thead>
                 <tbody>

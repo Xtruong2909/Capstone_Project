@@ -11,6 +11,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useLanguage } from '../../hooks/useLanguage'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
 import { datasetService } from '../../services/datasetService'
 import apiClient from '../../services/apiClient'
 import {
@@ -22,6 +24,7 @@ import {
 import '../admin/AdminLayout.css'
 
 export default function EngineerLayout() {
+  const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -157,8 +160,8 @@ export default function EngineerLayout() {
 
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge admin-sidebar__logo-badge--engineer" title="Urban Traffic - Data Engineer">
-              <Workflow size={20} />
+            <div className="admin-sidebar__logo-badge" title={t('Urban Traffic - Data Engineer')}>
+              <Database size={20} />
             </div>
             {!isSidebarCollapsed && (
               <div className="admin-sidebar__brand-text">
@@ -173,51 +176,100 @@ export default function EngineerLayout() {
           <NavLink
             to="/engineer"
             end
-            title="Pipeline Overview"
+            title={t('Pipeline Overview')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
-            <span>Pipeline Overview</span>
+            <span>{t('Pipeline Overview')}</span>
           </NavLink>
 
           <NavLink
             to="/engineer/datasets"
-            title="Dataset Catalog"
+            title={t('Dataset Catalog')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <FileSpreadsheet size={19} style={{ flexShrink: 0 }} />
-            <span>Dataset Catalog</span>
+            <span>{t('Dataset Catalog')}</span>
           </NavLink>
 
           <NavLink
             to="/engineer/upload"
-            title="Upload & Versioning"
+            title={t('Upload & Versioning')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Upload size={19} style={{ flexShrink: 0 }} />
-            <span>Upload & Versioning</span>
+            <span>{t('Upload & Versioning')}</span>
           </NavLink>
 
           <NavLink
             to="/engineer/pipeline-studio"
-            title="Pipeline Studio"
+            title={t('Pipeline Studio')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Workflow size={19} style={{ flexShrink: 0 }} />
-            <span>Pipeline Studio</span>
+            <span>{t('Pipeline Studio')}</span>
           </NavLink>
 
           <NavLink
             to="/engineer/preview"
-            title="Schema & Data Preview"
+            title={t('Schema & Data Preview')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Table2 size={19} style={{ flexShrink: 0 }} />
-            <span>Schema & Data Preview</span>
+            <span>{t('Schema & Data Preview')}</span>
           </NavLink>
         </nav>
 
         <div className="admin-sidebar__footer">
+          {!isSidebarCollapsed ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.1rem 0.2rem',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {t('Role')}
+              </span>
+              <span
+                className="badge badge--engineer"
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.6rem',
+                  fontWeight: 700,
+                  borderRadius: '9999px',
+                }}
+              >
+                {t('Data Engineer')}
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <span
+                className="badge badge--engineer"
+                title={t('Role: Data Engineer')}
+                style={{
+                  fontSize: '0.65rem',
+                  padding: '0.15rem 0.35rem',
+                  fontWeight: 800,
+                  borderRadius: '6px',
+                }}
+              >
+                DE
+              </span>
+            </div>
+          )}
+
           <div
             className="admin-user-profile"
             title={`${user?.full_name || 'Data Engineer'} • Engineer (${user?.email || 'engineer@gmail.com'})`}
@@ -243,10 +295,10 @@ export default function EngineerLayout() {
             type="button"
             className="admin-logout-btn"
             onClick={handleLogout}
-            title="Sign Out"
+            title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isSidebarCollapsed && <span>Sign Out</span>}
+            {!isSidebarCollapsed && <span>{t('Sign Out')}</span>}
           </button>
         </div>
       </aside>
@@ -254,16 +306,10 @@ export default function EngineerLayout() {
       {/* Main Content */}
       <div className="admin-main">
         <header className="admin-header">
-          <div className="admin-header__left">
-            <div className="admin-header__project-tag">
-              <span className="project-tag-pill project-tag-pill--engineer">FA26SE155</span>
-              <span className="project-tag-divider">•</span>
-              <span className="project-tag-sub">UAV Trajectory Pipeline</span>
-            </div>
-            <h1 className="admin-header__heading">
-              Data Engineering & Schema QA Studio
-            </h1>
+          <div className="admin-header__title">
+            <h1>{t('Data Engineer Workspace (pNEUMA Pipeline)')}</h1>
           </div>
+          <LanguageSwitcher />
         </header>
 
         <main className="admin-content">

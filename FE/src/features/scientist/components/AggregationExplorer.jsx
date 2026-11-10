@@ -12,18 +12,11 @@ import {
 } from 'lucide-react'
 import { useAggregationExplorer } from '../../../hooks/useTrafficForecast'
 import LineChart from './LineChart'
-import { formatNumber } from '../utils/formatters'
+import { formatNumber, formatRecordingTime } from '../utils/formatters'
 import './AggregationExplorer.css'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const DEFAULT_ROI = 'MAIN_ROI'
-
-function formatTimeOnly(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
 
 function formatTrafficFlow(val) {
   if (val == null || Number.isNaN(Number(val))) return '—'
@@ -265,7 +258,7 @@ export default function AggregationExplorer({
                           <td style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem' }}>
                             {(page - 1) * pageSize + idx + 1}
                           </td>
-                          <td>{formatTimeOnly(row.time_bucket)}</td>
+                          <td>{formatRecordingTime(row.time_bucket)}</td>
                           <td style={{ fontWeight: 700 }}>{formatNumber(row.vehicle_count)}</td>
                           <td>{row.mean_speed != null ? row.mean_speed.toFixed(2) : '—'}</td>
                           <td style={{ fontWeight: 700, color: '#ea580c' }}>
@@ -333,7 +326,7 @@ export default function AggregationExplorer({
                   <tbody>
                     {(preview?.items || []).map((row) => (
                       <tr key={row.id}>
-                        <td className="sci-flow-table__time">{formatTimeOnly(row.time_bucket)}</td>
+                        <td className="sci-flow-table__time">{formatRecordingTime(row.time_bucket)}</td>
                         <td className="sci-flow-table__value">{formatTrafficFlow(row.traffic_flow)}</td>
                       </tr>
                     ))}

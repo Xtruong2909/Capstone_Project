@@ -12,32 +12,12 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import './AdminPortal.css'
-
-const ROUTE_META = {
-  '/admin': {
-    section: 'Command Center',
-    title: 'Executive Governance & System Telemetry',
-  },
-  '/admin/users': {
-    section: 'Identity & Access',
-    title: 'User Directory & Role-Based Access Control',
-  },
-  '/admin/datasets': {
-    section: 'Data Quality Gate',
-    title: 'UAV Trajectory Quality Gate & Inspection Queue',
-  },
-  '/admin/datasets-available': {
-    section: 'Data Quality Gate',
-    title: 'Verified Benchmark Dataset Catalog',
-  },
-  '/admin/audit-logs': {
-    section: 'Compliance & Security',
-    title: 'Immutable System Audit Ledger',
-  },
-}
+import { useLanguage } from '../../hooks/useLanguage'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
+import './AdminLayout.css'
 
 export default function AdminLayout() {
+  const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -95,31 +75,67 @@ export default function AdminLayout() {
           )}
         </div>
 
-        <nav className="adm-sidebar__nav">
-          <div className="adm-nav-group">
-            <span className="adm-nav-group__label">Command Center</span>
-            <NavLink
-              to="/admin"
-              end
-              title="Executive Overview"
-              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
-              <span className="adm-nav-link__text">Executive Overview</span>
-            </NavLink>
+        <div className="admin-sidebar__header">
+          <div className="admin-sidebar__brand">
+            <div className="admin-sidebar__logo-badge" title={t('Urban Traffic - Admin Portal')}>
+              <Shield size={20} />
+            </div>
+            {!isSidebarCollapsed && (
+              <div className="admin-sidebar__brand-text">
+                <h2>Urban Traffic</h2>
+                <span>{t('Admin Portal')}</span>
+              </div>
+            )}
           </div>
 
-          <div className="adm-nav-group">
-            <span className="adm-nav-group__label">Identity & Access</span>
-            <NavLink
-              to="/admin/users"
-              title="Users & RBAC"
-              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <Users size={18} style={{ flexShrink: 0 }} />
-              <span className="adm-nav-link__text">Users & RBAC</span>
-            </NavLink>
-          </div>
+        <nav className="admin-sidebar__nav">
+          <NavLink
+            to="/admin"
+            end
+            title={t('System Overview')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
+            <span>{t('System Overview')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/users"
+            title={t('User Management')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Users size={19} style={{ flexShrink: 0 }} />
+            <span>{t('User Management')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/datasets"
+            end
+            title={t('Dataset Approvals')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <CheckCircle size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Dataset Approvals')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/datasets-available"
+            title={t('Dataset Available')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Database size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Dataset Available')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/audit-logs"
+            title={t('Audit Logs')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <ScrollText size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Audit Logs')}</span>
+          </NavLink>
+        </nav>
 
           <div className="adm-nav-group">
             <span className="adm-nav-group__label">Data Quality Gate</span>
@@ -129,32 +145,45 @@ export default function AdminLayout() {
               title="Quality Gate Queue"
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
-              <ShieldCheck size={18} style={{ flexShrink: 0 }} />
-              <span className="adm-nav-link__text">Quality Gate Queue</span>
-            </NavLink>
-
-            <NavLink
-              to="/admin/datasets-available"
-              title="Verified Catalog"
-              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <Database size={18} style={{ flexShrink: 0 }} />
-              <span className="adm-nav-link__text">Verified Catalog</span>
-            </NavLink>
-          </div>
-
-          <div className="adm-nav-group">
-            <span className="adm-nav-group__label">Compliance</span>
-            <NavLink
-              to="/admin/audit-logs"
-              title="Security Audit Logs"
-              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
-            >
-              <ScrollText size={18} style={{ flexShrink: 0 }} />
-              <span className="adm-nav-link__text">Security Audit Logs</span>
-            </NavLink>
-          </div>
-        </nav>
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {t('Role')}
+              </span>
+              <span
+                className="badge badge--admin"
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.6rem',
+                  fontWeight: 700,
+                  borderRadius: '9999px',
+                }}
+              >
+                {t('Administrator')}
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <span
+                className="badge badge--admin"
+                title={t('Role: Administrator')}
+                style={{
+                  fontSize: '0.65rem',
+                  padding: '0.15rem 0.35rem',
+                  fontWeight: 800,
+                  borderRadius: '6px',
+                }}
+              >
+                AD
+              </span>
+            </div>
+          )}
 
         <div className="adm-sidebar__footer">
           <div
@@ -189,21 +218,21 @@ export default function AdminLayout() {
             type="button"
             className="adm-logout-btn"
             onClick={handleLogout}
-            title="Sign Out"
+            title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isSidebarCollapsed && <span>Sign Out</span>}
+            {!isSidebarCollapsed && <span>{t('Sign Out')}</span>}
           </button>
         </div>
       </aside>
 
-      {/* Main Workspace */}
-      <div className="adm-workspace">
-        <header className="adm-topbar">
-          <div className="adm-topbar__left">
-            <span className="adm-topbar__crumb">{currentMeta.section}</span>
-            <h1 className="adm-topbar__title">{currentMeta.title}</h1>
+      {/* Main Content Area */}
+      <div className="admin-main">
+        <header className="admin-header">
+          <div className="admin-header__title">
+            <h1>{t('Administrator Dashboard')}</h1>
           </div>
+          <LanguageSwitcher />
         </header>
 
         <main className="adm-canvas">

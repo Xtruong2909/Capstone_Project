@@ -100,4 +100,170 @@ export const trafficForecastService = {
     )
     return response.data
   },
+
+  // ---------------------------------------------------------- Train / Test Split
+  /**
+   * POST /api/train-test-split/training
+   * Forwards the Feature Engineering response directly to split 70/30 chronologically.
+   */
+  async splitTrainingData(
+    featureResponse,
+    { trainRatio = 0.7, splitStrategy = 'chronological' } = {}
+  ) {
+    const payload = {
+      dataset_version_id: featureResponse.dataset_version_id,
+      roi_identifier: featureResponse.roi_identifier || 'MAIN_ROI',
+      configuration: featureResponse.configuration,
+      sample_count: featureResponse.sample_count ?? featureResponse.samples?.length,
+      train_ratio: trainRatio,
+      split_strategy: splitStrategy,
+      feature_order: featureResponse.feature_order || [
+        'lag_1',
+        'lag_2',
+        'lag_3',
+        'lag_4',
+        'lag_5',
+      ],
+      target_order: featureResponse.target_order || [
+        'target_h1',
+        'target_h3',
+        'target_h5',
+      ],
+      samples: featureResponse.samples || [],
+    }
+    if (featureResponse.recording_session_id) {
+      payload.recording_session_id = featureResponse.recording_session_id
+    }
+    const response = await apiClient.post('/train-test-split/training', payload, {
+      baseURL: FEATURE_API_BASE_URL,
+    })
+    return response.data
+  },
+
+  // ---------------------------------------------------------- Model Training & Experiments
+  /**
+   * POST /api/model-training/experiment
+   * Sends split_id and Random Forest parameters via query parameters.
+   */
+  async createTrainingExperiment({
+    splitId,
+    nEstimators = 100,
+    maxDepth = 10,
+    minSamplesSplit = 2,
+    minSamplesLeaf = 1,
+    maxFeatures = '1.0',
+    bootstrap = true,
+    randomState = 42,
+    evaluationMode = 'exploratory',
+  }) {
+    const params = {
+      split_id: splitId,
+      n_estimators: Number(nEstimators),
+      max_depth: Number(maxDepth),
+      min_samples_split: Number(minSamplesSplit),
+      min_samples_leaf: Number(minSamplesLeaf),
+      max_features: String(maxFeatures).trim(),
+      bootstrap: Boolean(bootstrap),
+      random_state: Number(randomState),
+      evaluation_mode: evaluationMode,
+    }
+    const response = await apiClient.post('/model-training/experiment', null, {
+      baseURL: FEATURE_API_BASE_URL,
+      params,
+    })
+    return response.data
+  },
+
+  /**
+   * GET /api/model-training/experiments
+   * Lists persisted training experiments, optionally filtered by dataset_version_id.
+   */
+  async listTrainingExperiments({ datasetVersionId, skip = 0, limit = 100 } = {}) {
+    const params = { skip, limit }
+    if (datasetVersionId) {
+      params.dataset_version_id = datasetVersionId
+    }
+    const response = await apiClient.get('/model-training/experiments', {
+      baseURL: FEATURE_API_BASE_URL,
+      params,
+    })
+    return response.data
+  },
+
+  /**
+   * GET /api/model-training/experiments/{experiment_id}
+   * Fetches full detail and 3 result tables for a single experiment.
+   */
+  async getTrainingExperimentDetail(experimentId) {
+    const response = await apiClient.get(`/model-training/experiments/${experimentId}`, {
+      baseURL: FEATURE_API_BASE_URL,
+    })
+    return response.data
+  },
+
+  /**
+   * POST /api/model-training/experiments/compare
+   * Compares 2 to 20 completed experiments sharing the same dataset version, split, and evaluation rules.
+   */
+  async compareTrainingExperiments(experimentIds) {
+    const response = await apiClient.post(
+      '/model-training/experiments/compare',
+      { experiment_ids: experimentIds },
+      { baseURL: FEATURE_API_BASE_URL }
+    )
+    return response.data
+  },
+
+  // ---------------------------------------------------------- Model Prediction (+1, +3, +5 min)
+  /**
+   * POST /api/model-training/predict
+   * Selects the best experiment by Validation score and predicts +1, +3, +5 minutes using Final Model.
+   */
+  async predictTrafficFlow({ datasetVersionId, splitId, experimentId } = {}) {
+    const payload = {}
+    if (datasetVersionId) payload.dataset_version_id = datasetVersionId
+    if (splitId) payload.split_id = splitId
+    if (experimentId) payload.experiment_id = experimentId
+
+    const response = await apiClient.post('/model-training/predict', payload, {
+      baseURL: FEATURE_API_BASE_URL,
+    })
+    return response.data
+  },
+
+  // ---------------------------------------------------------- AI Assistant (Gemini)
+  /**
+   * POST /api/ai/assistant
+   * Calls the Data Scientist AI Assistant powered by Gemini.
+   */
+  async askAiAssistant({
+    action = 'CHAT',
+    message,
+    experimentIds,
+    predictionId,
+    modelId,
+    datasetVersionId,
+  } = {}) {
+    const payload = { action }
+    if (Array.isArray(experimentIds) && experimentIds.length > 0) {
+      payload.experiment_ids = experimentIds
+    }
+    if (predictionId != null && String(predictionId).trim() !== '') {
+      payload.prediction_id = Number(predictionId)
+    }
+    if (modelId && String(modelId).trim() !== '') {
+      payload.model_id = String(modelId).trim()
+    }
+    if (datasetVersionId && String(datasetVersionId).trim() !== '') {
+      payload.dataset_version_id = String(datasetVersionId).trim()
+    }
+    if (message != null && String(message).trim() !== '') {
+      payload.message = String(message).trim()
+    }
+
+    const response = await apiClient.post('/ai/assistant', payload, {
+      baseURL: FEATURE_API_BASE_URL,
+    })
+    return response.data
+  },
 }
