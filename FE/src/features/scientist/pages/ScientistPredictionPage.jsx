@@ -77,6 +77,15 @@ export default function ScientistPredictionPage() {
         isLoading={isLoadingList}
       />
 
+      {/* Historical Traffic Aggregation Explorer */}
+      <AggregationExplorer
+        key={`aggregation:${datasetId}:${versionId}`}
+        datasetId={datasetId}
+        versionId={versionId}
+        title="Prediction · Traffic Flow & Speed Forecast Insight"
+        subtitle="Analyze historical traffic trends and time-bucket metrics for forecasting."
+      />
+
       {/* Step 1: Tạo Đặc trưng cho Dự báo (POST /api/feature-engineering/prediction) */}
       <PredictionFeaturePanel
         key={`pred-features:${datasetId}:${versionId}`}
@@ -105,15 +114,6 @@ export default function ScientistPredictionPage() {
           onAskAiAboutForecast={handleAskAiAboutForecast}
         />
       </div>
-
-      {/* Historical Traffic Aggregation Explorer */}
-      <AggregationExplorer
-        key={`aggregation:${datasetId}:${versionId}`}
-        datasetId={datasetId}
-        versionId={versionId}
-        title="Prediction · Traffic Flow & Speed Forecast Insight"
-        subtitle="Analyze historical traffic trends and time-bucket metrics for forecasting."
-      />
     </div>
   )
 }
