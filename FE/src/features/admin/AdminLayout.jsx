@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
@@ -10,93 +10,81 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
-  Cpu,
-} from "lucide-react";
-import { useAuth } from "../../hooks/useAuth";
-import "./AdminPortal.css";
+} from 'lucide-react'
+import { useAuth } from '../../hooks/useAuth'
+import './AdminPortal.css'
 
 const ROUTE_META = {
-  "/admin": {
-    section: "Command Center",
-    title: "Executive Governance & System Telemetry",
+  '/admin': {
+    section: 'Command Center',
+    title: 'Executive Governance & System Telemetry',
   },
-  "/admin/users": {
-    section: "Identity & Access",
-    title: "User Directory & Role-Based Access Control",
+  '/admin/users': {
+    section: 'Identity & Access',
+    title: 'User Directory & Role-Based Access Control',
   },
-  "/admin/datasets": {
-    section: "Data Quality Gate",
-    title: "UAV Trajectory Quality Gate & Inspection Queue",
+  '/admin/datasets': {
+    section: 'Data Quality Gate',
+    title: 'UAV Trajectory Quality Gate & Inspection Queue',
   },
-  "/admin/datasets-available": {
-    section: "Data Quality Gate",
-    title: "Verified Benchmark Dataset Catalog",
+  '/admin/datasets-available': {
+    section: 'Data Quality Gate',
+    title: 'Verified Benchmark Dataset Catalog',
   },
-  "/admin/audit-logs": {
-    section: "Compliance & Security",
-    title: "Immutable System Audit Ledger",
+  '/admin/audit-logs': {
+    section: 'Compliance & Security',
+    title: 'Immutable System Audit Ledger',
   },
-};
+}
 
 export default function AdminLayout() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
-      return localStorage.getItem("sidebar_collapsed_admin") === "true";
+      return localStorage.getItem('sidebar_collapsed_admin') === 'true'
     } catch {
-      return false;
+      return false
     }
-  });
+  })
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed((prev) => {
-      const next = !prev;
+      const next = !prev
       try {
-        localStorage.setItem("sidebar_collapsed_admin", String(next));
+        localStorage.setItem('sidebar_collapsed_admin', String(next))
       } catch {
         // ignore storage error
       }
-      return next;
-    });
-  };
+      return next
+    })
+  }
 
   const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
+    logout()
+    navigate('/login')
+  }
 
-  const currentMeta = ROUTE_META[location.pathname] || ROUTE_META["/admin"];
+  const currentMeta = ROUTE_META[location.pathname] || ROUTE_META['/admin']
 
   return (
     <div className="adm-shell">
       {/* Dark Obsidian Command Sidebar */}
-      <aside
-        className={`adm-sidebar ${isSidebarCollapsed ? "adm-sidebar--collapsed" : ""}`}
-      >
+      <aside className={`adm-sidebar ${isSidebarCollapsed ? 'adm-sidebar--collapsed' : ''}`}>
         <button
           type="button"
           className="adm-sidebar__toggle"
           onClick={toggleSidebar}
-          aria-label={
-            isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
-          }
-          title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {isSidebarCollapsed ? (
-            <ChevronRight size={15} />
-          ) : (
-            <ChevronLeft size={15} />
-          )}
+          {isSidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
 
         <div className="adm-sidebar__brand">
-          <div
-            className="adm-sidebar__logo"
-            title="Traffic Governance Control Center"
-          >
+          <div className="adm-sidebar__logo" title="Traffic Governance Control Center">
             <Shield size={21} />
           </div>
           {!isSidebarCollapsed && (
@@ -114,9 +102,7 @@ export default function AdminLayout() {
               to="/admin"
               end
               title="Executive Overview"
-              className={({ isActive }) =>
-                `adm-nav-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
               <span className="adm-nav-link__text">Executive Overview</span>
@@ -128,9 +114,7 @@ export default function AdminLayout() {
             <NavLink
               to="/admin/users"
               title="Users & RBAC"
-              className={({ isActive }) =>
-                `adm-nav-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <Users size={18} style={{ flexShrink: 0 }} />
               <span className="adm-nav-link__text">Users & RBAC</span>
@@ -143,9 +127,7 @@ export default function AdminLayout() {
               to="/admin/datasets"
               end
               title="Quality Gate Queue"
-              className={({ isActive }) =>
-                `adm-nav-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <ShieldCheck size={18} style={{ flexShrink: 0 }} />
               <span className="adm-nav-link__text">Quality Gate Queue</span>
@@ -154,9 +136,7 @@ export default function AdminLayout() {
             <NavLink
               to="/admin/datasets-available"
               title="Verified Catalog"
-              className={({ isActive }) =>
-                `adm-nav-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <Database size={18} style={{ flexShrink: 0 }} />
               <span className="adm-nav-link__text">Verified Catalog</span>
@@ -168,9 +148,7 @@ export default function AdminLayout() {
             <NavLink
               to="/admin/audit-logs"
               title="Security Audit Logs"
-              className={({ isActive }) =>
-                `adm-nav-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <ScrollText size={18} style={{ flexShrink: 0 }} />
               <span className="adm-nav-link__text">Security Audit Logs</span>
@@ -181,19 +159,28 @@ export default function AdminLayout() {
         <div className="adm-sidebar__footer">
           <div
             className="adm-user-card"
-            title={`${user?.full_name || "Administrator"} (${user?.email || "admin@gmail.com"})`}
+            title={`${user?.full_name || 'Administrator'} • Admin (${user?.email || 'admin@gmail.com'})`}
           >
-            <div className="adm-user-card__avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : "A"}
+            <div className="adm-user-card__avatar-wrap">
+              <div className="adm-user-card__avatar">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
+              </div>
+              <span className="adm-user-card__status-dot" title="Online" />
             </div>
             {!isSidebarCollapsed && (
               <div className="adm-user-card__meta">
-                <span className="adm-user-card__name">
-                  {user?.full_name || "Administrator"}
-                </span>
-                <span className="adm-user-card__role">
-                  {user?.email || "admin@gmail.com"}
-                </span>
+                <div className="adm-user-card__name-row">
+                  <span className="adm-user-card__name">
+                    {user?.full_name === 'System Administrator'
+                      ? 'System Admin'
+                      : user?.full_name || 'Administrator'}
+                  </span>
+                  <span className="adm-user-card__role-pill">
+                    <Shield size={10} />
+                    <span>Admin</span>
+                  </span>
+                </div>
+                <span className="adm-user-card__role">{user?.email || 'admin@gmail.com'}</span>
               </div>
             )}
           </div>
@@ -217,21 +204,6 @@ export default function AdminLayout() {
             <span className="adm-topbar__crumb">{currentMeta.section}</span>
             <h1 className="adm-topbar__title">{currentMeta.title}</h1>
           </div>
-
-          <div className="adm-topbar__right">
-            <div className="adm-telemetry-chip adm-telemetry-chip--online">
-              <span className="adm-telemetry-dot" />
-              <span>PostGIS 3.4 Engine</span>
-            </div>
-            <div className="adm-telemetry-chip">
-              <Cpu size={14} style={{ color: "#2563eb" }} />
-              <span>pNEUMA Benchmark</span>
-            </div>
-            <span className="adm-badge adm-badge--rose">
-              <Shield size={15} />
-              <span>ADMIN</span>
-            </span>
-          </div>
         </header>
 
         <main className="adm-canvas">
@@ -239,5 +211,5 @@ export default function AdminLayout() {
         </main>
       </div>
     </div>
-  );
+  )
 }

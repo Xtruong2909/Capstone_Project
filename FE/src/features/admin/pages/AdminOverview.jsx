@@ -210,11 +210,6 @@ export default function AdminOverview() {
           </div>
 
           <div className="adm-command-hero__actions">
-            <div className="adm-telemetry-chip adm-telemetry-chip--online">
-              <span className={`adm-telemetry-dot ${isOnline ? '' : 'adm-telemetry-dot--offline'}`} />
-              <span>{isOnline ? 'PostGIS Online' : 'Database Offline'}</span>
-            </div>
-
             <button
               type="button"
               className="adm-btn adm-btn--primary"

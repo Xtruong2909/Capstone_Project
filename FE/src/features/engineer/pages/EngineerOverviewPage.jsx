@@ -77,19 +77,6 @@ export default function EngineerOverviewPage() {
           </div>
 
           <div className="admin-hero-banner__actions">
-            <div
-              className={`status-pill-live ${
-                isOnline ? 'status-pill-live--online' : 'status-pill-live--offline'
-              }`}
-            >
-              <span
-                className={`status-pulse-dot ${
-                  isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'
-                }`}
-              />
-              <span>{isOnline ? 'PostGIS Online' : 'Database Offline'}</span>
-            </div>
-
             <button
               type="button"
               className="btn-hero-sample"

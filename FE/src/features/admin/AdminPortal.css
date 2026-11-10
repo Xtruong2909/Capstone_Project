@@ -34,29 +34,40 @@
   width: 80px;
 }
 
-/* Toggle Button on Rail Edge */
+/* Squircle/Pill Toggle Button on Header Rail Edge */
 .adm-sidebar__toggle {
   position: absolute;
-  top: 24px;
-  right: -14px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #2563eb;
-  color: #ffffff;
-  border: 2px solid #0b1120;
+  top: 20px;
+  right: -15px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+  color: #cbd5e1;
+  border: 1.5px solid #334155;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   z-index: 50;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.45);
-  transition: all 0.2s ease;
+  box-shadow:
+    0 4px 12px rgba(2, 6, 23, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .adm-sidebar__toggle:hover {
-  background: #1d4ed8;
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  color: #ffffff;
+  border-color: #60a5fa;
   transform: scale(1.08);
+  box-shadow:
+    0 6px 18px rgba(37, 99, 235, 0.55),
+    0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.adm-sidebar__toggle:active {
+  transform: scale(0.95);
 }
 
 .adm-sidebar__toggle:focus-visible {
@@ -194,43 +205,83 @@
   color: #e2e8f0;
 }
 
-/* Sidebar Footer */
+/* Sidebar Footer — Muted Dark Card with Animated Role Badge Only */
+@keyframes admRoleBadgeShimmer {
+  0% {
+    background-position: 0% 50%;
+    border-color: rgba(244, 63, 94, 0.35);
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0);
+  }
+  50% {
+    background-position: 100% 50%;
+    border-color: rgba(251, 113, 133, 0.65);
+    box-shadow: 0 0 10px rgba(225, 29, 72, 0.32);
+  }
+  100% {
+    background-position: 0% 50%;
+    border-color: rgba(244, 63, 94, 0.35);
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0);
+  }
+}
+
 .adm-sidebar__footer {
-  padding: 1rem 0.85rem;
+  padding: 0.95rem 0.8rem 1.05rem;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(2, 6, 23, 0.4);
+  background: rgba(2, 6, 23, 0.45);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
 
 .adm-user-card {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.7rem;
+  gap: 0.7rem;
+  padding: 0.68rem 0.75rem;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.adm-user-card:hover {
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(148, 163, 184, 0.28);
 }
 
 .adm-sidebar--collapsed .adm-user-card {
   justify-content: center;
-  padding: 0.5rem;
+  padding: 0.55rem;
+}
+
+.adm-user-card__avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
 }
 
 .adm-user-card__avatar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-  color: #ffffff;
+  background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%);
+  color: #e2e8f0;
   font-weight: 800;
   font-size: 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.adm-user-card__status-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #059669;
+  border: 2px solid #0f172a;
 }
 
 .adm-user-card__meta {
@@ -238,37 +289,63 @@
   flex: 1;
 }
 
+.adm-user-card__name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
 .adm-user-card__name {
   display: block;
   font-size: 0.82rem;
   font-weight: 700;
-  color: #f8fafc;
+  color: #f1f5f9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.adm-user-card__role-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.16rem 0.48rem;
+  border-radius: 9999px;
+  background: linear-gradient(120deg, #881337 0%, #be123c 50%, #881337 100%);
+  background-size: 200% 100%;
+  color: #ffe4e6;
+  border: 1px solid rgba(244, 63, 94, 0.4);
+  animation: admRoleBadgeShimmer 3s ease-in-out infinite;
 }
 
 .adm-user-card__role {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.71rem;
   color: #94a3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 0.14rem;
 }
 
 .adm-logout-btn {
   width: 100%;
-  min-height: 42px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.85rem;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
   border-radius: 10px;
-  background: rgba(239, 68, 68, 0.12);
-  color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(159, 18, 57, 0.18);
+  color: #fda4af;
+  border: 1px solid rgba(225, 29, 72, 0.28);
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
@@ -276,9 +353,15 @@
 }
 
 .adm-logout-btn:hover {
-  background: #ef4444;
+  background: #be123c;
   color: #ffffff;
-  border-color: #ef4444;
+  border-color: #e11d48;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-user-card__role-pill {
+    animation: none !important;
+  }
 }
 
 /* ==========================================================================
