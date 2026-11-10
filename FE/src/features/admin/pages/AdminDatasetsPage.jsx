@@ -17,6 +17,7 @@ import {
   Sparkles,
   Check,
   RotateCcw,
+  ShieldCheck,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import { useLanguage } from '../../../hooks/useLanguage'
@@ -40,17 +41,15 @@ export default function AdminDatasetsPage() {
   const [error, setError] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [feedbackBanner, setFeedbackBanner] = useState(null)
-
-  // Search State
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Preview Modal State (GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview)
+  // Preview Modal State
   const [previewState, setPreviewState] = useState({
     isOpen: false,
     item: null,
     isLoading: false,
     data: null,
-    representation: 'normalized', // 'normalized' or 'raw'
+    representation: 'normalized',
     page: 1,
     pageSize: 20,
     error: null,
@@ -61,7 +60,7 @@ export default function AdminDatasetsPage() {
   const [reviewModal, setReviewModal] = useState({
     isOpen: false,
     item: null,
-    decision: 'APPROVED', // 'APPROVED' | 'REJECTED'
+    decision: 'APPROVED',
     note: APPROVAL_NOTE_PRESETS[0],
     error: null,
   })
@@ -83,13 +82,11 @@ export default function AdminDatasetsPage() {
     fetchDatasets()
   }, [fetchDatasets])
 
-  // Helper to check if a dataset version is awaiting review
   const isAwaitingReview = (status) => {
     const normalized = (status || '').toUpperCase()
     return normalized === 'SUBMITTED' || normalized === 'PENDING'
   }
 
-  // Computed KPI Counts & Filtered List (only versions awaiting review)
   const reviewQueue = useMemo(() => {
     return datasets.filter((d) => isAwaitingReview(d.approval_status))
   }, [datasets])
@@ -113,7 +110,7 @@ export default function AdminDatasetsPage() {
     })
   }, [reviewQueue, searchQuery])
 
-  // ---- Preview Modal Handlers ----
+  // Preview Modal Handlers
   const loadPreviewData = useCallback(
     async (datasetId, versionId, page = 1, representation = 'normalized') => {
       setPreviewState((prev) => ({
@@ -136,7 +133,6 @@ export default function AdminDatasetsPage() {
           data: result,
         }))
       } catch (err) {
-        console.error('Failed to load version preview:', err)
         setPreviewState((prev) => ({
           ...prev,
           isLoading: false,
@@ -191,16 +187,14 @@ export default function AdminDatasetsPage() {
     }
   }
 
-  // ---- Review Modal Handlers ----
+  // Review Modal Handlers
   const handleOpenReviewModal = (item, initialDecision = 'APPROVED') => {
     setReviewModal({
       isOpen: true,
       item,
       decision: initialDecision,
       note:
-        initialDecision === 'APPROVED'
-          ? APPROVAL_NOTE_PRESETS[0]
-          : REJECTION_NOTE_PRESETS[0],
+        initialDecision === 'APPROVED' ? APPROVAL_NOTE_PRESETS[0] : REJECTION_NOTE_PRESETS[0],
       error: null,
     })
   }
@@ -216,9 +210,7 @@ export default function AdminDatasetsPage() {
     const datasetId = item.dataset_id
     const finalNote =
       (noteText || '').trim() ||
-      (status === 'APPROVED'
-        ? APPROVAL_NOTE_PRESETS[0]
-        : REJECTION_NOTE_PRESETS[0])
+      (status === 'APPROVED' ? APPROVAL_NOTE_PRESETS[0] : REJECTION_NOTE_PRESETS[0])
 
     setActionLoading(versionId)
     setReviewModal((prev) => ({ ...prev, error: null }))
@@ -229,18 +221,13 @@ export default function AdminDatasetsPage() {
         note: finalNote,
       })
 
-      // Lưu trạng thái vào bộ nhớ đệm (nếu APPROVED sẽ xuất hiện bên trang Dataset Available)
       adminService.recordDatasetReviewInCache(item, status, finalNote)
-
-      // Loại bỏ ngay khỏi bảng Dataset Versions for Review khi đã được Approve hoặc Reject
       setDatasets((prev) => prev.filter((d) => d.id !== versionId))
 
-      // Đóng modal preview nếu đang mở phiên bản vừa duyệt
       if (previewState.isOpen && previewState.item?.id === versionId) {
         handleClosePreview()
       }
 
-      // Close review modal & show success banner
       setReviewModal({
         isOpen: false,
         item: null,
@@ -273,20 +260,14 @@ export default function AdminDatasetsPage() {
     switch (normalized) {
       case 'APPROVED':
         return (
-          <span
-            className="badge badge--approved"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-          >
+          <span className="adm-badge adm-badge--emerald">
             <CheckCircle2 size={12} />
             <span>{t('Approved')}</span>
           </span>
         )
       case 'REJECTED':
         return (
-          <span
-            className="badge badge--rejected"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-          >
+          <span className="adm-badge adm-badge--rose">
             <XCircle size={12} />
             <span>{t('Rejected')}</span>
           </span>
@@ -312,10 +293,7 @@ export default function AdminDatasetsPage() {
       case 'PENDING':
       default:
         return (
-          <span
-            className="badge badge--pending"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
-          >
+          <span className="adm-badge adm-badge--amber">
             <Clock size={12} />
             <span>{t('Pending')}</span>
           </span>
@@ -325,32 +303,12 @@ export default function AdminDatasetsPage() {
 
   return (
     <div>
-      {/* 1. KPI Summary Strip */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '1rem',
-          marginBottom: '1.25rem',
-        }}
-      >
-        <div
-          className="admin-card"
-          style={{
-            marginBottom: 0,
-            padding: '1rem 1.25rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.9rem',
-            borderLeft: '4px solid #f59e0b',
-          }}
-        >
-          <div className="admin-card__icon-box admin-card__icon-box--amber">
-            <Clock size={20} />
-          </div>
-          <div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-              {stats.awaiting}
+      {/* 1. 3-Column Bento KPI Strip */}
+      <div className="adm-bento-grid">
+        <div className="adm-panel adm-col-4">
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--amber">
+              <Clock size={20} />
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
               {t('Awaiting Approval')}
@@ -358,23 +316,26 @@ export default function AdminDatasetsPage() {
           </div>
         </div>
 
-        <div
-          className="admin-card"
-          style={{
-            marginBottom: 0,
-            padding: '1rem 1.25rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.9rem',
-            borderLeft: '4px solid #2563eb',
-          }}
-        >
-          <div className="admin-card__icon-box admin-card__icon-box--blue">
-            <Database size={20} />
+        <div className="adm-panel adm-col-4">
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--blue">
+              <Database size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {new Set(reviewQueue.map((d) => d.dataset_id || d.dataset_name).filter(Boolean)).size}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Pending UAV Datasets
+              </div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-              {stats.totalRecords.toLocaleString()}
+        </div>
+
+        <div className="adm-panel adm-col-4">
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--purple">
+              <Layers size={20} />
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
               {t('Total Trajectory Points in Queue')}
@@ -383,67 +344,87 @@ export default function AdminDatasetsPage() {
         </div>
       </div>
 
-      {/* Feedback Banner */}
+      {/* 2. Feedback Banner */}
       {feedbackBanner && (
         <div
           style={{
-            marginBottom: '1.25rem',
-            padding: '0.85rem 1.15rem',
-            borderRadius: '10px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '0.75rem',
-            background: feedbackBanner.type === 'success' ? '#f0fdf4' : '#fffbeb',
-            border:
-              feedbackBanner.type === 'success'
-                ? '1px solid #86efac'
-                : '1px solid #fde68a',
-            color: feedbackBanner.type === 'success' ? '#166534' : '#92400e',
-            fontWeight: 600,
+            padding: '0.9rem 1.25rem',
+            marginBottom: '1.25rem',
+            borderRadius: '14px',
             fontSize: '0.86rem',
+            fontWeight: 700,
+            background: feedbackBanner.type === 'success' ? '#ecfdf5' : '#fff1f2',
+            color: feedbackBanner.type === 'success' ? '#047857' : '#be123c',
+            border:
+              feedbackBanner.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fecdd3',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-            {feedbackBanner.type === 'success' ? (
-              <CheckCircle2 size={18} color="#16a34a" />
-            ) : (
-              <AlertCircle size={18} color="#d97706" />
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            {feedbackBanner.type === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
             <span>{feedbackBanner.message}</span>
           </div>
           <button
             type="button"
             onClick={() => setFeedbackBanner(null)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'inherit',
-              padding: '0.2rem',
-            }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
           >
             <X size={16} />
           </button>
         </div>
       )}
 
-      {/* 2. Main Dataset Versions Review Card */}
-      <div className="admin-card">
-        <div
-          className="admin-card__header"
-          style={{ flexWrap: 'wrap', gap: '0.85rem' }}
-        >
-          <div className="admin-card__header-left">
-            <div className="admin-card__icon-box admin-card__icon-box--blue">
-              <FileCheck size={18} />
+      {/* 3. Toolbar */}
+      <div className="adm-toolbar">
+        <div className="adm-search-box">
+          <Search size={16} className="adm-search-box__icon" />
+          <input
+            type="text"
+            placeholder="Search dataset name, version tag (v1.0), or format..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="adm-input adm-input--search"
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <button
+            type="button"
+            className="adm-btn adm-btn--ghost"
+            onClick={() => {
+              adminService.clearReviewCache()
+              setFeedbackBanner(null)
+              fetchDatasets()
+            }}
+            title="Restore sample datasets to review queue"
+          >
+            <RotateCcw size={15} />
+            <span>Reset Demo Queue</span>
+          </button>
+
+          <button type="button" className="adm-btn adm-btn--primary" onClick={fetchDatasets}>
+            <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+            <span>Refresh Queue</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Quality Gate Table */}
+      <div className="adm-panel">
+        <div className="adm-panel__header">
+          <div className="adm-panel__title-group">
+            <div className="adm-panel__icon adm-tone--amber">
+              <ShieldCheck size={18} />
             </div>
             <div>
-              <h3 className="admin-card__title">
-                Dataset Versions for Review ({filteredDatasets.length})
+              <h3 className="adm-panel__title">
+                UAV Trajectory Versions Awaiting Decision ({filteredDatasets.length})
               </h3>
-              <p className="admin-card__subtitle" style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                Inspect standardized pNEUMA versions submitted by Data Engineers and approve or reject them.
+              <p className="adm-panel__subtitle">
+                Inspect normalized 10-field pNEUMA schema records before authorizing ML training access
               </p>
             </div>
           </div>
@@ -651,15 +632,10 @@ export default function AdminDatasetsPage() {
                             type="button"
                             className="btn-action btn-action--danger"
                             style={{
-                              padding: '0.38rem 0.75rem',
-                              fontSize: '0.76rem',
-                              fontWeight: 700,
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.3rem',
+                              gap: '0.45rem',
                             }}
-                            disabled={isRowLoading}
-                            onClick={() => handleOpenReviewModal(item, 'REJECTED')}
                           >
                             <XCircle size={13} />
                             <span>{t('Reject')}</span>
@@ -675,12 +651,10 @@ export default function AdminDatasetsPage() {
         )}
       </div>
 
-      {/* =========================================================================
-          3. DEDICATED REVIEW DECISION MODAL (APPROVE / REJECT WITH NOTES)
-         ========================================================================= */}
+      {/* 5. Review Decision Modal */}
       {reviewModal.isOpen && reviewModal.item && (
         <div
-          className="modal-backdrop"
+          className="adm-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) handleCloseReviewModal()
           }}
@@ -729,24 +703,25 @@ export default function AdminDatasetsPage() {
               </div>
               <button
                 type="button"
-                className="modal-close-btn"
+                className="adm-modal__close"
                 onClick={handleCloseReviewModal}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+            <div className="adm-modal__body">
               {reviewModal.error && (
                 <div
                   style={{
                     padding: '0.75rem 1rem',
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    borderRadius: '8px',
-                    color: '#dc2626',
-                    fontSize: '0.82rem',
+                    background: '#fff1f2',
+                    border: '1px solid #fecdd3',
+                    borderRadius: '10px',
+                    color: '#be123c',
+                    fontSize: '0.84rem',
                     marginBottom: '1rem',
+                    fontWeight: 600,
                   }}
                 >
                   {reviewModal.error}
@@ -816,23 +791,19 @@ export default function AdminDatasetsPage() {
                     <button
                       key={idx}
                       type="button"
-                      onClick={() =>
-                        setReviewModal((prev) => ({ ...prev, note: preset }))
-                      }
+                      onClick={() => setReviewModal((prev) => ({ ...prev, note: preset }))}
                       style={{
                         textAlign: 'left',
-                        padding: '0.42rem 0.7rem',
-                        borderRadius: '6px',
+                        padding: '0.55rem 0.85rem',
+                        borderRadius: '10px',
+                        fontSize: '0.78rem',
                         border:
                           reviewModal.note === preset
                             ? '1.5px solid #2563eb'
-                            : '1px solid #e2e8f0',
-                        background:
-                          reviewModal.note === preset ? '#eff6ff' : '#f8fafc',
-                        color:
-                          reviewModal.note === preset ? '#1d4ed8' : '#334155',
-                        fontSize: '0.76rem',
-                        fontWeight: 600,
+                            : '1px solid #cbd5e1',
+                        background: reviewModal.note === preset ? '#eff6ff' : '#f8fafc',
+                        color: reviewModal.note === preset ? '#1d4ed8' : '#334155',
+                        fontWeight: reviewModal.note === preset ? 700 : 500,
                         cursor: 'pointer',
                       }}
                     >
@@ -857,7 +828,6 @@ export default function AdminDatasetsPage() {
                 </label>
                 <textarea
                   rows={3}
-                  className="admin-input"
                   value={reviewModal.note}
                   onChange={(e) =>
                     setReviewModal((prev) => ({ ...prev, note: e.target.value }))
@@ -874,45 +844,22 @@ export default function AdminDatasetsPage() {
               </div>
             </div>
 
-            <div
-              className="modal-actions"
-              style={{
-                padding: '1rem 1.5rem',
-                borderTop: '1px solid #f1f5f9',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '0.6rem',
-              }}
-            >
+            <div className="adm-modal__footer">
               <button
                 type="button"
-                className="btn-secondary"
+                className="adm-btn adm-btn--ghost"
                 onClick={handleCloseReviewModal}
-                disabled={actionLoading === reviewModal.item.id}
               >
                 {t('Cancel')}
               </button>
               <button
                 type="button"
-                className={`btn-action ${
-                  reviewModal.decision === 'APPROVED'
-                    ? 'btn-action--success'
-                    : 'btn-action--danger'
-                }`}
-                style={{
-                  padding: '0.55rem 1.25rem',
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                }}
                 disabled={actionLoading === reviewModal.item.id}
+                className={`adm-btn ${
+                  reviewModal.decision === 'APPROVED' ? 'adm-btn--emerald' : 'adm-btn--danger'
+                }`}
                 onClick={() =>
-                  executeReviewDecision(
-                    reviewModal.item,
-                    reviewModal.decision,
-                    reviewModal.note
-                  )
+                  executeReviewDecision(reviewModal.item, reviewModal.decision, reviewModal.note)
                 }
               >
                 {actionLoading === reviewModal.item.id ? (
@@ -937,12 +884,10 @@ export default function AdminDatasetsPage() {
         </div>
       )}
 
-      {/* =========================================================================
-          4. DATASET VERSION PREVIEW & INLINE REVIEW MODAL
-         ========================================================================= */}
-      {previewState.isOpen && previewState.item && (
+      {/* 6. Dataset Preview Modal */}
+      {previewState.isOpen && (
         <div
-          className="modal-backdrop"
+          className="adm-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) handleClosePreview()
           }}
@@ -1025,13 +970,13 @@ export default function AdminDatasetsPage() {
                     {t('Raw Source')}
                   </button>
                 </div>
-
-                <button type="button" className="modal-close-btn" onClick={handleClosePreview}>
-                  <X size={20} />
-                </button>
               </div>
+              <button type="button" className="adm-modal__close" onClick={handleClosePreview}>
+                <X size={18} />
+              </button>
             </div>
 
+            {/* Representation Toggle & Quick Decision Bar */}
             <div
               className="modal-body"
               style={{ maxHeight: '60vh', overflowY: 'auto', padding: '1.25rem' }}
@@ -1165,14 +1110,14 @@ export default function AdminDatasetsPage() {
             <div
               className="modal-actions"
               style={{
-                padding: '1rem 1.25rem',
-                borderTop: '1px solid #e2e8f0',
+                padding: '0.85rem 1.5rem',
                 background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                gap: '1rem',
                 flexWrap: 'wrap',
-                gap: '0.75rem',
               }}
             >
               <button
@@ -1194,41 +1139,41 @@ export default function AdminDatasetsPage() {
                     flexWrap: 'wrap',
                   }}
                 >
+                  Normalized Schema (Parquet)
+                </button>
+                <button
+                  type="button"
+                  className={`adm-filter-pill ${
+                    previewState.representation === 'raw' ? 'active' : ''
+                  }`}
+                  onClick={() => handleToggleRepresentation('raw')}
+                >
+                  Raw Source CSV
+                </button>
+              </div>
+
+              {previewState.item && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, maxWidth: '560px' }}>
+                  <MessageSquare size={15} style={{ color: '#64748b', flexShrink: 0 }} />
                   <input
                     type="text"
-                    className="admin-input"
                     value={previewState.inlineNote}
                     onChange={(e) =>
-                      setPreviewState((prev) => ({
-                        ...prev,
-                        inlineNote: e.target.value,
-                      }))
+                      setPreviewState((prev) => ({ ...prev, inlineNote: e.target.value }))
                     }
-                    placeholder="Optional review note..."
-                    style={{
-                      flex: '1 1 220px',
-                      maxWidth: '340px',
-                      padding: '0.48rem 0.75rem',
-                      fontSize: '0.8rem',
-                      borderRadius: '8px',
-                    }}
+                    placeholder="Audit note..."
+                    className="adm-input"
+                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem' }}
                   />
                   <button
                     type="button"
-                    className="btn-action btn-action--danger"
-                    style={{
-                      padding: '0.5rem 0.95rem',
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                    }}
                     disabled={actionLoading === previewState.item.id}
+                    className="adm-btn adm-btn--emerald adm-btn--sm"
                     onClick={() =>
                       executeReviewDecision(
                         previewState.item,
-                        'REJECTED',
-                        previewState.inlineNote || REJECTION_NOTE_PRESETS[0]
+                        'APPROVED',
+                        previewState.inlineNote || APPROVAL_NOTE_PRESETS[0]
                       )
                     }
                   >
@@ -1237,20 +1182,13 @@ export default function AdminDatasetsPage() {
                   </button>
                   <button
                     type="button"
-                    className="btn-action btn-action--success"
-                    style={{
-                      padding: '0.5rem 0.95rem',
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                    }}
                     disabled={actionLoading === previewState.item.id}
+                    className="adm-btn adm-btn--danger adm-btn--sm"
                     onClick={() =>
                       executeReviewDecision(
                         previewState.item,
-                        'APPROVED',
-                        previewState.inlineNote || APPROVAL_NOTE_PRESETS[0]
+                        'REJECTED',
+                        previewState.inlineNote || REJECTION_NOTE_PRESETS[0]
                       )
                     }
                   >
@@ -1260,6 +1198,84 @@ export default function AdminDatasetsPage() {
                 </div>
               )}
             </div>
+
+            <div className="adm-modal__body" style={{ padding: 0 }}>
+              {previewState.isLoading ? (
+                <div className="adm-empty">
+                  <RefreshCw size={24} className="animate-spin" style={{ color: '#2563eb' }} />
+                  <h4 className="adm-empty__title">Loading Trajectory Records...</h4>
+                </div>
+              ) : previewState.error ? (
+                <div className="adm-empty">
+                  <AlertCircle size={24} style={{ color: '#e11d48' }} />
+                  <h4 className="adm-empty__title">Preview Unavailable</h4>
+                  <p className="adm-empty__desc">{previewState.error}</p>
+                </div>
+              ) : !previewState.data?.rows?.length ? (
+                <div className="adm-empty">
+                  <Database size={24} style={{ color: '#64748b' }} />
+                  <h4 className="adm-empty__title">No Preview Rows Returned</h4>
+                </div>
+              ) : (
+                <div className="adm-table-wrap" style={{ maxHeight: '460px' }}>
+                  <table className="adm-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        {previewState.data.columns.map((col) => (
+                          <th key={col.name}>{col.name}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewState.data.rows.map((row, idx) => (
+                        <tr key={idx}>
+                          <td style={{ color: '#64748b', fontWeight: 700 }}>
+                            {(previewState.page - 1) * previewState.pageSize + idx + 1}
+                          </td>
+                          {previewState.data.columns.map((col) => (
+                            <td key={col.name} style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                              {row[col.name] !== null && row[col.name] !== undefined
+                                ? String(row[col.name])
+                                : 'null'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {previewState.data && (
+              <div className="adm-modal__footer" style={{ justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                  Page {previewState.data.page} • Total Rows:{' '}
+                  {(previewState.data.total_rows || 0).toLocaleString()}
+                </span>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn--ghost adm-btn--sm"
+                    disabled={previewState.page <= 1 || previewState.isLoading}
+                    onClick={() => handlePageChange(previewState.page - 1)}
+                  >
+                    <ChevronLeft size={14} />
+                    <span>Previous</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn--ghost adm-btn--sm"
+                    disabled={!previewState.data.has_more || previewState.isLoading}
+                    onClick={() => handlePageChange(previewState.page + 1)}
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

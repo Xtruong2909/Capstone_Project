@@ -15,7 +15,6 @@ import {
   Trash2,
   X,
   Activity,
-  Layers,
   ScrollText,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
@@ -157,35 +156,33 @@ export default function AdminOverview() {
   const expStats = experimentsData.stats || {}
   const experimentsList = experimentsData.experiments || []
 
-  // Meaningful Governance & Operational Health Rates (0% - 100%)
-  const activeUserRatePct = users.length > 0
-    ? Math.round((activeUsersCount / users.length) * 100)
-    : 100
-  const approvalRatePct = datasets.length > 0
-    ? Math.round((approvedDatasetsCount / datasets.length) * 100)
-    : 100
+  // Operational Health Rates
+  const activeUserRatePct = users.length > 0 ? Math.round((activeUsersCount / users.length) * 100) : 100
+  const approvalRatePct = datasets.length > 0 ? Math.round((approvedDatasetsCount / datasets.length) * 100) : 100
   const totalFinishedOrRunningExps = expStats.total_experiments || experimentsList.length
-  const completedExpsCount = expStats.completed_count ?? experimentsList.filter((e) => e.status === 'COMPLETED').length
-  const experimentSuccessRatePct = totalFinishedOrRunningExps > 0
-    ? Math.round((completedExpsCount / totalFinishedOrRunningExps) * 100)
-    : 100
+  const completedExpsCount =
+    expStats.completed_count ?? experimentsList.filter((e) => e.status === 'COMPLETED').length
+  const experimentSuccessRatePct =
+    totalFinishedOrRunningExps > 0 ? Math.round((completedExpsCount / totalFinishedOrRunningExps) * 100) : 100
   const nowTimestamp = Date.now()
   const validGrantsCount = accessGrants.filter(
     (g) => !g.expires_at || new Date(g.expires_at).getTime() > nowTimestamp
   ).length
-  const validGrantRatePct = accessGrants.length > 0
-    ? Math.round((validGrantsCount / accessGrants.length) * 100)
-    : 100
+  const validGrantRatePct =
+    accessGrants.length > 0 ? Math.round((validGrantsCount / accessGrants.length) * 100) : 100
 
-  // Candidate users for grant (exclude admin)
   const candidateUsers = users.filter((u) => u.role_id !== 'admin')
 
   const getRoleBadgeClass = (roleId) => {
     switch (roleId) {
-      case 'data_engineer': return 'badge--engineer'
-      case 'data_scientist': return 'badge--scientist'
-      case 'business_user': return 'badge--business'
-      default: return 'badge--inactive'
+      case 'data_engineer':
+        return 'adm-badge--blue'
+      case 'data_scientist':
+        return 'adm-badge--purple'
+      case 'business_user':
+        return 'adm-badge--emerald'
+      default:
+        return 'adm-badge--slate'
     }
   }
 
@@ -208,8 +205,8 @@ export default function AdminOverview() {
 
             <button
               type="button"
-              className="btn-hero-refresh"
-              onClick={fetchData}
+              className="adm-btn adm-btn--primary"
+              onClick={() => setIsGrantModalOpen(true)}
             >
               <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
               <span>{t('Refresh')}</span>
@@ -217,58 +214,58 @@ export default function AdminOverview() {
           </div>
         </div>
 
-        {/* Quick Navigation Tiles */}
-        <div className="hero-quick-grid">
-          <Link to="/admin/users" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--blue">
-                <Users size={18} />
+        {/* 4-Column Glass Navigation Ribbon */}
+        <div className="adm-command-ribbon">
+          <Link to="/admin/users" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(59, 130, 246, 0.25)', color: '#93c5fd' }}>
+                <Users size={20} />
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.total_users ?? users.length}</div>
                 <div className="hero-quick-tile__label">{t('Users')}</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+            <ArrowRight size={16} style={{ color: '#93c5fd' }} />
           </Link>
 
-          <Link to="/admin/datasets" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--amber">
-                <Clock size={18} />
+          <Link to="/admin/datasets" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(245, 158, 11, 0.25)', color: '#fcd34d' }}>
+                <Clock size={20} />
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.pending_approvals ?? pendingDatasets.length}</div>
                 <div className="hero-quick-tile__label">{t('Pending Approvals')}</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+            <ArrowRight size={16} style={{ color: '#fcd34d' }} />
           </Link>
 
-          <Link to="/admin/datasets" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--green">
-                <Database size={18} />
+          <Link to="/admin/datasets-available" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(16, 185, 129, 0.25)', color: '#6ee7b7' }}>
+                <Database size={20} />
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.total_datasets ?? 0}</div>
                 <div className="hero-quick-tile__label">{t('Datasets')}</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+            <ArrowRight size={16} style={{ color: '#6ee7b7' }} />
           </Link>
 
-          <Link to="/admin/audit-logs" className="hero-quick-tile">
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--purple">
-                <ScrollText size={18} />
+          <Link to="/admin/audit-logs" className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon" style={{ background: 'rgba(168, 85, 247, 0.25)', color: '#d8b4fe' }}>
+                <ScrollText size={20} />
               </div>
               <div>
                 <div className="hero-quick-tile__value">{stats?.total_audit_logs ?? 0}</div>
                 <div className="hero-quick-tile__label">{t('Audit Logs')}</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
+            <ArrowRight size={16} style={{ color: '#d8b4fe' }} />
           </Link>
         </div>
       </div>
@@ -286,13 +283,6 @@ export default function AdminOverview() {
               <Activity size={22} />
             </div>
           </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${activeUserRatePct}%`, background: 'linear-gradient(90deg, #2563eb, #38bdf8)' }}
-            />
-          </div>
-        </div>
 
         <div className="stat-card stat-card--green">
           <CheckCircle2 size={96} className="stat-card__watermark" />
@@ -343,23 +333,14 @@ export default function AdminOverview() {
               <KeyRound size={22} />
             </div>
           </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${validGrantRatePct}%`, background: 'linear-gradient(90deg, #d97706, #fbbf24)' }}
-            />
-          </div>
         </div>
-      </div>
 
-      {/* 3. Middle Section: Pending Approvals & Role Breakdown */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1.35rem', marginBottom: '1.75rem' }}>
-        {/* Left: Pending Dataset Approvals Queue */}
-        <div className="admin-card" style={{ marginBottom: 0 }}>
-          <div className="admin-card__header">
-            <div className="admin-card__header-left">
-              <div className="admin-card__icon-box admin-card__icon-box--amber">
-                <Clock size={18} />
+        {/* RBAC Role Distribution (4 cols) */}
+        <div className="adm-panel adm-col-4">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--purple">
+                <Users size={18} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <h3 className="admin-card__title">{t('Pending Approvals')}</h3>
@@ -389,14 +370,12 @@ export default function AdminOverview() {
             </Link>
           </div>
 
-          {pendingDatasets.length === 0 ? (
-            <div className="vivid-empty-box">
+          <div className="adm-panel__body">
+            <div className="adm-rbac-stack">
               <div
-                className="vivid-empty-box__icon"
                 style={{
-                  background: 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)',
-                  color: '#15803d',
-                  border: '1px solid #86efac',
+                  width: `${(roleBreakdown.data_engineer / totalUsersCount) * 100}%`,
+                  background: '#2563eb',
                 }}
               >
                 <CheckCircle2 size={26} />
@@ -480,9 +459,6 @@ export default function AdminOverview() {
                     {Math.round((roleBreakdown.data_engineer / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.data_engineer}</h4>
-                </div>
               </div>
 
               <div className="role-stat-item role-stat-item--purple">
@@ -494,9 +470,6 @@ export default function AdminOverview() {
                   <span className="role-stat-item__pct">
                     {Math.round((roleBreakdown.data_scientist / totalUsersCount) * 100)}%
                   </span>
-                </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.data_scientist}</h4>
                 </div>
               </div>
 
@@ -510,9 +483,6 @@ export default function AdminOverview() {
                     {Math.round((roleBreakdown.business_user / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.business_user}</h4>
-                </div>
               </div>
 
               <div className="role-stat-item role-stat-item--rose">
@@ -525,21 +495,26 @@ export default function AdminOverview() {
                     {Math.round((roleBreakdown.admin / totalUsersCount) * 100)}%
                   </span>
                 </div>
-                <div className="role-stat-item__body">
-                  <h4 className="role-stat-item__count">{roleBreakdown.admin}</h4>
-                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. ML Forecasting Experiments Monitor */}
-      <div className="admin-card">
-        <div className="admin-card__header">
-          <div className="admin-card__header-left">
-            <div className="admin-card__icon-box admin-card__icon-box--purple">
-              <FlaskConical size={18} />
+      {/* 3. Bento Row 2: Pending Quality Gate Queue (5 cols) + Granular Access Permissions (7 cols) */}
+      <div className="adm-bento-grid">
+        <div className="adm-panel adm-col-5">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--amber">
+                <Clock size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">Quality Gate Queue</h3>
+                <p className="adm-panel__subtitle">
+                  {pendingDatasets.length} version(s) awaiting inspection
+                </p>
+              </div>
             </div>
             <h3 className="admin-card__title">{t('AI/ML Experiments')}</h3>
           </div>
@@ -555,6 +530,14 @@ export default function AdminOverview() {
               <div className="exp-kpi-box__val">{expStats.total_experiments ?? 0}</div>
               <div className="exp-kpi-box__lbl">{t('Total')}</div>
             </div>
+            <button
+              type="button"
+              className="adm-btn adm-btn--primary adm-btn--sm"
+              onClick={() => setIsGrantModalOpen(true)}
+            >
+              <Plus size={14} />
+              <span>Grant Access</span>
+            </button>
           </div>
 
           <div className="exp-kpi-box exp-kpi-box--blue">
@@ -566,10 +549,15 @@ export default function AdminOverview() {
               <div className="exp-kpi-box__lbl">{t('Running')}</div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="exp-kpi-box exp-kpi-box--green">
-            <div className="admin-card__icon-box admin-card__icon-box--green">
-              <CheckCircle2 size={18} />
+      {/* 4. Full-Width Row: AI/ML Forecasting Experiments Monitor */}
+      <div className="adm-panel">
+        <div className="adm-panel__header">
+          <div className="adm-panel__title-group">
+            <div className="adm-panel__icon adm-tone--purple">
+              <FlaskConical size={18} />
             </div>
             <div>
               <div className="exp-kpi-box__val">{expStats.completed_count ?? 0}</div>
@@ -590,17 +578,16 @@ export default function AdminOverview() {
           </div>
         </div>
 
-        {experimentsList.length === 0 ? (
-          <div className="vivid-empty-box">
-            <div
-              className="vivid-empty-box__icon"
-              style={{
-                background: 'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)',
-                color: '#7e22ce',
-                border: '1px solid #d8b4fe',
-              }}
-            >
-              <FlaskConical size={26} />
+        <div className="adm-panel__body--flush">
+          {experimentsList.length === 0 ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--purple">
+                <FlaskConical size={24} />
+              </div>
+              <h4 className="adm-empty__title">No Forecasting Experiments Logged</h4>
+              <p className="adm-empty__desc">
+                Experiments trained by Data Scientists will automatically appear in this audit ledger.
+              </p>
             </div>
             <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
               {t('No experiments recorded yet')}
@@ -676,7 +663,7 @@ export default function AdminOverview() {
               <h3 className="admin-card__title">{t('Dataset Access Permissions')}</h3>
               <span className="badge badge--engineer">{accessGrants.length}</span>
             </div>
-          </div>
+          )}
         </div>
 
         {accessGrants.length === 0 ? (
@@ -763,7 +750,7 @@ export default function AdminOverview() {
       {/* Grant Dataset Access Modal */}
       {isGrantModalOpen && (
         <div
-          className="modal-backdrop"
+          className="adm-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsGrantModalOpen(false)
           }}
@@ -773,10 +760,10 @@ export default function AdminOverview() {
               <h3>{t('Grant Dataset Access')}</h3>
               <button
                 type="button"
-                className="modal-close-btn"
+                className="adm-modal__close"
                 onClick={() => setIsGrantModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
@@ -847,10 +834,10 @@ export default function AdminOverview() {
                 />
               </div>
 
-              <div className="modal-actions">
+              <div className="adm-modal__footer">
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="adm-btn adm-btn--ghost"
                   onClick={() => setIsGrantModalOpen(false)}
                 >
                   {t('Cancel')}
@@ -858,8 +845,7 @@ export default function AdminOverview() {
                 <button
                   type="submit"
                   disabled={grantSubmitting}
-                  className="btn-action btn-action--primary"
-                  style={{ padding: '0.55rem 1.25rem' }}
+                  className="adm-btn adm-btn--primary"
                 >
                   {t(grantSubmitting ? 'Granting...' : 'Confirm Grant')}
                 </button>

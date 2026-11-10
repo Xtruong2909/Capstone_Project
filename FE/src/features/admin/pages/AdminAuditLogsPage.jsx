@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ScrollText, RefreshCw, AlertCircle } from 'lucide-react'
+import { useEffect, useState, useMemo } from 'react'
+import { ScrollText, RefreshCw, AlertCircle, Search, ShieldAlert, CheckCircle2, Activity } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import { useLanguage } from '../../../hooks/useLanguage'
 
@@ -8,6 +8,8 @@ export default function AdminAuditLogsPage() {
   const [logs, setLogs] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [actionFilter, setActionFilter] = useState('ALL')
 
   const fetchLogs = async () => {
     setIsLoading(true)
@@ -26,12 +28,44 @@ export default function AdminAuditLogsPage() {
     fetchLogs()
   }, [])
 
-  const getActionBadgeClass = (action) => {
-    if (action.includes('CREATE')) return 'badge--active'
-    if (action.includes('DELETE') || action.includes('REJECT')) return 'badge--rejected'
-    if (action.includes('UPDATE') || action.includes('STATUS')) return 'badge--pending'
-    return 'badge--engineer'
+  const getActionBadgeClass = (action = '') => {
+    const upper = action.toUpperCase()
+    if (upper.includes('CREATE') || upper.includes('APPROVE') || upper.includes('GRANT')) {
+      return 'adm-badge--emerald'
+    }
+    if (upper.includes('DELETE') || upper.includes('REJECT') || upper.includes('REVOKE')) {
+      return 'adm-badge--rose'
+    }
+    if (upper.includes('UPDATE') || upper.includes('STATUS')) {
+      return 'adm-badge--amber'
+    }
+    return 'adm-badge--blue'
   }
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      const actionUpper = (log.action || '').toUpperCase()
+      if (actionFilter === 'CREATE' && !actionUpper.includes('CREATE') && !actionUpper.includes('GRANT')) {
+        return false
+      }
+      if (actionFilter === 'UPDATE' && !actionUpper.includes('UPDATE') && !actionUpper.includes('STATUS')) {
+        return false
+      }
+      if (actionFilter === 'SECURITY' && !actionUpper.includes('DELETE') && !actionUpper.includes('REJECT') && !actionUpper.includes('REVOKE')) {
+        return false
+      }
+
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase()
+        const matchUser = (log.user_email || 'system').toLowerCase().includes(q)
+        const matchAction = (log.action || '').toLowerCase().includes(q)
+        const matchRes = (log.resource_type || '').toLowerCase().includes(q)
+        const matchIp = (log.ip_address || '').toLowerCase().includes(q)
+        return matchUser || matchAction || matchRes || matchIp
+      }
+      return true
+    })
+  }, [logs, searchQuery, actionFilter])
 
   return (
     <div>
@@ -50,6 +84,7 @@ export default function AdminAuditLogsPage() {
             <span>{t('Refresh')}</span>
           </button>
         </div>
+      </div>
 
         {isLoading ? (
           <div className="empty-state">
@@ -102,11 +137,59 @@ export default function AdminAuditLogsPage() {
                       {log.details ? JSON.stringify(log.details) : '—'}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {filteredLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td>
+                        <span className="adm-code-tag">#{log.id}</span>
+                      </td>
+                      <td style={{ fontSize: '0.78rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        {new Date(log.created_at).toLocaleString('en-US')}
+                      </td>
+                      <td style={{ fontWeight: 700, color: '#0f172a' }}>
+                        {log.user_email || 'System Daemon'}
+                      </td>
+                      <td>
+                        <span className={`adm-badge ${getActionBadgeClass(log.action)}`}>
+                          {log.action}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="adm-badge adm-badge--slate">{log.resource_type}</span>
+                      </td>
+                      <td style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace' }}>
+                        {log.ip_address || '127.0.0.1'}
+                      </td>
+                      <td style={{ maxWidth: '320px' }}>
+                        {log.details ? (
+                          <code
+                            style={{
+                              display: 'inline-block',
+                              fontSize: '0.74rem',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px',
+                              padding: '0.25rem 0.5rem',
+                              color: '#334155',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {typeof log.details === 'object'
+                              ? JSON.stringify(log.details)
+                              : String(log.details)}
+                          </code>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -6,9 +6,23 @@ import {
   AlertCircle,
   RefreshCw,
   X,
+  ShieldCheck,
+  CheckCircle2,
+  Ban,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import { useLanguage } from '../../../hooks/useLanguage'
+
+const ROLE_DESCRIPTIONS = {
+  data_engineer:
+    'Ingests raw pNEUMA UAV trajectories, executes 3-step pipeline QA, and submits canonical versions.',
+  data_scientist:
+    'Aggregates 1-min & 5-min intervals, trains Random Forest traffic flow models, and benchmarks accuracy.',
+  business_user:
+    'Monitors interactive Goong GIS corridors, investigates congestion hotspots, and exports KPI reports.',
+  admin:
+    'Manages platform RBAC, reviews dataset quality gate, issues research grants, and audits system trails.',
+}
 
 export default function AdminUsersPage() {
   const { t, language } = useLanguage()
@@ -93,35 +107,157 @@ export default function AdminUsersPage() {
 
   const getRoleBadgeClass = (roleId) => {
     switch (roleId) {
-      case 'admin': return 'badge--admin'
-      case 'data_engineer': return 'badge--engineer'
-      case 'data_scientist': return 'badge--scientist'
-      case 'business_user': return 'badge--business'
-      default: return 'badge--inactive'
+      case 'admin':
+        return 'adm-badge--rose'
+      case 'data_engineer':
+        return 'adm-badge--blue'
+      case 'data_scientist':
+        return 'adm-badge--purple'
+      case 'business_user':
+        return 'adm-badge--emerald'
+      default:
+        return 'adm-badge--slate'
     }
+  }
+
+  const getAvatarBg = (roleId) => {
+    switch (roleId) {
+      case 'admin':
+        return '#e11d48'
+      case 'data_engineer':
+        return '#2563eb'
+      case 'data_scientist':
+        return '#7c3aed'
+      case 'business_user':
+        return '#059669'
+      default:
+        return '#475569'
+    }
+  }
+
+  const counts = {
+    all: users.length,
+    engineer: users.filter((u) => u.role_id === 'data_engineer').length,
+    scientist: users.filter((u) => u.role_id === 'data_scientist').length,
+    business: users.filter((u) => u.role_id === 'business_user').length,
   }
 
   return (
     <div>
-      {/* Top action bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '280px', maxWidth: '500px' }}>
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+      {/* 1. Interactive 4-Column Role Summary Strip */}
+      <div className="adm-bento-grid">
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'ALL' ? '#2563eb' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('ALL')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--slate">
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.all}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Total Accounts
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'data_engineer' ? '#2563eb' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('data_engineer')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--blue">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.engineer}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Data Engineers
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'data_scientist' ? '#7c3aed' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('data_scientist')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--purple">
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.scientist}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Data Scientists
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="adm-panel adm-col-3"
+          style={{
+            cursor: 'pointer',
+            borderColor: selectedRole === 'business_user' ? '#059669' : '#e2e8f0',
+          }}
+          onClick={() => setSelectedRole('business_user')}
+        >
+          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div className="adm-panel__icon adm-tone--emerald">
+              <Users size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {counts.business}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
+                Business Users
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Search, Role Filter & Action Bar */}
+      <div className="adm-toolbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, flexWrap: 'wrap' }}>
+          <div className="adm-search-box">
+            <Search size={16} className="adm-search-box__icon" />
             <input
               type="text"
               placeholder={t('Search by name or email...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="admin-input"
-              style={{ width: '100%', paddingLeft: '2.25rem' }}
+              className="adm-input adm-input--search"
             />
           </div>
 
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value)}
-            className="admin-select"
+            className="adm-select"
+            style={{ width: 'auto', minWidth: '180px' }}
           >
             <option value="ALL">{t('All Roles')}</option>
             {roles.map((r) => (
@@ -151,14 +287,14 @@ export default function AdminUsersPage() {
           </h3>
           <button
             type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            onClick={fetchUsersAndRoles}
+            className="adm-btn adm-btn--primary"
+            onClick={() => setIsModalOpen(true)}
           >
             <RefreshCw size={14} />
             <span>{t('Refresh')}</span>
           </button>
         </div>
+      </div>
 
         {isLoading ? (
           <div className="empty-state">
@@ -218,17 +354,85 @@ export default function AdminUsersPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '10px',
+                              background: getAvatarBg(u.role_id),
+                              color: '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 800,
+                              fontSize: '0.85rem',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {u.full_name ? u.full_name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{u.full_name}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>ID: #{u.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: 600, color: '#334155' }}>{u.email}</td>
+                      <td>
+                        <span className={`adm-badge ${getRoleBadgeClass(u.role_id)}`}>
+                          {u.role?.name || u.role_id}
+                        </span>
+                      </td>
+                      <td>
+                        {u.is_active ? (
+                          <span className="adm-badge adm-badge--emerald">
+                            <CheckCircle2 size={12} />
+                            <span>Active</span>
+                          </span>
+                        ) : (
+                          <span className="adm-badge adm-badge--slate">
+                            <Ban size={12} />
+                            <span>Disabled</span>
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {new Date(u.created_at).toLocaleDateString('en-US')}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {u.role_id !== 'admin' ? (
+                          <button
+                            type="button"
+                            className={`adm-btn adm-btn--sm ${
+                              u.is_active ? 'adm-btn--danger' : 'adm-btn--emerald'
+                            }`}
+                            onClick={() => handleToggleStatus(u)}
+                          >
+                            {u.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        ) : (
+                          <span className="adm-code-tag">Protected Root</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Create New User Modal */}
+      {/* Create User Modal */}
       {isModalOpen && (
         <div
-          className="modal-backdrop"
+          className="adm-modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsModalOpen(false)
           }}
@@ -238,10 +442,10 @@ export default function AdminUsersPage() {
               <h3>{t('Create New User')}</h3>
               <button
                 type="button"
-                className="modal-close-btn"
+                className="adm-modal__close"
                 onClick={() => setIsModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
@@ -317,10 +521,10 @@ export default function AdminUsersPage() {
                 />
               </div>
 
-              <div className="modal-actions">
+              <div className="adm-modal__footer">
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="adm-btn adm-btn--ghost"
                   onClick={() => setIsModalOpen(false)}
                 >
                   {t('Cancel')}
@@ -328,8 +532,7 @@ export default function AdminUsersPage() {
                 <button
                   type="submit"
                   disabled={formSubmitting}
-                  className="btn-action btn-action--primary"
-                  style={{ padding: '0.55rem 1.25rem' }}
+                  className="adm-btn adm-btn--primary"
                 >
                   {t(formSubmitting ? 'Creating...' : 'Create Account')}
                 </button>

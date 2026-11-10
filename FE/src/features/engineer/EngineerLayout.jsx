@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
-  Database,
   LayoutDashboard,
   FileSpreadsheet,
   Upload,
@@ -145,22 +144,19 @@ export default function EngineerLayout() {
       <aside
         className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
       >
-        {/* Single Center-Edge Proximity Hover Zone & Floating Toggle Button */}
-        <div className="admin-sidebar__edge-zone">
-          <button
-            type="button"
-            className="admin-sidebar__floating-toggle"
-            onClick={toggleSidebar}
-            aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-            title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-          >
-            {isSidebarCollapsed ? (
-              <ChevronRight size={18} strokeWidth={2.6} />
-            ) : (
-              <ChevronLeft size={18} strokeWidth={2.6} />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="admin-sidebar__squircle-toggle"
+          onClick={toggleSidebar}
+          aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+          title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+        >
+          {isSidebarCollapsed ? (
+            <ChevronRight size={15} strokeWidth={2.4} />
+          ) : (
+            <ChevronLeft size={15} strokeWidth={2.4} />
+          )}
+        </button>
 
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
@@ -170,7 +166,7 @@ export default function EngineerLayout() {
             {!isSidebarCollapsed && (
               <div className="admin-sidebar__brand-text">
                 <h2>Urban Traffic</h2>
-                <span>pNEUMA Pipeline</span>
+                <span className="brand-role-tag--engineer">pNEUMA Pipeline</span>
               </div>
             )}
           </div>
@@ -276,14 +272,20 @@ export default function EngineerLayout() {
 
           <div
             className="admin-user-profile"
-            title={`${user?.full_name || 'Data Engineer'} (${user?.email || 'engineer@gmail.com'})`}
+            title={`${user?.full_name || 'Data Engineer'} • Engineer (${user?.email || 'engineer@gmail.com'})`}
           >
-            <div className="admin-avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
+            <div className="admin-avatar-wrap">
+              <div className="admin-avatar">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
+              </div>
+              <span className="admin-avatar-status-dot" title="Online" />
             </div>
             {!isSidebarCollapsed && (
               <div className="admin-user-info">
-                <span className="admin-user-name">{user?.full_name || 'Data Engineer'}</span>
+                <div className="admin-user-name-row">
+                  <span className="admin-user-name">{user?.full_name || 'Data Engineer'}</span>
+                  <span className="admin-user-role-pill">Engineer</span>
+                </div>
                 <span className="admin-user-email">{user?.email || 'engineer@gmail.com'}</span>
               </div>
             )}

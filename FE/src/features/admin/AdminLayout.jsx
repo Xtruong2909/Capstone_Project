@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
-  CheckCircle,
+  ShieldCheck,
   Database,
   ScrollText,
   LogOut,
@@ -20,6 +20,7 @@ export default function AdminLayout() {
   const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
@@ -46,27 +47,32 @@ export default function AdminLayout() {
     navigate('/login')
   }
 
+  const currentMeta = ROUTE_META[location.pathname] || ROUTE_META['/admin']
+
   return (
-    <div className="admin-shell">
-      {/* Collapsible Sidebar */}
-      <aside
-        className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
-      >
-        {/* Single Center-Edge Proximity Hover Zone & Floating Toggle Button */}
-        <div className="admin-sidebar__edge-zone">
-          <button
-            type="button"
-            className="admin-sidebar__floating-toggle"
-            onClick={toggleSidebar}
-            aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-            title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-          >
-            {isSidebarCollapsed ? (
-              <ChevronRight size={18} strokeWidth={2.6} />
-            ) : (
-              <ChevronLeft size={18} strokeWidth={2.6} />
-            )}
-          </button>
+    <div className="adm-shell">
+      {/* Dark Obsidian Command Sidebar */}
+      <aside className={`adm-sidebar ${isSidebarCollapsed ? 'adm-sidebar--collapsed' : ''}`}>
+        <button
+          type="button"
+          className="adm-sidebar__toggle"
+          onClick={toggleSidebar}
+          aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isSidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
+
+        <div className="adm-sidebar__brand">
+          <div className="adm-sidebar__logo" title="Traffic Governance Control Center">
+            <Shield size={21} />
+          </div>
+          {!isSidebarCollapsed && (
+            <div className="adm-sidebar__brand-info">
+              <h2 className="adm-sidebar__brand-title">TRAFFIC GOV</h2>
+              <span className="adm-sidebar__brand-sub">Command & Control</span>
+            </div>
+          )}
         </div>
 
         <div className="admin-sidebar__header">
@@ -81,7 +87,6 @@ export default function AdminLayout() {
               </div>
             )}
           </div>
-        </div>
 
         <nav className="admin-sidebar__nav">
           <NavLink
@@ -132,15 +137,13 @@ export default function AdminLayout() {
           </NavLink>
         </nav>
 
-        <div className="admin-sidebar__footer">
-          {!isSidebarCollapsed ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.1rem 0.2rem',
-              }}
+          <div className="adm-nav-group">
+            <span className="adm-nav-group__label">Data Quality Gate</span>
+            <NavLink
+              to="/admin/datasets"
+              end
+              title="Quality Gate Queue"
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <span
                 style={{
@@ -182,24 +185,38 @@ export default function AdminLayout() {
             </div>
           )}
 
+        <div className="adm-sidebar__footer">
           <div
-            className="admin-user-profile"
-            title={`${user?.full_name || 'Administrator'} (${user?.email || 'admin@gmail.com'})`}
+            className="adm-user-card"
+            title={`${user?.full_name || 'Administrator'} • Admin (${user?.email || 'admin@gmail.com'})`}
           >
-            <div className="admin-avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
+            <div className="adm-user-card__avatar-wrap">
+              <div className="adm-user-card__avatar">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
+              </div>
+              <span className="adm-user-card__status-dot" title="Online" />
             </div>
             {!isSidebarCollapsed && (
-              <div className="admin-user-info">
-                <span className="admin-user-name">{user?.full_name || 'Administrator'}</span>
-                <span className="admin-user-email">{user?.email || 'admin@gmail.com'}</span>
+              <div className="adm-user-card__meta">
+                <div className="adm-user-card__name-row">
+                  <span className="adm-user-card__name">
+                    {user?.full_name === 'System Administrator'
+                      ? 'System Admin'
+                      : user?.full_name || 'Administrator'}
+                  </span>
+                  <span className="adm-user-card__role-pill">
+                    <Shield size={10} />
+                    <span>Admin</span>
+                  </span>
+                </div>
+                <span className="adm-user-card__role">{user?.email || 'admin@gmail.com'}</span>
               </div>
             )}
           </div>
 
           <button
             type="button"
-            className="admin-logout-btn"
+            className="adm-logout-btn"
             onClick={handleLogout}
             title={t('Sign Out')}
           >
@@ -218,7 +235,7 @@ export default function AdminLayout() {
           <LanguageSwitcher />
         </header>
 
-        <main className="admin-content">
+        <main className="adm-canvas">
           <Outlet />
         </main>
       </div>
