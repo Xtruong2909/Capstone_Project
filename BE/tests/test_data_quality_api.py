@@ -55,7 +55,7 @@ def test_submit_dataset_version_route_is_registered() -> None:
     assert ("/{dataset_id}/versions/{version_id}/submit", "POST") in routes
 
 
-def test_submit_does_not_require_separate_quality_check() -> None:
+def test_submit_does_not_require_separate_quality_check(monkeypatch: pytest.MonkeyPatch) -> None:
     dataset_id = uuid4()
     version_id = uuid4()
     user_id = uuid4()
@@ -70,6 +70,11 @@ def test_submit_does_not_require_separate_quality_check() -> None:
         approval_note=None,
     )
     db = SubmitWithoutQualityCheckDb(version, export_history=object())
+    monkeypatch.setattr(
+        datasets,
+        "get_version_source_context",
+        lambda *_args, **_kwargs: (version_id, "v1.0", []),
+    )
 
     response = datasets.submit_dataset_version_for_admin(
         dataset_id=dataset_id,

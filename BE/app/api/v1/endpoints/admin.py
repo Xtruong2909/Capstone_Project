@@ -23,18 +23,20 @@ from app.schemas.admin import (
     UserCreate,
     UserStatusUpdate,
 )
-from app.schemas.dataset import DatasetPreviewResponse
+from app.schemas.dataset import (
+    RecordingSessionListResponse,
+    RecordingSessionPreviewResponse,
+)
 from app.schemas.user import UserResponse
 from app.services.audit_log_service import audit_action, record_audit_event
-from app.services.dataset_mapping_service import (
-    DatasetMappingNotFoundError,
-    apply_saved_column_mappings,
-)
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
     DatasetPreviewNotFoundError,
     DatasetPreviewReadError,
-    get_dataset_preview,
+)
+from app.services.dataset_review_service import (
+    list_recording_sessions,
+    preview_recording_session,
 )
 from app.services.email_service import EmailConfigurationError, send_initial_credentials
 
@@ -265,47 +267,61 @@ def list_datasets_for_approval(
 
 
 @router.get(
-    "/datasets/{dataset_id}/versions/{id}/preview",
-    response_model=DatasetPreviewResponse,
-    summary="Admin xem trước nội dung phiên bản dataset",
+    "/datasets/{dataset_id}/versions/{id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="Admin xem Recording Sessions thuộc phiên bản Dataset",
 )
-def preview_dataset_version_for_admin(
+def list_dataset_version_sessions_for_admin(
     dataset_id: UUID,
     id: UUID,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+) -> RecordingSessionListResponse:
+    try:
+        return list_recording_sessions(
+            db, dataset_id, id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/datasets/{dataset_id}/versions/{id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="Admin preview nội dung CSV của một Recording Session",
+    description=(
+        "Trả về dữ liệu dạng bảng có phân trang. representation=raw giữ nguyên cột CSV gốc; "
+        "representation=normalized áp dụng mapping đã lưu nếu có. Mặc định 20 dòng."
+    ),
+    responses={
+        404: {"description": "Dataset, phiên bản, session hoặc file không tồn tại"},
+        415: {"description": "Session không chứa file CSV"},
+        422: {"description": "CSV lỗi định dạng hoặc không đọc được"},
+    },
+)
+def preview_dataset_session_for_admin(
+    dataset_id: UUID,
+    id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
     representation: Literal["raw", "normalized"] = "normalized",
     db: Session = Depends(get_db),
-) -> DatasetPreviewResponse:
-    """Read a paginated preview of a specific dataset version for admin review."""
+) -> RecordingSessionPreviewResponse:
     try:
-        preview = get_dataset_preview(
-            db,
-            dataset_id=dataset_id,
-            dataset_version_id=id,
-            page=page,
-            page_size=page_size,
+        return preview_recording_session(
+            db, dataset_id, id, session_id,
+            page=page, limit=limit, column_offset=column_offset,
             representation=representation,
-        )
-        return apply_saved_column_mappings(
-            db,
-            dataset_id=dataset_id,
-            preview=preview,
         )
     except DatasetPreviewNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DatasetPreviewFormatError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
     except DatasetPreviewReadError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-    except DatasetMappingNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.post(

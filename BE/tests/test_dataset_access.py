@@ -252,6 +252,21 @@ def test_eligible_users_search_pagination_and_granted_flag(state: SimpleNamespac
     )
 
 
+def test_admin_dataset_catalog_lists_all_datasets_with_search_and_pagination(
+    state: SimpleNamespace,
+) -> None:
+    status, body = request(
+        state.app, "GET", "/admin/datasets/catalog?search=Dataset&skip=0&limit=1",
+    )
+    assert status == 200
+    assert len(body) == 1
+    assert body[0]["id"] == str(state.datasets[0])
+
+    state.current = state.scientist
+    status, _ = request(state.app, "GET", "/admin/datasets/catalog")
+    assert status == 403
+
+
 @pytest.mark.parametrize("role", ["scientist", "business"])
 def test_accessible_only_current_user_and_empty_default(state: SimpleNamespace, role: str) -> None:
     target = getattr(state, role)
@@ -406,7 +421,7 @@ def test_real_read_routes_deny_ungranted_dataset(state: SimpleNamespace, suffix:
         app.dependency_overrides.clear()
 
 
-@pytest.mark.parametrize("suffix", ["normalize", "normalize/validate", "quality-checks"])
+@pytest.mark.parametrize("suffix", ["normalize", "export", "quality-checks"])
 def test_grant_does_not_allow_business_to_preprocess(state: SimpleNamespace, suffix: str) -> None:
     from app.main import app
 
@@ -557,84 +572,87 @@ def test_grant_requires_approval_before_writing(
 
 @pytest.mark.parametrize("role", ["scientist", "business", "admin", "engineer"])
 @pytest.mark.parametrize("approval", ["APPROVED", "PENDING", "SUBMITTED", "REJECTED"])
-def test_consumer_preview_guards_and_response(
+def test_consumer_session_review_guards_and_response(
     state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str, approval: str
 ) -> None:
-    from app.schemas.dataset import DatasetPreviewResponse
+    from app.schemas.dataset import RecordingSessionListResponse, RecordingSessionPreviewResponse
     from app.services import dataset_consumer_service as consumer
 
     ds = state.datasets[0]
     version_id = uuid4()
+    session_id = uuid4()
     target = getattr(state, role)
     if role in ("scientist", "business"):
         service.grant_access(state.db, ds, target.id, state.admin)
     state.current = target
     version = SimpleNamespace(id=version_id, dataset_id=ds, approval_status=approval)
     monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
-    preview = DatasetPreviewResponse(
-        dataset_id=ds, dataset_version_id=version_id, dataset_name="Traffic",
-        original_filename="traffic.csv", file_format="csv", file_size=20,
-        status="uploaded", columns=[{"name": "speed", "type": "number"}],
-        rows=[{"speed": 30}],
-        pagination={"page": 2, "page_size": 1, "returned_rows": 1,
-                    "has_more": False, "total_rows": 2},
+    session_list = RecordingSessionListResponse(
+        dataset_id=ds, version_id=version_id, total=1, page=1, page_size=20,
+        sessions=[{
+            "session_id": session_id, "dataset_id": ds, "version_id": version_id,
+            "original_filename": "20181024_d1_0830_0900.csv", "drone_id": "d1",
+            "recording_date": "2018-10-24", "file_size": 20,
+            "scheduled_start": "2018-10-24T08:30:00", "scheduled_end": "2018-10-24T09:00:00",
+            "scheduled_duration_seconds": 1800, "checksum": "abc", "upload_status": "UPLOADED",
+        }],
     )
-    read = Mock(return_value=preview)
-    mapping = Mock(return_value=preview)
-    monkeypatch.setattr(consumer, "get_dataset_preview", read)
-    monkeypatch.setattr(consumer, "apply_saved_column_mappings", mapping)
-    path = f"/datasets/{ds}/versions/{version_id}/preview"
-    status, body = request(state.app, "GET", path + "?page=2&page_size=1&representation=raw")
-    if role in ("scientist", "business") and approval == "APPROVED":
+    preview = RecordingSessionPreviewResponse(
+        session_id=session_id, dataset_id=ds, version_id=version_id,
+        dataset_version_id=version_id, dataset_name="Traffic",
+        original_filename="20181024_d1_0830_0900.csv", file_format="csv", file_size=20,
+        status="UPLOADED", detected_structure="csv_with_header", representation="raw",
+        columns=[{"name": "speed", "type": "string"}], total_columns=1,
+        column_offset=0, has_more_columns=False, rows=[{"speed": "30"}], rows_read=2,
+        pagination={"page": 2, "page_size": 1, "returned_rows": 1,
+                    "has_more": False, "total_rows": None},
+    )
+    list_sessions = Mock(return_value=session_list)
+    preview_session = Mock(return_value=preview)
+    monkeypatch.setattr(consumer, "list_recording_sessions", list_sessions)
+    monkeypatch.setattr(consumer, "preview_recording_session", preview_session)
+    base = f"/datasets/{ds}/versions/{version_id}"
+    status, body = request(state.app, "GET", base + "/sessions?page=1&page_size=20")
+    if (role in ("scientist", "business") and approval == "APPROVED") or role == "engineer":
         assert status == 200
-        assert body["rows"] == [{"speed": 30}]
-        assert body["dataset_version_id"] == str(version_id)
-        read.assert_called_once_with(
-            state.db, dataset_id=ds, dataset_version_id=version_id,
-            page=2, page_size=1, representation="raw",
+        assert body["sessions"][0]["session_id"] == str(session_id)
+        list_sessions.assert_called_once_with(
+            state.db, ds, version_id, page=1, page_size=20,
         )
-        mapping.assert_called_once_with(state.db, dataset_id=ds, preview=preview)
-        service.revoke_access(state.db, ds, target.id, state.admin)
-        read.reset_mock()
-        assert request(state.app, "GET", path)[0] == 403
-        read.assert_not_called()
+        status, body = request(
+            state.app, "GET",
+            base + f"/sessions/{session_id}/preview?page=2&limit=1&representation=raw",
+        )
+        assert status == 200
+        assert body["rows"] == [{"speed": "30"}]
+        preview_session.assert_called_once_with(
+            state.db, ds, version_id, session_id, page=2, limit=1,
+            column_offset=0, representation="raw",
+        )
+        if role in ("scientist", "business"):
+            service.revoke_access(state.db, ds, target.id, state.admin)
+            assert request(state.app, "GET", base + "/sessions")[0] == 403
     else:
         assert status == 403
-        read.assert_not_called()
-        mapping.assert_not_called()
+        list_sessions.assert_not_called()
+        preview_session.assert_not_called()
 
 
-@pytest.mark.parametrize("case,expected", [("missing", 404), ("wrong_parent", 404),
-                                          ("no_grant", 403), ("anonymous", 401)])
-def test_consumer_preview_invalid_access(
-    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, case: str, expected: int
-) -> None:
-    from app.services import dataset_consumer_service as consumer
-
-    ds = state.datasets[0]
-    state.current = state.scientist
-    if case != "no_grant":
-        service.grant_access(state.db, ds, state.scientist.id, state.admin)
-    version = None if case == "missing" else SimpleNamespace(
-        dataset_id=state.datasets[1], approval_status="APPROVED"
-    )
-    monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
-    read = Mock()
-    monkeypatch.setattr(consumer, "get_dataset_preview", read)
-    if case == "anonymous":
-        state.app.dependency_overrides.pop(get_current_user)
-    assert request(state.app, "GET", f"/datasets/{ds}/versions/{uuid4()}/preview")[0] == expected
-    read.assert_not_called()
+def test_consumer_session_review_validates_parameters(state: SimpleNamespace) -> None:
+    base = f"/datasets/{state.datasets[0]}/versions/{uuid4()}"
+    assert request(state.app, "GET", base + "/sessions?page=0")[0] == 422
+    assert request(state.app, "GET", base + f"/sessions/{uuid4()}/preview?limit=101")[0] == 422
+    assert request(state.app, "GET", base + f"/sessions/{uuid4()}/preview?representation=bad")[0] == 422
 
 
-@pytest.mark.parametrize("query", ["page=0", "page_size=101", "representation=bad"])
-def test_consumer_preview_validates_parameters(state: SimpleNamespace, query: str) -> None:
-    path = f"/datasets/{state.datasets[0]}/versions/{uuid4()}/preview?{query}"
-    assert request(state.app, "GET", path)[0] == 422
-
-
-def test_consumer_preview_swagger_group() -> None:
+def test_consumer_session_review_swagger_and_old_route_removed() -> None:
     from app.main import app
 
-    path = "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview"
-    assert app.openapi()["paths"][path]["get"]["tags"] == ["Data Scientist / Business User"]
+    paths = app.openapi()["paths"]
+    assert paths["/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions"]["get"]["tags"] == [
+        "Data Scientist / Business User"
+    ]
+    assert paths[
+        "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview"
+    ]["get"]["tags"] == ["Data Scientist / Business User"]
+    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview" not in paths

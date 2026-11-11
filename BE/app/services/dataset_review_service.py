@@ -102,6 +102,46 @@ def _get_version(db: Session, dataset_id: UUID, version_id: UUID) -> DatasetVers
     return pair[1]
 
 
+def _session_provenance(
+    db: Session, version: DatasetVersion,
+) -> tuple[list[UUID], UUID | None]:
+    history = crud_dataset.get_cleaning_history_by_version(db, version.id)
+    parameters = getattr(history, "parameters", None) or {}
+    if not isinstance(parameters, dict):
+        return [], None
+    source_session_ids: list[UUID] = []
+    for value in parameters.get("source_session_ids", []):
+        try:
+            source_session_ids.append(UUID(str(value)))
+        except (TypeError, ValueError):
+            continue
+    try:
+        source_version_id = UUID(str(parameters.get("source_version_id")))
+    except (TypeError, ValueError):
+        source_version_id = None
+    return source_session_ids, source_version_id
+
+
+def _get_recording_session_for_version(
+    db: Session, dataset_id: UUID, version_id: UUID, session_id: UUID,
+) -> RecordingSession | None:
+    session = crud_dataset.get_version_session(db, version_id, session_id)
+    if session is not None:
+        return session if session.dataset_id == dataset_id else None
+
+    version = _get_version(db, dataset_id, version_id)
+    source_session_ids, source_version_id = _session_provenance(db, version)
+    if source_session_ids:
+        if session_id not in source_session_ids:
+            return None
+        return crud_dataset.get_dataset_session_by_id(db, dataset_id, session_id)
+    if source_version_id and source_version_id != version_id:
+        if crud_dataset.get_dataset_version(db, dataset_id, source_version_id) is None:
+            return None
+        return crud_dataset.get_version_session(db, source_version_id, session_id)
+    return None
+
+
 def _session_detail(session: RecordingSession, version_id: UUID) -> RecordingSessionDetail:
     return RecordingSessionDetail(
         session_id=session.id, dataset_id=session.dataset_id, version_id=version_id,
@@ -117,8 +157,22 @@ def _session_detail(session: RecordingSession, version_id: UUID) -> RecordingSes
 def list_recording_sessions(
     db: Session, dataset_id: UUID, version_id: UUID, *, page: int, page_size: int,
 ) -> RecordingSessionListResponse:
-    _get_version(db, dataset_id, version_id)
+    version = _get_version(db, dataset_id, version_id)
     sessions, total = crud_dataset.list_version_sessions(db, version_id, page, page_size)
+    if total == 0:
+        source_session_ids, source_version_id = _session_provenance(db, version)
+        if source_session_ids:
+            sessions, total = crud_dataset.list_dataset_sessions_by_ids(
+                db, dataset_id, source_session_ids, page, page_size,
+            )
+        elif (
+            source_version_id
+            and source_version_id != version_id
+            and crud_dataset.get_dataset_version(db, dataset_id, source_version_id) is not None
+        ):
+            sessions, total = crud_dataset.list_version_sessions(
+                db, source_version_id, page, page_size,
+            )
     return RecordingSessionListResponse(
         dataset_id=dataset_id, version_id=version_id, total=total,
         page=page, page_size=page_size,
@@ -129,8 +183,9 @@ def list_recording_sessions(
 def get_recording_session_detail(
     db: Session, dataset_id: UUID, version_id: UUID, session_id: UUID,
 ) -> RecordingSessionDetail:
-    _get_version(db, dataset_id, version_id)
-    session = crud_dataset.get_version_session(db, version_id, session_id)
+    session = _get_recording_session_for_version(
+        db, dataset_id, version_id, session_id,
+    )
     if session is None or session.dataset_id != dataset_id:
         raise DatasetPreviewNotFoundError("Không tìm thấy Recording Session trong phiên bản")
     return _session_detail(session, version_id)
@@ -217,9 +272,12 @@ def preview_recording_session(
     *, page: int, limit: int, column_offset: int = 0,
     representation: str = "normalized",
 ) -> RecordingSessionPreviewResponse:
-    get_recording_session_detail(db, dataset_id, version_id, session_id)
+    session = _get_recording_session_for_version(
+        db, dataset_id, version_id, session_id,
+    )
+    if session is None:
+        raise DatasetPreviewNotFoundError("Không tìm thấy Recording Session trong phiên bản")
     dataset = crud_dataset.get_dataset_by_id(db, dataset_id)
-    session = crud_dataset.get_version_session(db, version_id, session_id)
     if not session.original_filename.lower().endswith(".csv"):
         raise DatasetPreviewFormatError("Recording Session không phải file CSV")
     path = resolve_stored_file_path(session.file_path)

@@ -60,6 +60,8 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(repo, "get_version_session",
                         lambda db, vid, sid: session
                         if (vid, sid) == (version_id, session_id) else None)
+    monkeypatch.setattr(repo, "get_dataset_column_mapping", lambda db, did, vid: None)
+    monkeypatch.setattr(repo, "get_latest_dataset_column_mapping", lambda db, did: None)
     engineer = SimpleNamespace(id=uuid4(), role_id="data_engineer")
     app = FastAPI()
     app.include_router(endpoints.router, prefix="/api/v1/datasets")
@@ -238,14 +240,10 @@ def test_review_requires_reader_role(review: SimpleNamespace,
 def test_swagger_exposes_dataset_review_contracts(review: SimpleNamespace) -> None:
     paths = review.app.openapi()["paths"]
     assert "/api/v1/datasets" in paths
-    review_paths = (
+    de_paths = (
         "/api/v1/datasets/{dataset_id}",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions",
         "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions/{session_id}",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview",
     )
-    for path in review_paths:
-        assert paths[path]["get"]["tags"] == ["Dataset Preview & Review Bước 2"]
+    for path in de_paths:
+        assert paths[path]["get"]["tags"] == ["Dataset Preview & Review B\u01b0\u1edbc 2"]
     assert "/api/v1/datasets/{dataset_id}/preview" not in paths
-    response_schema = review.app.openapi()["components"]["schemas"]["RecordingSessionPreviewResponse"]
-    assert response_schema["examples"][0]["rows"][0]["type"] == "Bus"

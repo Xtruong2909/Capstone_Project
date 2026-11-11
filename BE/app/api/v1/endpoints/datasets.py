@@ -45,7 +45,6 @@ from app.schemas.dataset_normalization import (
     DatasetVersionStatusResponse,
     DatasetVersionSubmitRequest,
     DatasetVersionSubmitResponse,
-    NormalizedDataValidationResponse,
     ProcessingReportResponse,
 )
 from app.services.audit_log_service import audit_action, record_audit_event
@@ -78,8 +77,9 @@ from app.services.dataset_service import (
     UnsupportedDatasetFormatError,
     create_dataset_upload,
 )
-from app.services.normalized_data_validation_service import (
-    validate_normalized_dataset_service,
+from app.services.dataset_version_service import get_version_source_context
+from app.services.dataset_version_service import (
+    list_dataset_versions as list_dataset_versions_service,
 )
 from app.services.pneuma_upload_service import (
     prepare_pneuma_batch,
@@ -357,10 +357,14 @@ def get_upload_job(
     "/{dataset_id}/normalize",
     response_model=DatasetNormalizeResult,
     status_code=status.HTTP_200_OK,
-    summary="[Bước 4.1] Chuẩn hóa bằng mapping đã lưu và bung dòng dữ liệu",
+    summary="Chuẩn hóa Dataset Version bằng mapping đã lưu",
 )
 def normalize_dataset_structure(
     dataset_id: UUID,
+    version_id: UUID | None = Query(
+        default=None,
+        description="Dataset Version nguồn; nếu bỏ trống, hệ thống chọn phiên bản raw mới nhất.",
+    ),
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     db: Session = Depends(get_db),
@@ -374,32 +378,10 @@ def normalize_dataset_structure(
         db=db,
         dataset_id=dataset_id,
         user=current_user,
+        version_id=version_id,
         page=page,
         page_size=page_size,
     )
-
-
-@router.post(
-    "/{dataset_id}/normalize/validate",
-    response_model=NormalizedDataValidationResponse,
-    status_code=status.HTTP_200_OK,
-    summary="[Bước 4.2] Kiểm tra dữ liệu đã chuẩn hóa",
-)
-def validate_normalized_dataset(
-    dataset_id: UUID,
-    request: Request,
-    current_user: User = Depends(require_data_engineer),
-) -> NormalizedDataValidationResponse:
-    """Check the latest normalized staging output for common data-quality issues."""
-    with audit_action(
-        action="VALIDATE_DATASET",
-        module="Dataset",
-        description="Normalized dataset validation completed",
-        user=current_user,
-        resource_id=dataset_id,
-        ip_address=request.client.host if request.client else None,
-    ):
-        return validate_normalized_dataset_service(dataset_id=dataset_id)
 
 
 # =====================================================================
@@ -409,7 +391,7 @@ def validate_normalized_dataset(
     "/{dataset_id}/export",
     response_model=DatasetExportResult,
     status_code=status.HTTP_201_CREATED,
-    summary="[Bước 5] Xuất file Parquet/CSV và lưu phiên bản mới",
+    summary="Xuất dữ liệu đã chuẩn hóa thành Dataset Version mới",
 )
 def export_normalized_dataset(
     dataset_id: UUID,
@@ -435,7 +417,7 @@ def export_normalized_dataset(
 @router.get(
     "/{dataset_id}/versions/{version_id}/report",
     response_model=ProcessingReportResponse,
-    summary="[Bước 6] Xem Báo cáo xử lý tổng hợp của phiên bản dataset",
+    summary="Xem báo cáo chuẩn hóa kèm các Recording Session nguồn",
 )
 def get_processing_report(
     dataset_id: UUID,
@@ -443,10 +425,7 @@ def get_processing_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_dataset_reader),
 ) -> ProcessingReportResponse:
-    """
-    Bước 6: Truy vấn báo cáo tổng hợp quá trình làm sạch/chuẩn hóa của phiên bản dataset.
-    Bao gồm số lượng bản ghi trước/sau, cấu trúc cột, dung lượng file và tham chiếu chất lượng.
-    """
+    """Return normalization counts, mappings, file details, and source version for this version."""
     return get_processing_report_service(
         db=db,
         dataset_id=dataset_id,
@@ -456,39 +435,21 @@ def get_processing_report(
 @router.get(
     "/versions",
     response_model=list[DatasetVersionListItem],
-    summary="Danh sách các phiên bản dataset trên toàn hệ thống, có thể lọc theo trạng thái",
+    summary="Liệt kê phiên bản Dataset và các Recording Session nguồn",
 )
 def list_all_dataset_versions(
     status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED"] | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_data_engineer),
 ) -> list[DatasetVersionListItem]:
-    """Return all dataset versions across the whole system, optionally filtered by approval status."""
-    query = db.query(DatasetVersion)
-    if status is not None:
-        query = query.filter(DatasetVersion.approval_status == status)
-
-    versions = query.order_by(DatasetVersion.created_at.desc()).all()
-    return [
-        DatasetVersionListItem(
-            dataset_id=version.dataset_id,
-            version_id=version.id,
-            version_tag=version.version_tag,
-            approval_status=version.approval_status,
-            submitted_by=version.submitted_by,
-            submitted_at=version.submitted_at,
-            approved_by=version.approved_by,
-            approval_note=version.approval_note,
-            created_at=version.created_at,
-        )
-        for version in versions
-    ]
+    """List versions with the source Dataset and sessions represented by each version."""
+    return list_dataset_versions_service(db, approval_status=status)
 
 
 @router.get(
     "/{dataset_id}/versions",
     response_model=list[DatasetVersionListItem],
-    summary="Danh sách các versions của dataset_id lọc theo trạng thái phê duyệt",
+    summary="Liệt kê phiên bản của Dataset kèm các Recording Session",
 )
 def list_dataset_versions(
     dataset_id: UUID,
@@ -496,32 +457,14 @@ def list_dataset_versions(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_dataset_reader),
 ) -> list[DatasetVersionListItem]:
-    """Return all versions for a dataset, optionally filtered by approval status."""
-    query = db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset_id)
-    if status is not None:
-        query = query.filter(DatasetVersion.approval_status == status)
-
-    versions = query.order_by(DatasetVersion.created_at.desc()).all()
-    return [
-        DatasetVersionListItem(
-            dataset_id=version.dataset_id,
-            version_id=version.id,
-            version_tag=version.version_tag,
-            approval_status=version.approval_status,
-            submitted_by=version.submitted_by,
-            submitted_at=version.submitted_at,
-            approved_by=version.approved_by,
-            approval_note=version.approval_note,
-            created_at=version.created_at,
-        )
-        for version in versions
-    ]
+    """List a Dataset's versions with their linked source sessions."""
+    return list_dataset_versions_service(db, dataset_id=dataset_id, approval_status=status)
 
 
 @router.get(
     "/{dataset_id}/versions/{version_id}/status",
     response_model=DatasetVersionStatusResponse,
-    summary="Xem trạng thái và phản hồi phê duyệt của phiên bản dataset",
+    summary="Xem trạng thái duyệt và các Recording Session của phiên bản",
 )
 def get_dataset_version_status(
     dataset_id: UUID,
@@ -552,11 +495,17 @@ def get_dataset_version_status(
     elif version.approval_status == "SUBMITTED":
         message = "Phiên bản dataset đã được gửi cho admin để xét duyệt."
 
+    source_version_id, source_version_tag, source_sessions = get_version_source_context(db, version)
     return DatasetVersionStatusResponse(
         dataset_id=dataset_id,
+        dataset_name=getattr(getattr(version, "dataset", None), "name", None),
         version_id=version.id,
         version_tag=version.version_tag,
         approval_status=version.approval_status,
+        source_version_id=source_version_id,
+        source_version_tag=source_version_tag,
+        source_session_count=len(source_sessions),
+        source_sessions=source_sessions,
         submitted_by=version.submitted_by,
         submitted_at=version.submitted_at,
         approved_by=version.approved_by,
@@ -569,7 +518,7 @@ def get_dataset_version_status(
     "/{dataset_id}/versions/{version_id}/submit",
     response_model=DatasetVersionSubmitResponse,
     status_code=status.HTTP_200_OK,
-    summary="Gửi phiên bản dataset đã export cho admin phê duyệt",
+    summary="Gửi phiên bản cùng thông tin Recording Session nguồn cho Admin xét duyệt",
 )
 def submit_dataset_version_for_admin(
     dataset_id: UUID,
@@ -629,11 +578,17 @@ def submit_dataset_version_for_admin(
         details={"dataset_id": str(dataset_id), "status": version.approval_status},
     )
 
+    source_version_id, source_version_tag, source_sessions = get_version_source_context(db, version)
     return DatasetVersionSubmitResponse(
         dataset_id=dataset_id,
+        dataset_name=getattr(getattr(version, "dataset", None), "name", None),
         version_id=version.id,
         version_tag=version.version_tag,
         approval_status=version.approval_status,
+        source_version_id=source_version_id,
+        source_version_tag=source_version_tag,
+        source_session_count=len(source_sessions),
+        source_sessions=source_sessions,
         submitted_by=current_user.id,
         submitted_at=submitted_at,
         message="Phiên bản dataset đã được gửi đến admin để phê duyệt.",
@@ -644,7 +599,7 @@ def submit_dataset_version_for_admin(
     "/{dataset_id}/versions/{version_id}/resubmit",
     response_model=DatasetVersionResubmitResponse,
     status_code=status.HTTP_200_OK,
-    summary="Data Engineer gửi lại phiên bản sau khi admin từ chối",
+    summary="Gửi lại phiên bản và các Recording Session nguồn sau khi bị từ chối",
 )
 def resubmit_dataset_version_for_admin(
     dataset_id: UUID,
@@ -693,11 +648,17 @@ def resubmit_dataset_version_for_admin(
         details={"dataset_id": str(dataset_id), "status": version.approval_status},
     )
 
+    source_version_id, source_version_tag, source_sessions = get_version_source_context(db, version)
     return DatasetVersionResubmitResponse(
         dataset_id=dataset_id,
+        dataset_name=getattr(getattr(version, "dataset", None), "name", None),
         version_id=version.id,
         version_tag=version.version_tag,
         approval_status=version.approval_status,
+        source_version_id=source_version_id,
+        source_version_tag=source_version_tag,
+        source_session_count=len(source_sessions),
+        source_sessions=source_sessions,
         submitted_by=current_user.id,
         submitted_at=submitted_at,
         message="Phiên bản dataset đã được gửi lại cho admin để xét duyệt sau khi sửa theo phản hồi.",
@@ -723,6 +684,7 @@ def review_uploaded_dataset(
     "/{dataset_id}/versions/{version_id}/sessions",
     response_model=RecordingSessionListResponse,
     summary="Danh sách Recording Sessions của một Dataset Version",
+    include_in_schema=False,
 )
 def review_recording_sessions(
     dataset_id: UUID,
@@ -771,6 +733,7 @@ def review_recording_session(
         415: {"description": "Session không chứa file CSV"},
         422: {"description": "CSV lỗi định dạng hoặc không đọc được"},
     },
+    include_in_schema=False,
 )
 def review_recording_session_preview(
     dataset_id: UUID,

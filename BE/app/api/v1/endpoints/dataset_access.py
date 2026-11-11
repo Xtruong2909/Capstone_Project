@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_admin
 from app.database.database import get_db
 from app.models.user import User
-from app.schemas.dataset import DatasetPreviewResponse
+from app.schemas.dataset import RecordingSessionListResponse, RecordingSessionPreviewResponse
 from app.schemas.dataset_access import (
     AccessibleDataset,
     ApprovedDatasetResponse,
@@ -16,11 +16,30 @@ from app.schemas.dataset_access import (
     EligibleDatasetUser,
 )
 from app.services import dataset_access_service as service
-from app.services.dataset_consumer_service import preview_approved_dataset
+from app.services.dataset_consumer_service import (
+    list_approved_recording_sessions,
+    preview_approved_recording_session,
+)
 
 admin_router = APIRouter(dependencies=[Depends(require_admin)])
 router = APIRouter()
 approved_router = APIRouter()
+
+
+@admin_router.get(
+    "/catalog",
+    response_model=list[AccessibleDataset],
+    summary="Danh sách toàn bộ Dataset để Admin quản lý quyền truy cập",
+)
+def admin_dataset_catalog(
+    search: str | None = Query(None, max_length=255),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[AccessibleDataset]:
+    """List all datasets for Admin, regardless of version approval status."""
+    return service.list_accessible(db, admin, search, skip, limit)
 
 
 @admin_router.get(
@@ -145,29 +164,57 @@ def approved_datasets(
 
 
 @approved_router.get(
-    "/{dataset_id}/versions/{version_id}/preview",
-    response_model=DatasetPreviewResponse,
-    summary="DS/BU xem trước dữ liệu phiên bản dataset đã duyệt",
+    "/{dataset_id}/versions/{version_id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="DS/BU xem danh sách Recording Sessions của Dataset Version đã duyệt",
     responses={
         403: {"description": "Sai vai trò, chưa có quyền hoặc phiên bản chưa duyệt"},
         404: {"description": "Không tìm thấy dataset, phiên bản hoặc file"},
-        415: {"description": "Định dạng không được hỗ trợ"},
     },
 )
-def preview_consumer_dataset(
+def list_consumer_dataset_sessions(
     dataset_id: UUID,
     version_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    representation: Literal["raw", "normalized"] = "normalized",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> DatasetPreviewResponse:
+) -> RecordingSessionListResponse:
     """Lấy dataset_id và version_id từ GET /datasets/approved.
 
     Chỉ DS/BU có grant được xem đúng phiên bản APPROVED đã chọn.
     Trả metadata, columns, rows và pagination; không chỉnh sửa file.
     """
-    return preview_approved_dataset(
-        db, current_user, dataset_id, version_id, page, page_size, representation
+    return list_approved_recording_sessions(
+        db, current_user, dataset_id, version_id, page, page_size,
+    )
+
+
+@approved_router.get(
+    "/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="DS/BU xem trước nội dung CSV của một Recording Session",
+    responses={
+        403: {"description": "Không có quyền hoặc Version chưa được duyệt"},
+        404: {"description": "Không tìm thấy Dataset, Version, Session hoặc file"},
+        415: {"description": "Định dạng không được hỗ trợ"},
+        422: {"description": "Không đọc được nội dung Session"},
+    },
+)
+def preview_consumer_recording_session(
+    dataset_id: UUID,
+    version_id: UUID,
+    session_id: UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    column_offset: int = Query(0, ge=0),
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RecordingSessionPreviewResponse:
+    """Preview paginated CSV rows for one session in an approved version."""
+    return preview_approved_recording_session(
+        db, current_user, dataset_id, version_id, session_id,
+        page=page, limit=limit, column_offset=column_offset,
+        representation=representation,
     )

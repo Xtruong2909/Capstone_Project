@@ -2,7 +2,9 @@ import csv
 import json
 import math
 import re
+import shutil
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import DATASET_UPLOAD_DIR
 from app.crud import crud_dataset
-from app.models.dataset import DatasetVersion
+from app.models.dataset import DatasetVersion, DatasetVersionSession
 from app.models.user import User
 from app.schemas.dataset import (
     DatasetPreviewColumn,
@@ -28,6 +30,8 @@ from app.schemas.dataset_normalization import (
     DatasetNormalizeResult,
     ProcessingReportResponse,
 )
+from app.services.dataset_preview_service import resolve_stored_file_path
+from app.services.dataset_version_service import get_version_source_context
 from app.services.normalization_batch import write_pneuma_parquet
 
 PNEUMA_HEADERS = (
@@ -50,6 +54,37 @@ def _get_staging_dir() -> Path:
     staging_dir = DATASET_UPLOAD_DIR.resolve() / "staging"
     staging_dir.mkdir(parents=True, exist_ok=True)
     return staging_dir
+
+
+def _get_normalization_source_version(
+    db: Session, dataset_id: UUID,
+) -> tuple[Any, DatasetVersion] | None:
+    """Prefer the latest version linked to raw recording sessions, then legacy raw CSV."""
+    session_version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.dataset_id == dataset_id,
+            DatasetVersion.id.in_(db.query(DatasetVersionSession.version_id)),
+        )
+        .order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc())
+        .first()
+    )
+    if session_version is not None:
+        return session_version.dataset, session_version
+
+    raw_version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.dataset_id == dataset_id,
+            ~DatasetVersion.version_tag.ilike("%clean%"),
+            ~DatasetVersion.version_tag.ilike("%normalized%"),
+        )
+        .order_by(DatasetVersion.created_at.asc(), DatasetVersion.id.asc())
+        .first()
+    )
+    if raw_version is not None:
+        return raw_version.dataset, raw_version
+    return crud_dataset.get_dataset_latest_version(db, dataset_id)
 
 
 def _resolve_file_path(version: DatasetVersion) -> Path:
@@ -96,19 +131,9 @@ def _prepare_version_tag(
             .first()
         )
         if existing:
-            if existing.approval_status == "PENDING":
-                try:
-                    old_path = _resolve_file_path(existing)
-                    if old_path.exists():
-                        old_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                db.delete(existing)
-                db.commit()
-                return requested_tag
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Phiên bản '{requested_tag}' đã được phê duyệt và không thể ghi đè.",
+                detail=f"Version tag '{requested_tag}' đã tồn tại; hãy chọn tag khác.",
             )
         return requested_tag
 
@@ -182,107 +207,138 @@ def normalize_dataset_structure_service(
     *,
     dataset_id: UUID,
     user: User,
+    version_id: UUID | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> DatasetNormalizeResult:
-    # 1. Tìm dataset và version nguồn
-    source_version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.dataset_id == dataset_id,
-            ~DatasetVersion.version_tag.ilike("%clean%"),
-            ~DatasetVersion.version_tag.ilike("%normalized%"),
+    dataset_info = (
+        crud_dataset.get_dataset_version(db, dataset_id, version_id)
+        if version_id is not None
+        else _get_normalization_source_version(db, dataset_id)
+    )
+    if dataset_info is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy Dataset Version có dữ liệu nguồn để chuẩn hóa.",
         )
-        .order_by(DatasetVersion.created_at.asc())
-        .first()
-    )
-    if not source_version:
-        dataset_info = crud_dataset.get_dataset_latest_version(db, dataset_id)
-        if not dataset_info:
+    _dataset, source_version = dataset_info
+    sessions = crud_dataset.list_all_version_sessions(db, source_version.id)
+    if isinstance(sessions, list) and sessions:
+        sources = [
+            (session.id, session.original_filename, resolve_stored_file_path(session.file_path))
+            for session in sessions
+        ]
+    else:
+        source_path = _resolve_file_path(source_version)
+        sources = [(None, source_version.original_filename or source_path.name, source_path)]
+
+    mapping_record = crud_dataset.get_dataset_column_mapping(db, dataset_id, source_version.id)
+    if mapping_record is None:
+        mapping_record = crud_dataset.get_latest_dataset_column_mapping(db, dataset_id)
+    rename_map = {
+        str(item.get("source_column", "")).strip().lower(): str(
+            item.get("target_column", "")
+        ).strip()
+        for item in (getattr(mapping_record, "mappings", []) if mapping_record else [])
+        if item.get("source_column") and item.get("target_column")
+    }
+
+    # Validate every source header before creating the staging output.
+    prepared_sources: list[tuple[UUID | None, str, Path, str]] = []
+    source_columns: list[str] = []
+    is_pneuma: bool | None = None
+    for session_id, filename, source_path in sources:
+        if source_path.suffix.lower() != ".csv":
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Không tìm thấy dataset với mã định danh đã cho.",
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"Chỉ hỗ trợ chuẩn hóa CSV; file không hợp lệ: {filename}",
             )
-        _dataset, source_version = dataset_info
+        try:
+            with source_path.open(
+                "r", encoding="utf-8-sig", errors="replace", newline=""
+            ) as infile:
+                first_line = infile.readline()
+        except OSError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Không đọc được file {filename}.",
+            ) from exc
+        if not first_line:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"File CSV rỗng: {filename}",
+            )
+        delimiter = _csv_delimiter(first_line)
+        headers = [
+            str(value).strip()
+            for value in next(csv.reader([first_line], delimiter=delimiter))
+        ]
+        pneuma_header = _is_pneuma_header(headers)
+        if not source_columns:
+            source_columns = headers
+            is_pneuma = pneuma_header
+        elif [value.lower() for value in headers] != [value.lower() for value in source_columns]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Cấu trúc cột của {filename} không khớp với các session còn lại.",
+            )
+        prepared_sources.append((session_id, filename, source_path, delimiter))
 
-    source_file_path = _resolve_file_path(source_version)
-
-    # 2. Lấy hoặc lưu cấu hình Mapping
-    rename_map: dict[str, str] = {}
-    mapping_record = crud_dataset.get_dataset_column_mapping(
-        db, dataset_id, source_version.id
-    )
-    if mapping_record and mapping_record.mappings:
-        for item in mapping_record.mappings:
-            src = str(item.get("source_column", "")).strip().lower()
-            tgt = str(item.get("target_column", "")).strip()
-            if src and tgt:
-                rename_map[src] = tgt
-
-    # 3. Chuẩn bị file staging tạm dạng Parquet (để tối ưu RAM và tốc độ)
     staging_id = uuid.uuid4()
     staging_dir = _get_staging_dir()
     staging_file_path = staging_dir / f"{staging_id}.parquet"
     staging_meta_path = staging_dir / f"{staging_id}.json"
-
     records_before = 0
     records_after = 0
-    source_columns: list[str] = []
     normalized_columns: list[str] = []
-
+    parquet_file: pq.ParquetFile | None = None
     try:
-        with open(source_file_path, "r", encoding="utf-8-sig", errors="replace") as infile:
-            first_line = infile.readline()
-            if not first_line:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="File dataset nguồn rỗng.",
-                )
+        if is_pneuma:
+            normalized_columns = [rename_map.get(col.lower(), col) for col in PNEUMA_HEADERS]
 
-            delimiter = _csv_delimiter(first_line)
-            raw_headers = [c.strip() for c in next(csv.reader([first_line], delimiter=delimiter))]
-            source_columns = raw_headers
+            def pneuma_rows() -> Iterator[list[str]]:
+                for _session_id, _filename, source_path, delimiter in prepared_sources:
+                    with source_path.open(
+                        "r", encoding="utf-8-sig", errors="replace", newline=""
+                    ) as infile:
+                        reader = csv.reader(infile, delimiter=delimiter)
+                        next(reader, None)
+                        yield from reader
 
-            is_pneuma = _is_pneuma_header(raw_headers)
-            parquet_writer = None
+            records_before, records_after = write_pneuma_parquet(
+                pneuma_rows(), staging_file_path, rename_map, _parse_number,
+            )
+        else:
+            normalized_columns = [rename_map.get(col.lower(), col) for col in source_columns]
+            parquet_writer: pq.ParquetWriter | None = None
             batch: list[dict[str, Any]] = []
-
-            if is_pneuma:
-                base_fields = ["track_id", "type", "traveled_d", "avg_speed"]
-                point_fields = ["lat", "lon", "speed", "lon_acc", "lat_acc", "time"]
-                all_pneuma_fields = base_fields + point_fields
-                normalized_columns = [rename_map.get(col.lower(), col) for col in all_pneuma_fields]
-
-                records_before, records_after = write_pneuma_parquet(
-                    csv.reader(infile, delimiter=delimiter),
-                    staging_file_path, rename_map, _parse_number,
-                )
-            else:
-                normalized_columns = [rename_map.get(col.lower(), col) for col in raw_headers]
-                dict_reader = csv.DictReader(infile, fieldnames=raw_headers, delimiter=delimiter)
-                for row in dict_reader:
-                    if row is not None and all(
-                        str(value).strip().lower() == str(key).strip().lower()
-                        for key, value in row.items()
-                        if key is not None and value is not None
-                    ):
-                        continue
-                    records_before += 1
-                    mapped_row = {
-                        rename_map.get(k.lower(), k): v for k, v in row.items() if k
-                    }
-                    batch.append(mapped_row)
-                    records_after += 1
-
-                    if len(batch) >= 20000:
-                        table = pa.Table.from_pylist(batch)
-                        if parquet_writer is None:
-                            parquet_writer = pq.ParquetWriter(
-                                staging_file_path, table.schema, compression="snappy"
-                            )
-                        parquet_writer.write_table(table)
-                        batch.clear()
-
+            for _session_id, _filename, source_path, delimiter in prepared_sources:
+                with source_path.open(
+                    "r", encoding="utf-8-sig", errors="replace", newline=""
+                ) as infile:
+                    first_line = infile.readline()
+                    raw_headers = [
+                        str(value).strip()
+                        for value in next(csv.reader([first_line], delimiter=delimiter))
+                    ]
+                    for row in csv.DictReader(infile, fieldnames=raw_headers, delimiter=delimiter):
+                        if row is None or not any(value is not None for value in row.values()):
+                            continue
+                        records_before += 1
+                        batch.append({
+                            rename_map.get(key.lower(), key): value
+                            for key, value in row.items()
+                            if key
+                        })
+                        records_after += 1
+                        if len(batch) >= 20_000:
+                            table = pa.Table.from_pylist(batch)
+                            if parquet_writer is None:
+                                parquet_writer = pq.ParquetWriter(
+                                    staging_file_path, table.schema, compression="snappy"
+                                )
+                            parquet_writer.write_table(table)
+                            batch.clear()
             if batch:
                 table = pa.Table.from_pylist(batch)
                 if parquet_writer is None:
@@ -290,9 +346,7 @@ def normalize_dataset_structure_service(
                         staging_file_path, table.schema, compression="snappy"
                     )
                 parquet_writer.write_table(table)
-                batch.clear()
-
-            if parquet_writer:
+            if parquet_writer is not None:
                 parquet_writer.close()
 
         parquet_file = pq.ParquetFile(staging_file_path)
@@ -326,6 +380,9 @@ def normalize_dataset_structure_service(
             for field in parquet_file.schema_arrow
         ]
 
+    except HTTPException:
+        staging_file_path.unlink(missing_ok=True)
+        raise
     except Exception as exc:
         if staging_file_path.exists():
             staging_file_path.unlink(missing_ok=True)
@@ -333,40 +390,56 @@ def normalize_dataset_structure_service(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Quá trình chuẩn hóa dữ liệu thất bại: {exc}",
         ) from exc
+    finally:
+        if parquet_file is not None:
+            parquet_file.close()
 
-    # Lưu metadata của phiên staging để Bước 5 sử dụng
+    # Save source session provenance for the export operation.
     staging_meta = {
         "staging_id": str(staging_id),
         "dataset_id": str(dataset_id),
         "source_version_id": str(source_version.id),
         "source_version_tag": source_version.version_tag,
-        "original_filename": source_version.original_filename,
+        "source_session_ids": [str(item[0]) for item in prepared_sources if item[0]],
+        "source_session_count": len(prepared_sources),
+        "source_filenames": [item[1] for item in prepared_sources],
+        "original_filename": f"{source_version.dataset.name}-normalized.parquet",
         "staging_file_path": str(staging_file_path),
         "records_before": records_before,
         "records_after": records_after,
         "source_columns": source_columns,
         "normalized_columns": normalized_columns,
         "applied_mappings": rename_map,
-        "is_pneuma": is_pneuma,
+        "is_pneuma": bool(is_pneuma),
         "created_at": datetime.now(UTC).isoformat(),
     }
-    with open(staging_meta_path, "w", encoding="utf-8") as f:
-        json.dump(staging_meta, f, ensure_ascii=False, indent=2)
+    try:
+        with staging_meta_path.open("w", encoding="utf-8") as f:
+            json.dump(staging_meta, f, ensure_ascii=False, indent=2)
+    except OSError as exc:
+        staging_file_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không lưu được metadata phiên chuẩn hóa.",
+        ) from exc
 
     return DatasetNormalizeResult(
         dataset_id=dataset_id,
         source_version_id=source_version.id,
+        source_version_tag=source_version.version_tag,
         staging_id=staging_id,
         status="normalized",
         records_before=records_before,
         records_after=records_after,
         source_columns=source_columns,
         normalized_columns=normalized_columns,
+        source_session_count=len(prepared_sources),
+        source_session_ids=[item[0] for item in prepared_sources if item[0]],
         preview=DatasetPreviewResponse(
             dataset_id=dataset_id,
             dataset_version_id=source_version.id,
             dataset_name=source_version.dataset.name,
-            original_filename=source_version.original_filename or source_file_path.name,
+            original_filename=staging_meta["original_filename"],
             file_format="PARQUET",
             file_size=staging_file_path.stat().st_size,
             status="normalized",
@@ -401,9 +474,7 @@ def export_normalized_dataset_service(
     user: User,
 ) -> DatasetExportResult:
     staging_dir = _get_staging_dir()
-
-    # 1. Tìm metadata staging
-    meta_path = None
+    meta_path: Path | None = None
     if payload.staging_id:
         meta_path = staging_dir / f"{payload.staging_id}.json"
         if not meta_path.is_file():
@@ -412,7 +483,6 @@ def export_normalized_dataset_service(
                 detail=f"Không tìm thấy phiên làm việc chuẩn hóa staging_id: {payload.staging_id}",
             )
     else:
-        # Tự động tìm staging gần nhất của dataset này
         matching_metas = []
         for file in staging_dir.glob("*.json"):
             try:
@@ -420,27 +490,37 @@ def export_normalized_dataset_service(
                     data = json.load(f)
                     if data.get("dataset_id") == str(dataset_id):
                         matching_metas.append((file.stat().st_mtime, file))
-            except Exception:
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
                 continue
         if not matching_metas:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Chưa có phiên chuẩn hóa nào của dataset này. Vui lòng chạy Bước 4 (Normalize) trước.",
+                detail="Chưa có kết quả Normalize cho Dataset này. Hãy chạy Normalize trước khi Export.",
             )
         matching_metas.sort(key=lambda x: x[0], reverse=True)
         meta_path = matching_metas[0][1]
 
+    assert meta_path is not None
     with open(meta_path, "r", encoding="utf-8") as f:
         staging_meta = json.load(f)
+    if staging_meta.get("dataset_id") != str(dataset_id):
+        raise HTTPException(status_code=404, detail="Không tìm thấy kết quả Normalize của Dataset này.")
 
-    staging_file_path = Path(staging_meta["staging_file_path"])
+    try:
+        staging_file_path = Path(staging_meta["staging_file_path"]).resolve()
+        staging_file_path.relative_to(staging_dir.resolve())
+    except (KeyError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Đường dẫn file Normalize không hợp lệ.") from exc
     if not staging_file_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File staging dữ liệu đã bị xóa hoặc không tồn tại.",
         )
 
-    # 2. Chuẩn bị phiên bản và thư mục đích
+    source_version_id = UUID(str(staging_meta["source_version_id"]))
+    if not crud_dataset.get_dataset_version(db, dataset_id, source_version_id):
+        raise HTTPException(status_code=404, detail="Dataset Version nguồn không còn tồn tại.")
+
     new_version_id = uuid.uuid4()
     source_tag = staging_meta.get("source_version_tag", "v1.0")
     new_version_tag = _prepare_version_tag(
@@ -452,58 +532,80 @@ def export_normalized_dataset_service(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     format_upper = payload.export_format.upper()
-    if format_upper == "PARQUET":
-        output_file_name = f"{new_version_id}.parquet"
-        output_file_path = target_dir / output_file_name
-        # Di chuyển hoặc copy trực tiếp file staging Parquet
-        staging_file_path.replace(output_file_path)
-    else:
-        # Nếu muốn xuất ra CSV
-        output_file_name = f"{new_version_id}.csv"
-        output_file_path = target_dir / output_file_name
-        table = pq.read_table(staging_file_path)
-        import pyarrow.csv as pacsv
-        pacsv.write_csv(table, output_file_path)
-        staging_file_path.unlink(missing_ok=True)
+    output_file_name = f"{new_version_id}.{format_upper.lower()}"
+    output_file_path = target_dir / output_file_name
+    try:
+        if format_upper == "PARQUET":
+            shutil.copyfile(staging_file_path, output_file_path)
+        else:
+            import pyarrow.csv as pacsv
 
-    # Xóa file meta staging sau khi xuất thành công
+            parquet_file = pq.ParquetFile(staging_file_path)
+            try:
+                with pacsv.CSVWriter(output_file_path, parquet_file.schema_arrow) as writer:
+                    for record_batch in parquet_file.iter_batches(batch_size=65_536):
+                        writer.write(pa.Table.from_batches(
+                            [record_batch], schema=parquet_file.schema_arrow,
+                        ))
+            finally:
+                parquet_file.close()
+        file_size_bytes = output_file_path.stat().st_size
+    except Exception as exc:
+        output_file_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể tạo file export từ kết quả Normalize.",
+        ) from exc
+    records_after = int(staging_meta["records_after"])
+    records_before = int(staging_meta["records_before"])
+    source_session_ids = staging_meta.get("source_session_ids", [])
+
+    try:
+        new_version, history = crud_dataset.create_normalized_version(
+            db,
+            dataset_id=dataset_id,
+            new_version_id=new_version_id,
+            version_tag=new_version_tag,
+            file_format=format_upper,
+            file_path=output_file_path.relative_to(upload_root).as_posix(),
+            file_size_bytes=file_size_bytes,
+            total_records=records_after,
+            original_filename=staging_meta.get("original_filename"),
+            records_before=records_before,
+            user_id=user.id,
+            cleaning_parameters={
+                "source_version_id": str(source_version_id),
+                "source_session_ids": source_session_ids,
+                "source_session_count": int(staging_meta.get("source_session_count", len(source_session_ids) or 1)),
+                "source_filenames": staging_meta.get("source_filenames", []),
+                "export_format": format_upper,
+                "applied_mappings": staging_meta.get("applied_mappings", {}),
+                "is_pneuma": staging_meta.get("is_pneuma", True),
+            },
+        )
+    except Exception as exc:
+        db.rollback()
+        output_file_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Không thể tạo Dataset Version từ kết quả Normalize.",
+        ) from exc
+
+    # Keep staging available if database creation fails; remove it only after commit.
+    staging_file_path.unlink(missing_ok=True)
     meta_path.unlink(missing_ok=True)
-
-    file_size_bytes = output_file_path.stat().st_size
-    records_after = staging_meta["records_after"]
-    records_before = staging_meta["records_before"]
-
-    # 3. Lưu vào Database (DatasetVersion & DataCleaningHistory)
-    new_version, history = crud_dataset.create_normalized_version(
-        db,
-        dataset_id=dataset_id,
-        new_version_id=new_version_id,
-        version_tag=new_version_tag,
-        file_format=format_upper,
-        file_path=output_file_path.relative_to(upload_root).as_posix(),
-        file_size_bytes=file_size_bytes,
-        total_records=records_after,
-        original_filename=staging_meta.get("original_filename"),
-        records_before=records_before,
-        user_id=user.id,
-        cleaning_parameters={
-            "source_version_id": staging_meta["source_version_id"],
-            "export_format": format_upper,
-            "applied_mappings": staging_meta.get("applied_mappings", {}),
-            "is_pneuma": staging_meta.get("is_pneuma", True),
-            "quality_check_id": str(payload.quality_check_id) if payload.quality_check_id else None,
-        },
-    )
 
     return DatasetExportResult(
         dataset_id=dataset_id,
+        source_version_id=source_version_id,
+        source_session_count=int(staging_meta.get("source_session_count", len(source_session_ids) or 1)),
         version_id=new_version.id,
         version_tag=new_version.version_tag,
         file_format=format_upper,
         file_size_bytes=file_size_bytes,
         total_records=records_after,
         cleaning_history_id=history.id,
-        message=f"Đã xuất phiên bản {new_version_tag} định dạng {format_upper} thành công (Dung lượng: {file_size_bytes / (1024 * 1024):.2f} MB).",
+        message=f"Đã xuất {int(staging_meta.get('source_session_count', len(source_session_ids) or 1))} session thành phiên bản {new_version_tag} định dạng {format_upper} (dung lượng {file_size_bytes / (1024 * 1024):.2f} MB).",
     )
 
 
@@ -534,6 +636,9 @@ def get_processing_report_service(
     params = history.parameters or {}
     applied_mappings = params.get("applied_mappings", {})
     quality_check_id = params.get("quality_check_id")
+    source_version_id, source_version_tag, source_sessions = get_version_source_context(
+        db, version, history=history,
+    )
 
     file_size = version.file_size_bytes or 0
     file_size_mb = round(file_size / (1024 * 1024), 2)
@@ -544,6 +649,10 @@ def get_processing_report_service(
         dataset_code=dataset.code,
         version_id=version.id,
         version_tag=version.version_tag,
+        source_version_id=source_version_id,
+        source_version_tag=source_version_tag,
+        source_session_count=len(source_sessions),
+        source_sessions=source_sessions,
         file_format=version.file_format,
         file_size_bytes=file_size,
         file_size_mb=file_size_mb,

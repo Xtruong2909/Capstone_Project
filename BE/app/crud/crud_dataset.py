@@ -116,6 +116,38 @@ def get_version_session(
     ).first()
 
 
+def list_dataset_sessions_by_ids(
+    db: Session,
+    dataset_id: UUID,
+    session_ids: list[UUID],
+    page: int,
+    page_size: int,
+) -> tuple[list[RecordingSession], int]:
+    """List provenance sessions by ID while keeping pagination in the database."""
+    if not session_ids:
+        return [], 0
+    query = db.query(RecordingSession).filter(
+        RecordingSession.dataset_id == dataset_id,
+        RecordingSession.id.in_(session_ids),
+    )
+    total = query.count()
+    sessions = query.order_by(
+        RecordingSession.scheduled_start, RecordingSession.id,
+    ).offset((page - 1) * page_size).limit(page_size).all()
+    return sessions, total
+
+
+def get_dataset_session_by_id(
+    db: Session,
+    dataset_id: UUID,
+    session_id: UUID,
+) -> RecordingSession | None:
+    return db.query(RecordingSession).filter(
+        RecordingSession.dataset_id == dataset_id,
+        RecordingSession.id == session_id,
+    ).first()
+
+
 def get_next_upload_version(db: Session, dataset_id: UUID) -> tuple[int, str]:
     versions = db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset_id).all()
     number = max((version.version_number or 0 for version in versions), default=0) + 1
