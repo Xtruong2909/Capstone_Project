@@ -82,6 +82,11 @@ class DatasetPreviewData:
 
 def _resolve_file_path(version: DatasetVersion) -> Path:
     stored_path = version.data_file_path or version.csv_file_path or version.parquet_file_path
+    return resolve_stored_file_path(stored_path)
+
+
+def resolve_stored_file_path(stored_path: str | None) -> Path:
+    """Resolve a stored upload path without allowing traversal outside the upload root."""
     if not stored_path:
         raise DatasetPreviewNotFoundError("Dataset version không có đường dẫn file")
 

@@ -5,7 +5,10 @@ from app.models.dataset import (
     Dataset,
     DatasetAccessGrant,
     DatasetColumnMapping,
+    DatasetUploadJob,
     DatasetVersion,
+    DatasetVersionSession,
+    RecordingSession,
 )
 from app.models.experiment import EvaluationMetric, Experiment, ForecastResult
 from app.models.model_training import (
@@ -25,7 +28,9 @@ __all__ = [
     "Dataset",
     "DatasetAccessGrant",
     "DatasetColumnMapping",
+    "DatasetUploadJob",
     "DatasetVersion",
+    "DatasetVersionSession",
     "EvaluationMetric",
     "Experiment",
     "FinalModel",
@@ -33,6 +38,7 @@ __all__ = [
     "ModelTrainingExperiment",
     "ModelTrainingSplit",
     "ModelValidationResult",
+    "RecordingSession",
     "Role",
     "TrafficAggregationJob",
     "TrafficTimeSeries",

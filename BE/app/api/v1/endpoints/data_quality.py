@@ -34,7 +34,11 @@ router = APIRouter()
     "/{dataset_id}/quality-checks",
     response_model=DataQualityCheckStarted,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="[Bước 3.1] Bắt đầu kiểm tra chất lượng dataset",
+    summary="Bắt đầu kiểm tra chất lượng Dataset Version hoặc Session",
+    description=(
+        "Gửi dataset_version_id để chọn version cụ thể; bỏ session_id để kiểm tra "
+        "toàn bộ version, hoặc truyền session_id để kiểm tra riêng một Recording Session."
+    ),
 )
 def start_quality_check(
     dataset_id: UUID,
@@ -48,6 +52,8 @@ def start_quality_check(
             db,
             dataset_id=dataset_id,
             user=current_user,
+            dataset_version_id=payload.dataset_version_id if payload else None,
+            session_id=payload.session_id if payload else None,
         )
     except DataQualityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -66,7 +72,7 @@ def start_quality_check(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}",
     response_model=DataQualityCheckStatus,
-    summary="[Bước 3.2] Xem trạng thái tác vụ kiểm tra",
+    summary="Xem trạng thái tác vụ kiểm tra",
 )
 def read_quality_check_status(
     dataset_id: UUID,
@@ -83,7 +89,7 @@ def read_quality_check_status(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}/report",
     response_model=DataQualityReport,
-    summary="[Bước 3.3] Lấy báo cáo Data Quality Check",
+    summary="Lấy báo cáo Data Quality tổng hợp theo Session",
 )
 def read_quality_check_report(
     dataset_id: UUID,
@@ -102,13 +108,15 @@ def read_quality_check_report(
 @router.get(
     "/{dataset_id}/quality-checks/{check_id}/issues",
     response_model=DataQualityIssuesPage,
-    summary="[Bước 3.4] Lấy lỗi kiểm tra có phân trang",
+    summary="Lấy lỗi kiểm tra có phân trang, có thể lọc theo Session",
+    description="Truyền session_id để xem chi tiết lỗi của một Recording Session.",
 )
 def read_quality_check_issues(
     dataset_id: UUID,
     check_id: UUID,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 50,
+    session_id: UUID | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_dataset_reader),
 ) -> DataQualityIssuesPage:
@@ -119,6 +127,7 @@ def read_quality_check_issues(
             check_id=check_id,
             page=page,
             page_size=page_size,
+            session_id=session_id,
         )
     except DataQualityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -16,6 +16,9 @@ class DatasetColumnInfo(BaseModel):
 class DatasetColumnsResponse(BaseModel):
     dataset_id: UUID
     dataset_version_id: UUID
+    session_count: int = Field(ge=0, description="Số recording session dùng chung cấu trúc cột này")
+    mapping_scope: str = "all_sessions_with_matching_columns"
+    mapping_reused: bool = False
     columns: list[DatasetColumnInfo]
 
 
@@ -59,4 +62,7 @@ class DatasetColumnMappingItem(BaseModel):
 class DatasetColumnMappingsResponse(BaseModel):
     dataset_id: UUID
     dataset_version_id: UUID
+    session_count: int = Field(default=0, ge=0)
+    mapping_scope: str = "all_sessions_with_matching_columns"
+    mapping_reused: bool = False
     mappings: list[DatasetColumnMappingItem] = Field(default_factory=list)

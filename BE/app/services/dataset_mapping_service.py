@@ -18,7 +18,9 @@ from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
     DatasetPreviewNotFoundError,
     DatasetPreviewReadError,
+    _read_csv,
     get_dataset_preview,
+    resolve_stored_file_path,
 )
 
 
@@ -37,34 +39,84 @@ class DatasetMappingValidationError(ValueError):
 def _dataset_schema(
     db: Session,
     dataset_id: UUID,
-) -> tuple[DatasetVersion, list[dict[str, str]]]:
+) -> tuple[DatasetVersion, list[dict[str, str]], int]:
     dataset_version = crud_dataset.get_dataset_latest_version(db, dataset_id)
     if dataset_version is None:
         raise DatasetMappingNotFoundError(
             "Không tìm thấy dataset hoặc phiên bản đã upload"
         )
     _, version = dataset_version
-    try:
-        preview = get_dataset_preview(
-            db,
-            dataset_id=dataset_id,
-            dataset_version_id=version.id,
-            page=1,
-            page_size=1,
-            representation="raw",
-        )
-    except DatasetPreviewNotFoundError as exc:
-        raise DatasetMappingNotFoundError(str(exc)) from exc
-    except (DatasetPreviewFormatError, DatasetPreviewReadError) as exc:
-        raise DatasetMappingReadError(str(exc)) from exc
+    sessions = crud_dataset.list_all_version_sessions(db, version.id)
+    if sessions:
+        columns: list[dict[str, str]] | None = None
+        reference_filename = ""
+        for session in sessions:
+            try:
+                path = resolve_stored_file_path(session.file_path)
+                preview = _read_csv(
+                    path, offset=0, page_size=1, representation="raw",
+                )
+            except DatasetPreviewNotFoundError as exc:
+                raise DatasetMappingNotFoundError(
+                    f"Không tìm thấy file session {session.original_filename}: {exc}"
+                ) from exc
+            except (DatasetPreviewFormatError, DatasetPreviewReadError, OSError, ValueError) as exc:
+                raise DatasetMappingReadError(
+                    f"Không đọc được cấu trúc cột của {session.original_filename}: {exc}"
+                ) from exc
 
-    columns = [
-        {"name": column.name, "type": column.type}
-        for column in preview.columns
-    ]
+            session_columns = [
+                {"name": column.name, "type": column.type}
+                for column in preview.columns
+            ]
+            if columns is None:
+                columns = session_columns
+                reference_filename = session.original_filename
+                continue
+            if [column["name"] for column in session_columns] != [
+                column["name"] for column in columns
+            ]:
+                raise DatasetMappingReadError(
+                    "Các session trong Dataset Version không cùng cấu trúc cột: "
+                    f"{reference_filename} và {session.original_filename}. "
+                    "Hãy kiểm tra file trước khi tạo mapping dùng chung."
+                )
+        columns = columns or []
+        session_count = len(sessions)
+    else:
+        # Keep support for legacy single-file Dataset Versions.
+        try:
+            preview = get_dataset_preview(
+                db,
+                dataset_id=dataset_id,
+                dataset_version_id=version.id,
+                page=1,
+                page_size=1,
+                representation="raw",
+            )
+        except DatasetPreviewNotFoundError as exc:
+            raise DatasetMappingNotFoundError(str(exc)) from exc
+        except (DatasetPreviewFormatError, DatasetPreviewReadError) as exc:
+            raise DatasetMappingReadError(str(exc)) from exc
+        columns = [
+            {"name": column.name, "type": column.type}
+            for column in preview.columns
+        ]
+        session_count = 1
     if not columns:
         raise DatasetMappingReadError("Dataset không có header/cột hợp lệ")
-    return version, columns
+    return version, columns, session_count
+
+
+def _mapping_for_version(
+    db: Session,
+    dataset_id: UUID,
+    version_id: UUID,
+) -> DatasetColumnMapping | None:
+    """Prefer this version's mapping, then reuse the dataset's latest saved mapping."""
+    return crud_dataset.get_dataset_column_mapping(
+        db, dataset_id, version_id,
+    ) or crud_dataset.get_latest_dataset_column_mapping(db, dataset_id)
 
 
 def _mapping_dict(mapping: DatasetColumnMapping | None) -> dict[str, str]:
@@ -117,10 +169,15 @@ def _response(
     dataset_id: UUID,
     version_id: UUID,
     mappings: dict[str, str],
+    session_count: int,
+    mapping_reused: bool = False,
 ) -> DatasetColumnMappingsResponse:
     return DatasetColumnMappingsResponse(
         dataset_id=dataset_id,
         dataset_version_id=version_id,
+        session_count=session_count,
+        mapping_scope="all_sessions_with_matching_columns",
+        mapping_reused=mapping_reused,
         mappings=[
             DatasetColumnMappingItem(
                 source_column=source_column,
@@ -132,16 +189,22 @@ def _response(
 
 
 def get_dataset_columns(db: Session, dataset_id: UUID) -> DatasetColumnsResponse:
-    version, source_profile = _dataset_schema(db, dataset_id)
-    saved_mapping = crud_dataset.get_dataset_column_mapping(
-        db,
-        dataset_id,
-        version.id,
-    )
+    version, source_profile, session_count = _dataset_schema(db, dataset_id)
+    saved_mapping = _mapping_for_version(db, dataset_id, version.id)
     mapping_by_source = _mapping_dict(saved_mapping)
+    if set(mapping_by_source) - {column["name"] for column in source_profile}:
+        # A new version can change schema. Do not silently apply an obsolete map.
+        mapping_by_source = {}
     return DatasetColumnsResponse(
         dataset_id=dataset_id,
         dataset_version_id=version.id,
+        session_count=session_count,
+        mapping_scope="all_sessions_with_matching_columns",
+        mapping_reused=bool(
+            saved_mapping
+            and saved_mapping.dataset_version_id != version.id
+            and mapping_by_source
+        ),
         columns=[
             DatasetColumnInfo(
                 source_column=column["name"],
@@ -161,14 +224,12 @@ def patch_dataset_column_mappings(
     requested_mappings: list[DatasetColumnMappingInput],
     user: User,
 ) -> DatasetColumnMappingsResponse:
-    version, source_profile = _dataset_schema(db, dataset_id)
+    version, source_profile, session_count = _dataset_schema(db, dataset_id)
     source_columns = [column["name"] for column in source_profile]
-    saved_mapping = crud_dataset.get_dataset_column_mapping(
-        db,
-        dataset_id,
-        version.id,
-    )
+    saved_mapping = _mapping_for_version(db, dataset_id, version.id)
     mapping_by_source = _mapping_dict(saved_mapping)
+    if set(mapping_by_source) - set(source_columns):
+        mapping_by_source = {}
 
     requested_sources = [item.source_column for item in requested_mappings]
     duplicate_sources = sorted(
@@ -207,6 +268,7 @@ def patch_dataset_column_mappings(
         dataset_id,
         stored_mapping.dataset_version_id,
         _mapping_dict(stored_mapping),
+        session_count,
     )
 
 
@@ -214,13 +276,22 @@ def get_dataset_column_mappings(
     db: Session,
     dataset_id: UUID,
 ) -> DatasetColumnMappingsResponse:
-    version_id = preview_version_id(db, dataset_id)
-    saved_mapping = crud_dataset.get_dataset_column_mapping(
-        db,
+    version, columns, session_count = _dataset_schema(db, dataset_id)
+    saved_mapping = _mapping_for_version(db, dataset_id, version.id)
+    mapping_by_source = _mapping_dict(saved_mapping)
+    if set(mapping_by_source) - {column["name"] for column in columns}:
+        mapping_by_source = {}
+    return _response(
         dataset_id,
-        version_id,
+        version.id,
+        mapping_by_source,
+        session_count,
+        mapping_reused=bool(
+            saved_mapping
+            and saved_mapping.dataset_version_id != version.id
+            and mapping_by_source
+        ),
     )
-    return _response(dataset_id, version_id, _mapping_dict(saved_mapping))
 
 
 def apply_saved_column_mappings(
@@ -230,13 +301,17 @@ def apply_saved_column_mappings(
     preview: DatasetPreviewResponse,
 ) -> DatasetPreviewResponse:
     version_id = preview.dataset_version_id or preview_version_id(db, dataset_id)
-    saved_mapping = crud_dataset.get_dataset_column_mapping(
-        db,
-        dataset_id,
-        version_id,
-    )
+    saved_mapping = _mapping_for_version(db, dataset_id, version_id)
     mapping_by_source = _mapping_dict(saved_mapping)
     if not mapping_by_source:
+        return preview
+
+    source_columns = [column.name for column in preview.columns]
+    if set(mapping_by_source) - set(source_columns):
+        return preview
+    try:
+        _validate_mappings(source_columns, mapping_by_source)
+    except DatasetMappingValidationError:
         return preview
 
     return preview.model_copy(

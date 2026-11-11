@@ -28,6 +28,8 @@ class Dataset(Base):
     source = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     capture_date = Column(Date, nullable=True)
+    recording_date = Column(Date, nullable=True)
+    drone_id = Column(String(32), nullable=True)
     location_name = Column(String(255), nullable=False)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -42,6 +44,7 @@ class DatasetVersion(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
     version_tag = Column(String(32), nullable=False)
+    version_number = Column(Integer, nullable=True)
     data_file_path = Column(String(512), nullable=True)
     original_filename = Column(String(255), nullable=True)
     csv_file_path = Column(String(512), nullable=True)
@@ -58,6 +61,53 @@ class DatasetVersion(Base):
     dataset = relationship("Dataset", back_populates="versions")
     submitter = relationship("User", foreign_keys=[submitted_by])
     approver = relationship("User", foreign_keys=[approved_by])
+    recording_sessions = relationship(
+        "RecordingSession", secondary="dataset_version_sessions", viewonly=True,
+    )
+
+
+class RecordingSession(Base):
+    __tablename__ = "recording_sessions"
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "original_filename", name="uq_recording_session_filename"),
+        UniqueConstraint("dataset_id", "checksum", name="uq_recording_session_checksum"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
+    original_filename = Column(String(255), nullable=False)
+    drone_id = Column(String(32), nullable=False)
+    recording_date = Column(Date, nullable=False)
+    scheduled_start = Column(DateTime(timezone=True), nullable=False)
+    scheduled_end = Column(DateTime(timezone=True), nullable=False)
+    file_path = Column(String(512), nullable=False)
+    file_size = Column(BigInteger, nullable=False)
+    checksum = Column(String(64), nullable=False)
+    upload_status = Column(String(32), nullable=False, default="UPLOADED")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class DatasetVersionSession(Base):
+    __tablename__ = "dataset_version_sessions"
+    __table_args__ = (UniqueConstraint("version_id", "session_id", name="uq_version_session"),)
+
+    version_id = Column(UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="CASCADE"), primary_key=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("recording_sessions.id", ondelete="CASCADE"), primary_key=True)
+
+
+class DatasetUploadJob(Base):
+    __tablename__ = "dataset_upload_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(20), nullable=False, default="PENDING")
+    total_files = Column(Integer, nullable=False)
+    processed_files = Column(Integer, nullable=False, default=0)
+    result = Column(JSONB, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC),
+                        onupdate=lambda: datetime.now(UTC))
 
 
 class DatasetColumnMapping(Base):

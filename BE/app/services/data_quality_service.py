@@ -26,7 +26,12 @@ from sqlalchemy.orm import Session
 from app.crud import crud_data_quality, crud_dataset
 from app.database.database import SessionLocal
 from app.models.data_quality import DataQualityCheck
-from app.models.dataset import DatasetColumnMapping, DatasetVersion
+from app.models.dataset import (
+    Dataset,
+    DatasetColumnMapping,
+    DatasetVersion,
+    RecordingSession,
+)
 from app.models.user import User
 from app.schemas.data_quality import (
     DataQualityCheckStarted,
@@ -43,6 +48,7 @@ from app.services.dataset_preview_service import (
     PNEUMA_HEADERS,
     PNEUMA_POINT_FIELDS,
     _resolve_file_path,
+    resolve_stored_file_path,
 )
 from app.services.quality_point_batch import clean_point_block
 
@@ -82,8 +88,13 @@ class DataQualityReportNotReadyError(ValueError):
 def _resolve_dataset_version(
     db: Session,
     dataset_id: UUID,
+    dataset_version_id: UUID | None = None,
 ) -> tuple[Any, DatasetVersion]:
-    result = crud_dataset.get_dataset_latest_version(db, dataset_id)
+    result = (
+        crud_dataset.get_dataset_version(db, dataset_id, dataset_version_id)
+        if dataset_version_id is not None
+        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    )
     if result is None:
         raise DataQualityNotFoundError("Không tìm thấy dataset hoặc phiên bản đã tải lên")
     return result
@@ -144,6 +155,8 @@ def _get_mappings(
         version_id,
     )
     if record is None:
+        record = crud_dataset.get_latest_dataset_column_mapping(db, dataset_id)
+    if record is None:
         return {}
     return {
         str(item["source_column"]): str(item["target_column"])
@@ -164,6 +177,7 @@ def _status_schema(check: DataQualityCheck) -> DataQualityCheckStatus:
         check_id=check.id,
         dataset_id=check.dataset_id,
         dataset_version_id=check.dataset_version_id,
+        session_id=check.recording_session_id,
         status=check.status,
         progress_percent=check.progress_percent,
         processed_rows=check.processed_rows,
@@ -175,14 +189,60 @@ def _status_schema(check: DataQualityCheck) -> DataQualityCheckStatus:
     )
 
 
+def _clear_cross_session_findings(summary: dict[str, Any]) -> dict[str, Any]:
+    """Recompute cross-session findings for the current validation snapshot."""
+    summary = dict(summary)
+    errors_by_type = dict(summary.get("errors_by_type", {}))
+    warnings_by_type = dict(summary.get("warnings_by_type", {}))
+    for issue_type in (
+        "mapping_inconsistent", "schema_inconsistent", "session_metadata_mismatch",
+        "duplicate_file", "cross_session_duplicate",
+    ):
+        prior = errors_by_type.pop(issue_type, {})
+        summary["total_errors"] = max(
+            0, int(summary.get("total_errors", 0)) - int(prior.get("total_errors", 0)),
+        )
+    prior_overlap = warnings_by_type.pop("cross_session_overlap", {})
+    summary["total_warnings"] = max(
+        0,
+        int(summary.get("total_warnings", 0))
+        - int(prior_overlap.get("total_warnings", 0)),
+    )
+    summary["errors_by_type"] = errors_by_type
+    summary["warnings_by_type"] = warnings_by_type
+    summary["validation_status"] = (
+        "FAIL" if summary["total_errors"]
+        else "WARNING" if summary["total_warnings"]
+        else "PASS"
+    )
+    return summary
+
+
 def start_data_quality_check(
     db: Session,
     *,
     dataset_id: UUID,
     user: User,
-) -> tuple[DataQualityCheckStarted, Path]:
-    _, version = _resolve_dataset_version(db, dataset_id)
-    path = _version_path(version)
+    dataset_version_id: UUID | None = None,
+    session_id: UUID | None = None,
+) -> tuple[DataQualityCheckStarted, Path | None]:
+    dataset, version = _resolve_dataset_version(db, dataset_id, dataset_version_id)
+    sessions = crud_dataset.list_all_version_sessions(db, version.id)
+    selected_session: RecordingSession | None = None
+    if session_id is not None:
+        selected_session = crud_dataset.get_version_session(db, version.id, session_id)
+        if selected_session is None or selected_session.dataset_id != dataset_id:
+            raise DataQualityNotFoundError(
+                "Không tìm thấy Recording Session trong Dataset Version đã chọn"
+            )
+        # A missing file is a session-level validation failure, not a reason to
+        # reject the job. The worker records it in the version report.
+        path = None
+    elif sessions:
+        path = None
+    else:
+        path = _version_path(version)
+
     active = crud_data_quality.get_active_check(db, version.id)
     if active is not None:
         raise DataQualityConflictError(
@@ -191,11 +251,25 @@ def start_data_quality_check(
     check = DataQualityCheck(
         dataset_id=dataset_id,
         dataset_version_id=version.id,
+        recording_session_id=session_id,
         started_by=user.id,
         status="queued",
         progress_percent=0,
         processed_rows=0,
     )
+    if session_id is not None:
+        previous = crud_data_quality.get_latest_completed_check(db, version.id)
+        prior_sessions = (
+            previous.report.get("sessions", [])
+            if previous is not None and isinstance(previous.report, dict)
+            else []
+        )
+        check.report = {
+            "base_session_results": [
+                _clear_cross_session_findings(item) for item in prior_sessions
+                if item.get("session_id") != str(session_id)
+            ]
+        }
     db.add(check)
     try:
         db.commit()
@@ -207,7 +281,11 @@ def start_data_quality_check(
     db.refresh(check)
     response = DataQualityCheckStarted(
         **_status_schema(check).model_dump(),
-        message="Đã xếp hàng kiểm tra chất lượng dataset",
+        message=(
+            "Đã xếp hàng kiểm tra Recording Session"
+            if session_id is not None
+            else "Đã xếp hàng kiểm tra Dataset Version"
+        ),
     )
     return response, path
 
@@ -251,29 +329,51 @@ def get_data_quality_issues(
     check_id: UUID,
     page: int,
     page_size: int,
+    session_id: UUID | None = None,
 ) -> DataQualityIssuesPage:
     check = crud_data_quality.get_check(db, dataset_id, check_id)
     if check is None:
         raise DataQualityNotFoundError("Không tìm thấy tác vụ kiểm tra chất lượng")
+    issue_check_ids = [check_id]
+    if session_id is not None and isinstance(check.report, dict):
+        session_summary = next(
+            (
+                item for item in check.report.get("sessions", [])
+                if item.get("session_id") == str(session_id)
+            ),
+            None,
+        )
+        if session_summary is None:
+            raise DataQualityNotFoundError(
+                "Session chưa có trong báo cáo Validation này"
+            )
+        issue_check_ids.append(UUID(session_summary.get("source_check_id", str(check_id))))
     issues, total = crud_data_quality.list_issues(
         db,
-        check_id,
+        list(set(issue_check_ids)),
         offset=(page - 1) * page_size,
         limit=page_size,
+        recording_session_id=session_id,
     )
     return DataQualityIssuesPage(
         check_id=check_id,
         page=page,
         page_size=page_size,
         total=total,
+        session_id=session_id,
         issues=[
             DataQualityIssueItem(
                 row_number=issue.row_number,
                 issue_type=issue.issue_type,
-                severity="warning" if issue.issue_type == "outlier" else "error",
+                severity=(
+                    "warning"
+                    if issue.issue_type in {"outlier", "cross_session_overlap"}
+                    else "error"
+                ),
                 column_name=issue.column_name,
                 message=issue.message,
                 observed_value=issue.observed_value,
+                session_id=issue.recording_session_id,
             )
             for issue in issues
         ],
@@ -579,7 +679,8 @@ def _infer_column_types(
     numeric_names = {
         name.lower()
         for name in ("latitude", "lat", "longitude", "lon", "lng", "speed", "average_speed",
-                     "avg_speed", "x", "y", "timestamp", "time", "timestamp_ms")
+                     "avg_speed", "lon_acc", "lat_acc", "longitudinal_acceleration",
+                     "lateral_acceleration", "x", "y", "timestamp", "time", "timestamp_ms")
     }
     for index, header in enumerate(headers):
         logical_name = mappings.get(header, header).lower()
@@ -621,6 +722,18 @@ def _parse_timestamp(value: Any) -> bool:
             return True
         except ValueError:
             return False
+
+
+def _timestamp_order_value(value: Any) -> float | None:
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (TypeError, ValueError):
+        try:
+            parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+            return parsed.timestamp()
+        except (TypeError, ValueError, OverflowError):
+            return None
 
 
 def _parse_coordinate(value: Any, *, latitude: bool) -> tuple[bool, bool]:
@@ -674,11 +787,17 @@ def _run_check(
     mappings: dict[str, str],
     *,
     outlier_rules: list[DataQualityOutlierRule] | None = None,
-) -> None:
+    session_id: UUID | None = None,
+    finalize: bool = True,
+    cross_session_hashes: sqlite3.Connection | None = None,
+) -> dict[str, Any] | None:
     db = SessionLocal()
     temp_dir = tempfile.TemporaryDirectory(prefix="traffic-quality-")
     disk_state = sqlite3.connect(str(Path(temp_dir.name) / "quality_state.sqlite"))
     disk_state.execute("CREATE TABLE seen_hashes (digest BLOB PRIMARY KEY)")
+    disk_state.execute(
+        "CREATE TABLE track_timestamps (track_id TEXT PRIMARY KEY, timestamp REAL NOT NULL)"
+    )
     disk_state.execute("CREATE TABLE affected_rows (row_number INTEGER PRIMARY KEY)")
     disk_state.execute(
         "CREATE TABLE issue_affected_rows "
@@ -687,10 +806,11 @@ def _run_check(
     )
     try:
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one()
-        check.status = "running"
-        check.progress_percent = 1
-        check.started_at = datetime.now(UTC)
-        db.commit()
+        if finalize:
+            check.status = "running"
+            check.progress_percent = 1
+            check.started_at = datetime.now(UTC)
+            db.commit()
 
         error_totals: Counter[str] = Counter()
         column_errors: Counter[str] = Counter()
@@ -769,6 +889,7 @@ def _run_check(
                 nonlocal row_has_error
                 pending_issues.append({
                     "check_id": check_id,
+                    "recording_session_id": session_id,
                     "row_number": row_number,
                     "issue_type": issue_type,
                     "column_name": column_name,
@@ -847,6 +968,7 @@ def _run_check(
                 )
 
             timestamp_source = logical_sources["timestamp"]
+            track_id_source = logical_sources["track_id"]
             latitude_source = logical_sources["latitude"]
             longitude_source = logical_sources["longitude"]
             all_records = chain(sample, records)
@@ -912,6 +1034,23 @@ def _run_check(
                         None,
                         "Bản ghi trùng hoàn toàn với một dòng trước đó",
                     )
+                if cross_session_hashes is not None and session_id is not None:
+                    prior = cross_session_hashes.execute(
+                        "SELECT session_id FROM seen_session_hashes WHERE digest = ?",
+                        (digest,),
+                    ).fetchone()
+                    if prior is None:
+                        cross_session_hashes.execute(
+                            "INSERT INTO seen_session_hashes(digest, session_id) VALUES (?, ?)",
+                            (digest, str(session_id)),
+                        )
+                    elif prior[0] != str(session_id):
+                        add_issue(
+                            row_number,
+                            "cross_session_duplicate",
+                            None,
+                            "Bản ghi trùng hoàn toàn với dữ liệu ở một Recording Session khác",
+                        )
 
                 if is_pneuma:
                     # Mirror dataset_preview_service: floor division starting from
@@ -967,6 +1106,30 @@ def _run_check(
                     for point_index in range(point_count):
                         if point_index and point_index % PROGRESS_POINT_BATCH_SIZE == 0:
                             publish_progress()
+                        start = point_start + point_index * len(PNEUMA_POINT_FIELDS)
+                        point_values = values[start : start + len(PNEUMA_POINT_FIELDS)]
+                        if point_index > 0:
+                            previous_time_index = start - len(PNEUMA_POINT_FIELDS) + 5
+                            current_time_index = start + 5
+                            try:
+                                previous_time = float(values[previous_time_index])
+                                current_time = float(values[current_time_index])
+                            except (IndexError, TypeError, ValueError):
+                                previous_time = current_time = None
+                            if (
+                                previous_time is not None
+                                and current_time is not None
+                                and math.isfinite(previous_time)
+                                and math.isfinite(current_time)
+                                and current_time <= previous_time
+                            ):
+                                add_issue(
+                                    row_number,
+                                    "invalid_trajectory",
+                                    "time",
+                                    "Timestamp các điểm trong trajectory phải tăng dần",
+                                    current_time,
+                                )
                         if point_index < validated_until:
                             continue
                         if point_index % PROGRESS_POINT_BATCH_SIZE == 0:
@@ -979,8 +1142,6 @@ def _run_check(
                                     total_values_by_column[field_name] += block_end - point_index
                                 validated_until = block_end
                                 continue
-                        start = point_start + point_index * len(PNEUMA_POINT_FIELDS)
-                        point_values = values[start : start + len(PNEUMA_POINT_FIELDS)]
                         if len(point_values) < len(PNEUMA_POINT_FIELDS):
                             add_issue(
                                 row_number,
@@ -1141,6 +1302,29 @@ def _run_check(
                         if outlier_field in rules_by_field:
                             check_outlier(row_number, header, outlier_field, value)
 
+                    if track_id_source and timestamp_source:
+                        track_value = row.get(track_id_source)
+                        timestamp_value = _timestamp_order_value(row.get(timestamp_source))
+                        if not _is_missing(track_value) and timestamp_value is not None:
+                            track_key = str(track_value).strip()
+                            previous = disk_state.execute(
+                                "SELECT timestamp FROM track_timestamps WHERE track_id = ?",
+                                (track_key,),
+                            ).fetchone()
+                            if previous is not None and timestamp_value <= previous[0]:
+                                add_issue(
+                                    row_number,
+                                    "invalid_trajectory",
+                                    timestamp_source,
+                                    "Timestamp phải tăng dần trong cùng một track của session",
+                                    row.get(timestamp_source),
+                                )
+                            disk_state.execute(
+                                "INSERT INTO track_timestamps(track_id, timestamp) VALUES (?, ?) "
+                                "ON CONFLICT(track_id) DO UPDATE SET timestamp = excluded.timestamp",
+                                (track_key, timestamp_value),
+                            )
+
                 processed += 1
                 publish_progress(force=processed % PROGRESS_BATCH_SIZE == 0)
 
@@ -1188,7 +1372,14 @@ def _run_check(
             "dataset_id": str(check.dataset_id),
             "dataset_version_id": str(check.dataset_version_id),
             "status": "completed",
+            "validation_status": (
+                "FAIL" if sum(error_totals.values())
+                else "WARNING" if sum(warning_totals.values())
+                else "PASS"
+            ),
+            "session_id": str(session_id) if session_id else None,
             "detected_structure": structure,
+            "source_columns": headers,
             "total_rows": total_rows,
             "valid_rows": max(0, total_rows - affected_total),
             "invalid_rows": min(total_rows, affected_total),
@@ -1217,33 +1408,239 @@ def _run_check(
             "generated_at": datetime.now(UTC).isoformat(),
         }
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one()
-        check.status = "completed"
-        check.progress_percent = 100
-        check.processed_rows = total_rows
-        check.total_rows = total_rows
-        check.report = report
-        check.completed_at = datetime.now(UTC)
+        if finalize:
+            check.status = "completed"
+            check.progress_percent = 100
+            check.processed_rows = total_rows
+            check.total_rows = total_rows
+            check.report = report
+            check.completed_at = datetime.now(UTC)
         db.commit()
+        return report
     except Exception as exc:
         db.rollback()
         logger.exception(
             "Data quality check failed",
             extra={"check_id": str(check_id), "dataset_version_id": str(version.id)},
         )
-        failed = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
-        if failed is not None:
-            failed.status = "failed"
-            failed.error_message = (
-                str(exc)[:1000]
-                if isinstance(exc, (DataQualitySchemaError, OSError, ValueError))
-                else "Tác vụ kiểm tra chất lượng thất bại; xem log server theo check_id"
-            )
-            failed.completed_at = datetime.now(UTC)
-            db.commit()
+        if finalize:
+            failed = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
+            if failed is not None:
+                failed.status = "failed"
+                failed.error_message = (
+                    str(exc)[:1000]
+                    if isinstance(exc, (DataQualitySchemaError, OSError, ValueError))
+                    else "Tác vụ kiểm tra chất lượng thất bại; xem log server theo check_id"
+                )
+                failed.completed_at = datetime.now(UTC)
+                db.commit()
+        else:
+            raise
     finally:
         disk_state.close()
         temp_dir.cleanup()
         db.close()
+
+
+def _session_summary(
+    check_id: UUID,
+    session: RecordingSession,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    errors = int(report.get("total_errors", 0))
+    warnings = int(report.get("total_warnings", 0))
+    status = "FAIL" if errors else "WARNING" if warnings else "PASS"
+    return {
+        "session_id": str(session.id),
+        "source_check_id": str(check_id),
+        "original_filename": session.original_filename,
+        "detected_structure": report.get("detected_structure", "unknown"),
+        "validation_status": status,
+        "total_rows": int(report.get("total_rows", 0)),
+        "valid_rows": int(report.get("valid_rows", 0)),
+        "invalid_rows": int(report.get("invalid_rows", 0)),
+        "total_errors": errors,
+        "total_warnings": warnings,
+        "warning_rows": int(report.get("warning_rows", 0)),
+        "missing_required_columns": report.get("missing_required_columns", []),
+        "errors_by_type": report.get("errors_by_type", {}),
+        "errors_by_column": report.get("errors_by_column", []),
+        "missing_values_by_column": report.get("missing_values_by_column", []),
+        "warnings_by_column": report.get("warnings_by_column", {}),
+        "warnings_by_type": report.get("warnings_by_type", {}),
+        "source_columns": report.get("source_columns", []),
+    }
+
+
+def _populate_cross_session_hashes(
+    connection: sqlite3.Connection,
+    sessions: list[RecordingSession],
+    *,
+    skip_session_id: UUID,
+    version: DatasetVersion,
+) -> None:
+    """Stream other sessions into a disk-backed digest index for single-session rechecks."""
+    for session in sessions:
+        if session.id == skip_session_id:
+            continue
+        try:
+            path = resolve_stored_file_path(session.file_path)
+            with _open_records(path, version.file_format) as (
+                _, _, structure, records, _,
+            ):
+                for _, values, parse_error in records:
+                    if parse_error is not None or not values:
+                        continue
+                    digest_values = (
+                        _normalize_pneuma_trailing_delimiter(list(values))
+                        if structure == "pneuma_wide_trajectory"
+                        else values
+                    )
+                    digest = hashlib.sha256(
+                        json.dumps(
+                            digest_values,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                            default=str,
+                        ).encode("utf-8")
+                    ).digest()
+                    connection.execute(
+                        "INSERT OR IGNORE INTO seen_session_hashes(digest, session_id) "
+                        "VALUES (?, ?)",
+                        (digest, str(session.id)),
+                    )
+        except (DataQualitySchemaError, OSError, ValueError):
+            logger.warning(
+                "Skipped cross-session digest indexing for unreadable session",
+                extra={"session_id": str(session.id)},
+                exc_info=True,
+            )
+    connection.commit()
+
+
+def _add_cross_session_issue(
+    db: Session,
+    *,
+    check_id: UUID,
+    session_id: UUID,
+    issue_type: str,
+    message: str,
+    summaries: dict[str, dict[str, Any]],
+    severity: str = "error",
+) -> None:
+    crud_data_quality.insert_issues(db, [{
+        "check_id": check_id,
+        "recording_session_id": session_id,
+        "row_number": None,
+        "issue_type": issue_type,
+        "column_name": None,
+        "message": message[:512],
+        "observed_value": None,
+    }])
+    summary = summaries.get(str(session_id))
+    if summary is None:
+        return
+    if severity == "warning":
+        summary["total_warnings"] += 1
+        warning_counts = summary.setdefault("warnings_by_type", {})
+        warning_count = warning_counts.setdefault(
+            issue_type, {"total_warnings": 0, "affected_rows": 0},
+        )
+        warning_count["total_warnings"] += 1
+        if summary["validation_status"] == "PASS":
+            summary["validation_status"] = "WARNING"
+        return
+    summary["total_errors"] += 1
+    summary["validation_status"] = "FAIL"
+    errors_by_type = summary.setdefault("errors_by_type", {})
+    count = errors_by_type.setdefault(issue_type, {"total_errors": 0, "affected_rows": 0})
+    count["total_errors"] += 1
+
+
+def _aggregate_session_report(
+    *,
+    check: DataQualityCheck,
+    summaries: list[dict[str, Any]],
+    total_sessions: int,
+    outlier_rules: list[DataQualityOutlierRule] | None,
+) -> dict[str, Any]:
+    counts = {"PASS": 0, "WARNING": 0, "FAIL": 0}
+    errors_by_type: dict[str, dict[str, int]] = {}
+    warnings_by_type: dict[str, dict[str, int]] = {}
+    column_totals: dict[str, dict[str, int]] = {}
+    warnings_by_column: Counter[str] = Counter()
+    missing_required: set[str] = set()
+    for summary in summaries:
+        status = summary["validation_status"]
+        counts[status] += 1
+        missing_required.update(summary.get("missing_required_columns", []))
+        warnings_by_column.update(summary.get("warnings_by_column", {}))
+        for issue_type, value in summary.get("warnings_by_type", {}).items():
+            count = warnings_by_type.setdefault(
+                issue_type, {"total_warnings": 0, "affected_rows": 0},
+            )
+            count["total_warnings"] += int(value.get("total_warnings", 0))
+            count["affected_rows"] += int(value.get("affected_rows", 0))
+        for issue_type, value in summary.get("errors_by_type", {}).items():
+            count = errors_by_type.setdefault(
+                issue_type, {"total_errors": 0, "affected_rows": 0},
+            )
+            count["total_errors"] += int(value.get("total_errors", 0))
+            count["affected_rows"] += int(value.get("affected_rows", 0))
+        for item in summary.get("errors_by_column", []):
+            values = column_totals.setdefault(item["column_name"], {
+                "missing_values": 0, "total_values": 0, "errors": 0,
+            })
+            for field in values:
+                values[field] += int(item.get(field, 0))
+
+    columns = [
+        {
+            "column_name": name,
+            **values,
+            "missing_percent": round(values["missing_values"] * 100 / values["total_values"], 2)
+            if values["total_values"] else 0,
+        }
+        for name, values in sorted(column_totals.items())
+    ]
+    total_rows = sum(int(item.get("total_rows", 0)) for item in summaries)
+    valid_rows = sum(int(item.get("valid_rows", 0)) for item in summaries)
+    invalid_rows = sum(int(item.get("invalid_rows", 0)) for item in summaries)
+    total_errors = sum(int(item.get("total_errors", 0)) for item in summaries)
+    total_warnings = sum(int(item.get("total_warnings", 0)) for item in summaries)
+    status = (
+        "FAIL" if counts["FAIL"]
+        else "WARNING" if counts["WARNING"] or len(summaries) < total_sessions
+        else "PASS"
+    )
+    structures = sorted({item.get("detected_structure", "unknown") for item in summaries})
+    return {
+        "dataset_id": str(check.dataset_id),
+        "dataset_version_id": str(check.dataset_version_id),
+        "status": "completed",
+        "validation_status": status,
+        "session_id": str(check.recording_session_id) if check.recording_session_id else None,
+        "session_counts": counts,
+        "total_sessions": total_sessions,
+        "sessions_checked": len(summaries),
+        "unchecked_session_count": max(0, total_sessions - len(summaries)),
+        "sessions": summaries,
+        "detected_structure": structures[0] if len(structures) == 1 else "mixed",
+        "total_rows": total_rows,
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "total_errors": total_errors,
+        "total_warnings": total_warnings,
+        "warning_rows": sum(int(item.get("warning_rows", 0)) for item in summaries),
+        "warnings_by_type": warnings_by_type,
+        "warnings_by_column": dict(warnings_by_column),
+        "outlier_rules": [rule.model_dump() for rule in outlier_rules or []],
+        "errors_by_type": errors_by_type,
+        "errors_by_column": columns,
+        "missing_values_by_column": columns,
+        "missing_required_columns": sorted(missing_required),
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
 
 
 def run_data_quality_check(
@@ -1252,28 +1649,233 @@ def run_data_quality_check(
     outlier_rules: list[DataQualityOutlierRule] | None = None,
 ) -> None:
     db = SessionLocal()
+    cross_temp: tempfile.TemporaryDirectory[str] | None = None
+    cross_hashes: sqlite3.Connection | None = None
     try:
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
         if check is None:
             raise DataQualityNotFoundError("Không tìm thấy tác vụ kiểm tra chất lượng")
         result = crud_dataset.get_dataset_version(
-            db,
-            check.dataset_id,
-            check.dataset_version_id,
+            db, check.dataset_id, check.dataset_version_id,
         )
         if result is None:
-            raise DataQualityNotFoundError("Không tìm thấy phiên bản dataset được kiểm tra")
-        _, version = result
-        path = _version_path(version)
-        mappings = _get_mappings(db, check.dataset_id, check.dataset_version_id)
-        _run_check(check_id, path, version, mappings, outlier_rules=outlier_rules)
-    except Exception:
+            raise DataQualityNotFoundError("Không tìm thấy phiên bản Dataset được kiểm tra")
+        dataset, version = result
+        sessions = crud_dataset.list_all_version_sessions(db, version.id)
+        mappings = _get_mappings(db, check.dataset_id, version.id)
+        check.status = "running"
+        check.progress_percent = 1
+        check.started_at = datetime.now(UTC)
+        db.commit()
+
+        if not sessions:
+            path = _version_path(version)
+            _run_check(
+                check_id, path, version, mappings,
+                outlier_rules=outlier_rules,
+                session_id=check.recording_session_id,
+                finalize=True,
+            )
+            return
+
+        if check.recording_session_id is not None:
+            selected = next(
+                (item for item in sessions if item.id == check.recording_session_id), None,
+            )
+            if selected is None:
+                raise DataQualityNotFoundError("Session không còn thuộc Dataset Version này")
+            targets = [selected]
+            cross_temp = tempfile.TemporaryDirectory(prefix="traffic-quality-cross-")
+            cross_hashes = sqlite3.connect(str(Path(cross_temp.name) / "cross_hashes.sqlite"))
+            cross_hashes.execute(
+                "CREATE TABLE seen_session_hashes (digest BLOB PRIMARY KEY, session_id TEXT NOT NULL)"
+            )
+            _populate_cross_session_hashes(
+                cross_hashes, sessions,
+                skip_session_id=selected.id,
+                version=version,
+            )
+        else:
+            targets = sessions
+            cross_temp = tempfile.TemporaryDirectory(prefix="traffic-quality-cross-")
+            cross_hashes = sqlite3.connect(str(Path(cross_temp.name) / "cross_hashes.sqlite"))
+            cross_hashes.execute(
+                "CREATE TABLE seen_session_hashes (digest BLOB PRIMARY KEY, session_id TEXT NOT NULL)"
+            )
+
+        prior = check.report if isinstance(check.report, dict) else {}
+        summaries_by_id = {
+            str(item.get("session_id")): item
+            for item in prior.get("base_session_results", [])
+            if item.get("session_id")
+        }
+        processed_total = 0
+        for index, session in enumerate(targets):
+            db.refresh(check)
+            check.progress_percent = max(1, min(90, int(index * 90 / len(targets)) + 1))
+            db.commit()
+            try:
+                path = resolve_stored_file_path(session.file_path)
+                report = _run_check(
+                    check_id, path, version, mappings,
+                    outlier_rules=outlier_rules,
+                    session_id=session.id,
+                    finalize=False,
+                    cross_session_hashes=cross_hashes,
+                )
+            except (DataQualitySchemaError, DataQualityNotFoundError, OSError, ValueError) as exc:
+                error_message = f"Không thể đọc session {session.original_filename}: {exc}"
+                summaries_by_id[str(session.id)] = {
+                    "session_id": str(session.id),
+                    "source_check_id": str(check_id),
+                    "original_filename": session.original_filename,
+                    "detected_structure": "unknown",
+                    "validation_status": "FAIL",
+                    "total_rows": 0,
+                    "valid_rows": 0,
+                    "invalid_rows": 0,
+                    "total_errors": 1,
+                    "total_warnings": 0,
+                    "warning_rows": 0,
+                    "missing_required_columns": [],
+                    "errors_by_type": {
+                        "file_unreadable": {"total_errors": 1, "affected_rows": 0},
+                    },
+                    "errors_by_column": [],
+                    "missing_values_by_column": [],
+                    "warnings_by_column": {},
+                    "warnings_by_type": {},
+                    "source_columns": [],
+                }
+                crud_data_quality.insert_issues(db, [{
+                    "check_id": check_id,
+                    "recording_session_id": session.id,
+                    "row_number": None,
+                    "issue_type": "file_unreadable",
+                    "column_name": None,
+                    "message": error_message[:512],
+                    "observed_value": None,
+                }])
+                db.commit()
+                continue
+            if report is None:
+                raise DataQualitySchemaError("Không tạo được báo cáo cho session")
+            summaries_by_id[str(session.id)] = _session_summary(check_id, session, report)
+            processed_total += int(report.get("total_rows", 0))
+            if cross_hashes is not None:
+                cross_hashes.commit()
+
+        reference_columns: list[str] | None = None
+        for session in sessions:
+            summary = summaries_by_id.get(str(session.id))
+            if summary is None:
+                continue
+            source_columns = summary.get("source_columns", [])
+            if not source_columns:
+                continue
+            if reference_columns is None:
+                reference_columns = source_columns
+            elif source_columns != reference_columns:
+                _add_cross_session_issue(
+                    db, check_id=check_id, session_id=session.id,
+                    issue_type="schema_inconsistent",
+                    message="Danh sách cột khác với các Recording Session cùng Dataset Version",
+                    summaries=summaries_by_id,
+                )
+            if set(mappings) - set(source_columns):
+                _add_cross_session_issue(
+                    db, check_id=check_id, session_id=session.id,
+                    issue_type="mapping_inconsistent",
+                    message="Column Mapping có cột nguồn không tồn tại trong session này",
+                    summaries=summaries_by_id,
+                )
+
+        # Run cross-session metadata checks independently of row-level checks.
+        seen_checksums: dict[str, RecordingSession] = {}
+        seen_filenames: dict[str, RecordingSession] = {}
+        for session in sessions:
+            summary = summaries_by_id.get(str(session.id))
+            if dataset.drone_id and session.drone_id != dataset.drone_id:
+                _add_cross_session_issue(
+                    db, check_id=check_id, session_id=session.id,
+                    issue_type="session_metadata_mismatch",
+                    message=f"Drone ID {session.drone_id} không khớp Dataset {dataset.drone_id}",
+                    summaries=summaries_by_id,
+                )
+            if dataset.recording_date and session.recording_date != dataset.recording_date:
+                _add_cross_session_issue(
+                    db, check_id=check_id, session_id=session.id,
+                    issue_type="session_metadata_mismatch",
+                    message="Recording date không khớp ngày của Dataset",
+                    summaries=summaries_by_id,
+                )
+            checksum_prior = seen_checksums.get(session.checksum)
+            filename_prior = seen_filenames.get(session.original_filename.casefold())
+            if checksum_prior is not None and checksum_prior.id != session.id:
+                _add_cross_session_issue(
+                    db, check_id=check_id, session_id=session.id,
+                    issue_type="duplicate_file",
+                    message=f"Nội dung file trùng với {checksum_prior.original_filename}",
+                    summaries=summaries_by_id,
+                )
+            if filename_prior is not None and filename_prior.id != session.id:
+                _add_cross_session_issue(
+                    db, check_id=check_id, session_id=session.id,
+                    issue_type="duplicate_file",
+                    message=f"Tên file trùng với {filename_prior.original_filename}",
+                    summaries=summaries_by_id,
+                )
+            seen_checksums.setdefault(session.checksum, session)
+            seen_filenames.setdefault(session.original_filename.casefold(), session)
+
+        chronological = sorted(sessions, key=lambda item: (item.scheduled_start, item.scheduled_end))
+        for position, session in enumerate(chronological):
+            for other in chronological[:position]:
+                if other.scheduled_end > session.scheduled_start:
+                    _add_cross_session_issue(
+                        db, check_id=check_id, session_id=session.id,
+                        issue_type="cross_session_overlap",
+                        message=(
+                            f"Khoảng thời gian chồng lấn với {other.original_filename}; "
+                            "các session vẫn được kiểm tra độc lập"
+                        ),
+                        summaries=summaries_by_id,
+                        severity="warning",
+                    )
+
+        db.flush()
+        summaries = list(summaries_by_id.values())
+        aggregate = _aggregate_session_report(
+            check=check,
+            summaries=summaries,
+            total_sessions=len(sessions),
+            outlier_rules=outlier_rules,
+        )
+        check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one()
+        check.status = "completed"
+        check.progress_percent = 100
+        check.processed_rows = processed_total
+        check.total_rows = aggregate["total_rows"]
+        check.report = aggregate
+        check.error_message = None
+        check.completed_at = datetime.now(UTC)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
         logger.exception("Could not start data quality worker", extra={"check_id": str(check_id)})
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
         if check is not None and check.status in {"queued", "running"}:
             check.status = "failed"
-            check.error_message = "Không thể khởi chạy tác vụ kiểm tra chất lượng"
+            check.error_message = (
+                str(exc)[:1000]
+                if isinstance(exc, (DataQualitySchemaError, DataQualityNotFoundError, OSError, ValueError))
+                else "Không thể khởi chạy tác vụ kiểm tra chất lượng"
+            )
             check.completed_at = datetime.now(UTC)
             db.commit()
     finally:
+        if cross_hashes is not None:
+            cross_hashes.close()
+        if cross_temp is not None:
+            cross_temp.cleanup()
         db.close()

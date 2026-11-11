@@ -1,13 +1,18 @@
 from uuid import UUID
 
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from app.crud.crud_dataset_access import access_filter
 from app.crud.crud_recording_metadata import resolve_original_filename
 from app.models.dataset import (
     DataCleaningHistory,  # Import model đã có sẵn trong init_db
     Dataset,
     DatasetColumnMapping,
+    DatasetUploadJob,
     DatasetVersion,
+    DatasetVersionSession,
+    RecordingSession,
 )
 from app.schemas.dataset import DatasetUploadMetadata
 from app.services.audit_log_service import record_audit_event
@@ -16,6 +21,136 @@ from app.services.audit_log_service import record_audit_event
 def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
     """Get a dataset by its unique catalog name."""
     return db.query(Dataset).filter(Dataset.name == name).first()
+
+
+def lock_dataset_upload(db: Session, name: str) -> None:
+    """Serialize uploads for a dataset, including its first creation."""
+    db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:name, 0))"), {"name": name})
+
+
+def get_recording_sessions(db: Session, dataset_id: UUID) -> list[RecordingSession]:
+    return db.query(RecordingSession).filter(RecordingSession.dataset_id == dataset_id).all()
+
+
+def list_uploaded_datasets(
+    db: Session, *, search: str | None, page: int, page_size: int,
+    visible_user_id: UUID | None,
+) -> tuple[list[Dataset], int]:
+    """List pNEUMA groups once, scoped to granted datasets when needed."""
+    query = db.query(Dataset).filter(
+        Dataset.drone_id.is_not(None), Dataset.recording_date.is_not(None),
+        Dataset.versions.any(),
+    )
+    if visible_user_id is not None:
+        query = query.filter(access_filter(visible_user_id))
+    if search:
+        query = query.filter(Dataset.name.ilike(f"%{search}%"))
+    total = query.count()
+    rows = query.order_by(Dataset.recording_date.desc(), Dataset.name).offset(
+        (page - 1) * page_size,
+    ).limit(page_size).all()
+    return rows, total
+
+
+def get_dataset_by_id(db: Session, dataset_id: UUID) -> Dataset | None:
+    return db.get(Dataset, dataset_id)
+
+
+def get_latest_versions_for_datasets(
+    db: Session, dataset_ids: list[UUID],
+) -> dict[UUID, DatasetVersion]:
+    if not dataset_ids:
+        return {}
+    versions = db.query(DatasetVersion).filter(
+        DatasetVersion.dataset_id.in_(dataset_ids),
+    ).order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc()).all()
+    latest: dict[UUID, DatasetVersion] = {}
+    for version in versions:
+        latest.setdefault(version.dataset_id, version)
+    return latest
+
+
+def get_version_session_counts(db: Session, version_ids: list[UUID]) -> dict[UUID, int]:
+    if not version_ids:
+        return {}
+    rows = db.query(
+        DatasetVersionSession.version_id, func.count(DatasetVersionSession.session_id),
+    ).filter(DatasetVersionSession.version_id.in_(version_ids)).group_by(
+        DatasetVersionSession.version_id,
+    ).all()
+    return dict(rows)
+
+
+def list_version_sessions(
+    db: Session, version_id: UUID, page: int, page_size: int,
+) -> tuple[list[RecordingSession], int]:
+    query = db.query(RecordingSession).join(
+        DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
+    ).filter(DatasetVersionSession.version_id == version_id)
+    total = query.count()
+    sessions = query.order_by(
+        RecordingSession.scheduled_start, RecordingSession.id,
+    ).offset((page - 1) * page_size).limit(page_size).all()
+    return sessions, total
+
+
+def list_all_version_sessions(db: Session, version_id: UUID) -> list[RecordingSession]:
+    """Return session metadata for schema compatibility checks within a version."""
+    return db.query(RecordingSession).join(
+        DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
+    ).filter(
+        DatasetVersionSession.version_id == version_id,
+    ).order_by(
+        RecordingSession.scheduled_start, RecordingSession.id,
+    ).all()
+
+
+def get_version_session(
+    db: Session, version_id: UUID, session_id: UUID,
+) -> RecordingSession | None:
+    return db.query(RecordingSession).join(
+        DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
+    ).filter(
+        DatasetVersionSession.version_id == version_id,
+        RecordingSession.id == session_id,
+    ).first()
+
+
+def get_next_upload_version(db: Session, dataset_id: UUID) -> tuple[int, str]:
+    versions = db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset_id).all()
+    number = max((version.version_number or 0 for version in versions), default=0) + 1
+    used_tags = {version.version_tag for version in versions}
+    major = max((int(tag.split(".")[0][1:]) for tag in used_tags
+                 if tag.startswith("v") and tag[1:].split(".")[0].isdigit()), default=0) + 1
+    while f"v{major}.0" in used_tags:
+        major += 1
+    return number, f"v{major}.0"
+
+
+def add_recording_session(db: Session, session: RecordingSession) -> None:
+    db.add(session)
+
+
+def link_version_sessions(db: Session, version_id: UUID, session_ids: list[UUID]) -> None:
+    db.add_all(DatasetVersionSession(version_id=version_id, session_id=session_id)
+               for session_id in session_ids)
+
+
+def create_upload_job(db: Session, job_id: UUID, creator_id: UUID, total_files: int) -> DatasetUploadJob:
+    job = DatasetUploadJob(id=job_id, created_by=creator_id, total_files=total_files,
+                           processed_files=0, status="PENDING")
+    db.add(job)
+    db.commit()
+    return job
+
+
+def get_upload_job(db: Session, job_id: UUID) -> DatasetUploadJob | None:
+    return db.get(DatasetUploadJob, job_id)
+
+
+def save_upload_job(db: Session, job: DatasetUploadJob) -> None:
+    db.add(job)
+    db.commit()
 
 
 def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, DatasetVersion] | None:
@@ -60,6 +195,18 @@ def get_dataset_column_mapping(
         )
         .first()
     )
+
+
+def get_latest_dataset_column_mapping(
+    db: Session,
+    dataset_id: UUID,
+) -> DatasetColumnMapping | None:
+    """Get the most recently saved mapping so matching new versions can reuse it."""
+    return db.query(DatasetColumnMapping).filter(
+        DatasetColumnMapping.dataset_id == dataset_id,
+    ).order_by(
+        DatasetColumnMapping.updated_at.desc(), DatasetColumnMapping.id.desc(),
+    ).first()
 
 
 def save_dataset_column_mapping(

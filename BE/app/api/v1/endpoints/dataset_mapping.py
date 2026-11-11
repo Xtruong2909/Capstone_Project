@@ -27,7 +27,12 @@ router = APIRouter()
 @router.get(
     "/{dataset_id}/columns",
     response_model=DatasetColumnsResponse,
-    summary="[Bước 2.1] Lấy danh sách cột của dataset",
+    summary="Lấy cấu trúc cột dùng chung cho các session",
+    description=(
+        "Đọc cấu trúc từ các Recording Session trong Dataset Version mới nhất. "
+        "Các session phải có cùng danh sách cột để dùng một mapping chung. "
+        "Mapping đã lưu được tái sử dụng khi version mới vẫn tương thích."
+    ),
 )
 def list_dataset_columns(
     dataset_id: UUID,
@@ -51,7 +56,12 @@ def list_dataset_columns(
 @router.patch(
     "/{dataset_id}/column-mappings",
     response_model=DatasetColumnMappingsResponse,
-    summary="[Bước 2.2] Tạo hoặc cập nhật ánh xạ tên cột",
+    summary="Ánh xạ cột một lần cho toàn bộ session",
+    description=(
+        "Tạo hoặc cập nhật mapping ở cấp Dataset Version. Mapping áp dụng cho tất cả "
+        "session trong version có cùng cấu trúc cột; version tiếp theo sẽ kế thừa "
+        "mapping nếu tên các cột nguồn vẫn tương thích."
+    ),
 )
 def update_dataset_column_mappings(
     dataset_id: UUID,
@@ -86,7 +96,11 @@ def update_dataset_column_mappings(
 @router.get(
     "/{dataset_id}/column-mappings",
     response_model=DatasetColumnMappingsResponse,
-    summary="[Bước 2.3] Lấy ánh xạ cột đã lưu",
+    summary="Lấy mapping dùng chung của Dataset",
+    description=(
+        "Trả mapping đang áp dụng cho toàn bộ session của Dataset Version mới nhất. "
+        "Mapping từ version trước được dùng lại khi cấu trúc cột vẫn tương thích."
+    ),
 )
 def read_dataset_column_mappings(
     dataset_id: UUID,

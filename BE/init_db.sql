@@ -66,6 +66,8 @@ CREATE TABLE datasets (
     source VARCHAR(255) NOT NULL,
     description TEXT,
     capture_date DATE,
+    recording_date DATE,
+    drone_id VARCHAR(32),
     location_name VARCHAR(255) NOT NULL,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -75,6 +77,7 @@ CREATE TABLE dataset_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     version_tag VARCHAR(32) NOT NULL CHECK (version_tag ~ '^v[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9_-]+)?$'),
+    version_number INTEGER,
     data_file_path VARCHAR(512),
     original_filename VARCHAR(255),
     csv_file_path VARCHAR(512),
@@ -92,10 +95,47 @@ CREATE TABLE dataset_versions (
 );
 CREATE INDEX idx_dataset_versions_status ON dataset_versions(approval_status);
 
+CREATE TABLE recording_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+    original_filename VARCHAR(255) NOT NULL,
+    drone_id VARCHAR(32) NOT NULL,
+    recording_date DATE NOT NULL,
+    scheduled_start TIMESTAMPTZ NOT NULL,
+    scheduled_end TIMESTAMPTZ NOT NULL,
+    file_path VARCHAR(512) NOT NULL,
+    file_size BIGINT NOT NULL,
+    checksum VARCHAR(64) NOT NULL,
+    upload_status VARCHAR(32) NOT NULL DEFAULT 'UPLOADED',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_recording_session_filename UNIQUE(dataset_id, original_filename),
+    CONSTRAINT uq_recording_session_checksum UNIQUE(dataset_id, checksum)
+);
+CREATE INDEX ix_recording_sessions_dataset_id ON recording_sessions(dataset_id);
+
+CREATE TABLE dataset_version_sessions (
+    version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    session_id UUID NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+    CONSTRAINT uq_version_session PRIMARY KEY(version_id, session_id)
+);
+
+CREATE TABLE dataset_upload_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    total_files INTEGER NOT NULL,
+    processed_files INTEGER NOT NULL DEFAULT 0,
+    result JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE dataset_column_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL,
     mappings JSONB NOT NULL,
     updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -123,6 +163,8 @@ CREATE TABLE data_quality_checks (
 CREATE INDEX ix_data_quality_checks_dataset_id ON data_quality_checks(dataset_id);
 CREATE INDEX ix_data_quality_checks_dataset_version_id
     ON data_quality_checks(dataset_version_id);
+CREATE INDEX ix_data_quality_checks_recording_session_id
+    ON data_quality_checks(recording_session_id);
 CREATE INDEX ix_data_quality_checks_status ON data_quality_checks(status);
 CREATE UNIQUE INDEX uq_data_quality_active_version
     ON data_quality_checks(dataset_version_id)
@@ -135,10 +177,13 @@ CREATE TABLE data_quality_issues (
     issue_type VARCHAR(32) NOT NULL,
     column_name VARCHAR(512),
     message VARCHAR(512) NOT NULL,
-    observed_value VARCHAR(256)
+    observed_value VARCHAR(256),
+    recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL
 );
 CREATE INDEX ix_data_quality_issues_check_id ON data_quality_issues(check_id);
 CREATE INDEX ix_data_quality_issues_issue_type ON data_quality_issues(issue_type);
+CREATE INDEX ix_data_quality_issues_recording_session_id
+    ON data_quality_issues(recording_session_id);
 CREATE INDEX ix_data_quality_issue_check_row
     ON data_quality_issues(check_id, row_number);
 

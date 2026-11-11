@@ -1,29 +1,39 @@
 from datetime import UTC, date, datetime
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
-    File,
-    Form,
     HTTPException,
     Query,
     Request,
-    UploadFile,
     status,
 )
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
 
+from app.core.config import ASYNC_DATASET_UPLOAD_THRESHOLD_BYTES, MAX_DATASET_UPLOAD_BATCH_BYTES
 from app.core.dataset_access import require_dataset_reader
-from app.core.deps import require_data_engineer
+from app.core.deps import get_current_user, require_data_engineer
+from app.crud import crud_dataset
 from app.database.database import get_db
 from app.models.dataset import DataCleaningHistory, DatasetVersion
 from app.models.user import User
 from app.schemas.dataset import (
+    DatasetBatchUploadResponse,
     DatasetPreviewResponse,
+    DatasetUploadJobResponse,
     DatasetUploadMetadata,
     DatasetUploadResponse,
+    RecordingSessionDetail,
+    RecordingSessionListResponse,
+    RecordingSessionPreviewResponse,
+    UploadedDatasetDetail,
+    UploadedDatasetListResponse,
 )
 from app.schemas.dataset_normalization import (
     DatasetExportRequest,
@@ -54,6 +64,13 @@ from app.services.dataset_preview_service import (
     DatasetPreviewReadError,
     get_dataset_preview,
 )
+from app.services.dataset_review_service import (
+    get_recording_session_detail,
+    get_uploaded_dataset_detail,
+    list_recording_sessions,
+    list_uploaded_datasets,
+    preview_recording_session,
+)
 from app.services.dataset_service import (
     DatasetConflictError,
     DatasetFileTooLargeError,
@@ -64,13 +81,38 @@ from app.services.dataset_service import (
 from app.services.normalized_data_validation_service import (
     validate_normalized_dataset_service,
 )
+from app.services.pneuma_upload_service import (
+    prepare_pneuma_batch,
+    run_pneuma_upload_job,
+    upload_pneuma_batch,
+)
 
 router = APIRouter()
+upload_router = APIRouter()
+review_router = APIRouter()
+
+
+@upload_router.get(
+    "", response_model=UploadedDatasetListResponse,
+    summary="Danh sách Dataset pNEUMA đã upload, nhóm theo ngày và Drone ID",
+)
+def list_uploaded_dataset_groups(
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UploadedDatasetListResponse:
+    """Show each YYYYMMDD-dX Dataset once, with its latest version and session count."""
+    return list_uploaded_datasets(
+        db, current_user, search=search, page=page, page_size=page_size,
+    )
 
 
 @router.get(
     "/{dataset_id}/preview",
-    summary="[Bước 1.2] Xem trước dữ liệu dataset đã upload (raw hoặc normalized)",
+    summary="Xem trước dữ liệu dataset đã upload (raw hoặc normalized)",
+    include_in_schema=False,
 )
 def preview_dataset(
     dataset_id: UUID,
@@ -116,24 +158,109 @@ def preview_dataset(
         ) from exc
 
 
-@router.post(
+@upload_router.post(
     "/upload",
-    response_model=DatasetUploadResponse,
+    response_model=DatasetUploadResponse | DatasetBatchUploadResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="[Bước 1.1] Tải dataset giao thông lên",
+    responses={202: {"model": DatasetUploadJobResponse}},
+    summary="Tải dataset giao thông lên",
+    openapi_extra={"requestBody": {"required": True, "content": {"multipart/form-data": {
+        "schema": {"type": "object", "required": ["files"], "properties": {
+            "files": {"type": "array", "items": {"type": "string", "format": "binary"},
+                      "description": "Chọn một hoặc nhiều file CSV pNEUMA; thêm file bằng Add string item"},
+            "source": {"type": "string", "description": "Nguồn dữ liệu; để trống dùng pNEUMA"},
+            "location_name": {"type": "string", "description": "Địa điểm; để trống dùng Athens, Greece"},
+            "description": {"type": "string", "description": "Mô tả Dataset (tùy chọn)"},
+            "capture_date": {"type": "string", "format": "date",
+                             "description": "Ngày ghi hình YYYY-MM-DD; để trống nếu upload nhiều ngày. Nếu nhập phải khớp tên file"},
+        }},
+    }}}},
 )
-def upload_dataset(
+async def upload_dataset(
     request: Request,
-    file: Annotated[UploadFile, File(description="CSV, JSON, Excel (.xls/.xlsx) hoặc Parquet")],
-    name: Annotated[str, Form(min_length=3, max_length=128)],
-    source: Annotated[str, Form(min_length=1, max_length=255)],
-    location_name: Annotated[str, Form(min_length=1, max_length=255)],
-    description: Annotated[str | None, Form()] = None,
-    capture_date: Annotated[date | None, Form()] = None,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_data_engineer),
-) -> DatasetUploadResponse:
-    """Upload a dataset file with its catalog metadata."""
+) -> DatasetUploadResponse | DatasetBatchUploadResponse | JSONResponse:
+    """Upload CSV recordings via multipart/form-data.
+
+    Swagger shows ``files`` and optional metadata for pNEUMA recordings.
+    Dataset name is always derived from each filename in this flow.
+    Existing clients may still send a single ``file`` with name, source,
+    and location_name to retain the legacy request and response.
+    """
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_DATASET_UPLOAD_BATCH_BYTES + 64 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Dung lượng request vượt giới hạn batch")
+    # Parse here so Starlette's default 1000-file limit does not reject valid batches.
+    # Count bytes as they arrive, including requests without Content-Length.
+    received_bytes = 0
+
+    async def capped_receive() -> dict:
+        nonlocal received_bytes
+        message = await request.receive()
+        received_bytes += len(message.get("body", b""))
+        if received_bytes > MAX_DATASET_UPLOAD_BATCH_BYTES + 64 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Dung lượng request vượt giới hạn batch")
+        return message
+
+    form_request = Request(request.scope, receive=capped_receive)
+    form = await form_request.form(max_files=float("inf"), max_fields=20)
+    selected_files = form.getlist("file") + form.getlist("files")
+    if any(not isinstance(item, UploadFile) for item in selected_files):
+        raise HTTPException(status_code=422, detail="file/files phải là tệp multipart")
+    name = form.get("name")
+    source = form.get("source")
+    location_name = form.get("location_name")
+    description = form.get("description")
+    capture_date_value = form.get("capture_date")
+    if any(value is not None and not isinstance(value, str)
+           for value in (name, source, location_name, description, capture_date_value)):
+        raise HTTPException(status_code=422, detail="Metadata multipart không hợp lệ")
+    source = source.strip() or None if source is not None else None
+    location_name = location_name.strip() or None if location_name is not None else None
+    description = description.strip() or None if description is not None else None
+    if source is not None and len(source) > 255 or location_name is not None and len(location_name) > 255:
+        raise HTTPException(status_code=422, detail="source/location_name tối đa 255 ký tự")
+    try:
+        capture_date = date.fromisoformat(capture_date_value) if capture_date_value else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="capture_date phải theo YYYY-MM-DD") from exc
+    if not selected_files:
+        raise HTTPException(status_code=422, detail="Cần cung cấp file hoặc files")
+    if form.getlist("files") or len(selected_files) > 1 or name is None or source is None or location_name is None:
+        upload_files = [(item.filename or "", item.file) for item in selected_files]
+        if sum(item.size or 0 for item in selected_files) >= ASYNC_DATASET_UPLOAD_THRESHOLD_BYTES:
+            prepared = await run_in_threadpool(
+                prepare_pneuma_batch, upload_files, name, source, location_name, capture_date,
+                description,
+            )
+            job_id = uuid4()
+            try:
+                await run_in_threadpool(
+                    crud_dataset.create_upload_job, db, job_id, current_user.id,
+                    prepared.total_files,
+                )
+            except Exception:
+                prepared.cleanup()
+                raise
+            background_tasks.add_task(
+                run_pneuma_upload_job, job_id, prepared, current_user.id,
+                request.client.host if request.client else None,
+            )
+            return JSONResponse(status_code=202, content=DatasetUploadJobResponse(
+                job_id=job_id, status="PENDING", total_files=prepared.total_files,
+                processed_files=0,
+            ).model_dump(mode="json"))
+        return await run_in_threadpool(
+            upload_pneuma_batch,
+            db, upload_files,
+            creator_id=current_user.id,
+            ip_address=request.client.host if request.client else None,
+            name=name, source=source, location_name=location_name,
+            capture_date=capture_date, description=description,
+        )
+    file = selected_files[0]
     try:
         metadata = DatasetUploadMetadata(
             name=name,
@@ -158,7 +285,8 @@ def upload_dataset(
             details={"filename": file.filename or ""},
             record_success=False,
         ):
-            dataset, version = create_dataset_upload(
+            dataset, version = await run_in_threadpool(
+                create_dataset_upload,
                 db,
                 metadata=metadata,
                 file_stream=file.file,
@@ -202,6 +330,23 @@ def upload_dataset(
         file_size_bytes=version.file_size_bytes,
         approval_status=version.approval_status,
         created_at=version.created_at,
+    )
+
+
+@upload_router.get("/upload/jobs/{job_id}", response_model=DatasetUploadJobResponse,
+            summary="Xem trạng thái upload pNEUMA")
+def get_upload_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_data_engineer),
+) -> DatasetUploadJobResponse:
+    job = crud_dataset.get_upload_job(db, job_id)
+    if job is None or job.created_by != current_user.id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy upload job")
+    return DatasetUploadJobResponse(
+        job_id=job.id, status=job.status, total_files=job.total_files,
+        processed_files=job.processed_files, result=job.result,
+        error_message=job.error_message,
     )
 
 
@@ -557,3 +702,97 @@ def resubmit_dataset_version_for_admin(
         submitted_at=submitted_at,
         message="Phiên bản dataset đã được gửi lại cho admin để xét duyệt sau khi sửa theo phản hồi.",
     )
+
+
+@review_router.get(
+    "/{dataset_id}", response_model=UploadedDatasetDetail,
+    summary="Chi tiết Dataset pNEUMA đã upload và phiên bản mới nhất",
+)
+def review_uploaded_dataset(
+    dataset_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_dataset_reader),
+) -> UploadedDatasetDetail:
+    try:
+        return get_uploaded_dataset_detail(db, dataset_id)
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@review_router.get(
+    "/{dataset_id}/versions/{version_id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="Danh sách Recording Sessions của một Dataset Version",
+)
+def review_recording_sessions(
+    dataset_id: UUID,
+    version_id: UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_dataset_reader),
+) -> RecordingSessionListResponse:
+    try:
+        return list_recording_sessions(
+            db, dataset_id, version_id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@review_router.get(
+    "/{dataset_id}/versions/{version_id}/sessions/{session_id}",
+    response_model=RecordingSessionDetail,
+    summary="Chi tiết Recording Session và thông tin kiểm tra hiện có",
+)
+def review_recording_session(
+    dataset_id: UUID,
+    version_id: UUID,
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_dataset_reader),
+) -> RecordingSessionDetail:
+    try:
+        return get_recording_session_detail(db, dataset_id, version_id, session_id)
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@review_router.get(
+    "/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="Preview một Recording Session dạng bảng (pNEUMA chuẩn hóa hoặc CSV gốc)",
+    description=(
+        "Ở chế độ normalized, áp dụng Dataset Column Mapping đã lưu vào tên cột và trả "
+        "mapping_applied=true nếu có đổi tên. Chế độ raw luôn giữ nguyên header CSV gốc."
+    ),
+    responses={
+        404: {"description": "Session hoặc file CSV không tồn tại"},
+        415: {"description": "Session không chứa file CSV"},
+        422: {"description": "CSV lỗi định dạng hoặc không đọc được"},
+    },
+)
+def review_recording_session_preview(
+    dataset_id: UUID,
+    version_id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_dataset_reader),
+) -> RecordingSessionPreviewResponse:
+    """Show pNEUMA trajectory points as typed rows, or original CSV rows with raw."""
+    try:
+        return preview_recording_session(
+            db, dataset_id, version_id, session_id,
+            page=page, limit=limit, column_offset=column_offset,
+            representation=representation,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatasetPreviewFormatError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except DatasetPreviewReadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

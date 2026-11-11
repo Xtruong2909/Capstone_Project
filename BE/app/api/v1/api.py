@@ -28,14 +28,24 @@ api_router.include_router(
 )
 api_router.include_router(datasets.router, prefix="/datasets", tags=["Data Engineer"])
 api_router.include_router(
+    datasets.upload_router,
+    prefix="/datasets",
+    tags=["pNEUMA Dataset Upload Bước 1"],
+)
+api_router.include_router(
+    datasets.review_router,
+    prefix="/datasets",
+    tags=["Dataset Preview & Review Bước 2"],
+)
+api_router.include_router(
     dataset_mapping.router,
     prefix="/datasets",
-    tags=["Dataset Column Mapping"],
+    tags=["Dataset Column Mapping Bước 3"],
 )
 api_router.include_router(
     data_quality.router,
     prefix="/datasets",
-    tags=["Data Quality"],
+    tags=["Thêm bước 4: Data Quality"],
 )
 api_router.include_router(
     traffic_aggregation.router,
