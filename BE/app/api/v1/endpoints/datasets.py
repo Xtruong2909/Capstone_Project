@@ -666,7 +666,7 @@ def resubmit_dataset_version_for_admin(
 
 
 @review_router.get(
-    "/{dataset_id}", response_model=UploadedDatasetDetail,
+    "/{dataset_id:uuid}", response_model=UploadedDatasetDetail,
     summary="Chi tiết Dataset pNEUMA đã upload và phiên bản mới nhất",
 )
 def review_uploaded_dataset(

@@ -4,6 +4,35 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class TrafficAggregationDatasetSelection(BaseModel):
+    dataset_id: UUID
+    version_id: UUID | None = None
+
+
+class MultiTemporalAggregationRequest(BaseModel):
+    datasets: list[TrafficAggregationDatasetSelection] = Field(min_length=1, max_length=100)
+    aggregation_interval: int = Field(default=60, ge=60, le=900)
+    roi_identifier: str = Field(default="MAIN_ROI", min_length=1, max_length=64)
+    replace_existing: bool = False
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "datasets": [
+                    {"dataset_id": "9ff93038-d619-4581-9d1d-626d6018d993"},
+                    {
+                        "dataset_id": "ec59b336-4e2f-4980-a3fe-c6bbe14fc02e",
+                        "version_id": "b592b1c9-0ac9-4c09-b0d6-c1763cbf8ab0",
+                    },
+                ],
+                "aggregation_interval": 60,
+                "roi_identifier": "MAIN_ROI",
+                "replace_existing": False,
+            }],
+        },
+    }
+
+
 class TemporalAggregationRequest(BaseModel):
     aggregation_interval: int = Field(default=60, ge=60, le=900)
     roi_identifier: str = Field(default="MAIN_ROI", min_length=1, max_length=64)
@@ -46,6 +75,14 @@ class TrafficAggregationStarted(BaseModel):
     started_at: datetime
 
 
+class TrafficAggregationBatchStarted(BaseModel):
+    batch_id: UUID
+    status: str = "queued"
+    dataset_count: int
+    jobs: list[TrafficAggregationStarted]
+    started_at: datetime
+
+
 class TrafficAggregationJobStatusResponse(BaseModel):
     job_id: UUID
     dataset_id: UUID
@@ -72,6 +109,11 @@ class TrafficAggregationStatusResponse(BaseModel):
     is_ready: bool = False
 
 
+class TrafficAggregationBatchStatusResponse(BaseModel):
+    dataset_count: int
+    results: list[TrafficAggregationStatusResponse]
+
+
 class TrafficAggregationPreviewResponse(BaseModel):
     dataset_id: UUID
     dataset_version_id: UUID
@@ -93,6 +135,11 @@ class TrafficAggregationPreviewResponse(BaseModel):
             "average_speed": "km/h",
         },
     }
+
+
+class TrafficAggregationBatchPreviewResponse(BaseModel):
+    dataset_count: int
+    results: list[TrafficAggregationPreviewResponse]
 
 
 class TrafficAggregationChartResponse(BaseModel):
@@ -117,6 +164,11 @@ class TrafficAggregationChartResponse(BaseModel):
     }
 
 
+class TrafficAggregationBatchChartResponse(BaseModel):
+    dataset_count: int
+    results: list[TrafficAggregationChartResponse]
+
+
 class TrafficAggregationCalculationSummary(BaseModel):
     dataset_id: UUID
     dataset_version_id: UUID
@@ -127,3 +179,90 @@ class TrafficAggregationCalculationSummary(BaseModel):
     units: dict[str, str]
     formulas: dict[str, str]
     notes: list[str]
+
+
+class TrafficAggregationBatchCalculationSummary(BaseModel):
+    aggregation_interval: int
+    roi_identifier: str
+    estimated: bool = True
+    aggregation_scope: str = "independent_per_dataset_version"
+    summary: dict[str, object]
+    units: dict[str, str]
+    formulas: dict[str, str]
+    notes: list[str]
+
+
+class DatasetVersionTemporalAggregationRequest(BaseModel):
+    dataset_version_id: UUID = Field(description="Approved Dataset Version to aggregate.")
+    aggregation_interval: int = Field(default=60, ge=1, le=86400)
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "dataset_version_id": "5ee90c27-3f2d-4a7e-969b-269acf4b1697",
+                "aggregation_interval": 60,
+            }],
+        },
+    }
+
+
+class AggregationSessionRunStatus(BaseModel):
+    session_id: UUID
+    status: str
+    time_bins: int
+    records_read: int
+    error_message: str | None = None
+
+
+class DatasetVersionAggregationStarted(BaseModel):
+    aggregation_id: UUID
+    dataset_version_id: UUID
+    status: str
+    aggregation_interval: int
+    total_sessions: int
+    completed_sessions: int
+    failed_sessions: int
+    total_time_bins: int
+    sessions: list[AggregationSessionRunStatus]
+
+
+class TemporalAggregationDataPoint(BaseModel):
+    session_id: UUID
+    timestamp: datetime
+    vehicle_count: int
+
+
+class DatasetVersionAggregationResults(BaseModel):
+    aggregation_id: UUID
+    dataset_version_id: UUID
+    session_id: UUID | None = None
+    status: str
+    aggregation_interval: int
+    total_sessions: int
+    total_time_bins: int
+    total_records: int
+    page: int
+    page_size: int
+    total_pages: int
+    sessions: list[AggregationSessionRunStatus] = Field(default_factory=list)
+    data: list[TemporalAggregationDataPoint] = Field(default_factory=list)
+
+
+class CombinedTemporalAggregationDataPoint(BaseModel):
+    session_id: UUID
+    timestamp: datetime
+    vehicle_count: int
+
+
+class CombinedTemporalAggregationResults(BaseModel):
+    aggregation_id: UUID
+    dataset_version_id: UUID
+    aggregation_interval: int
+    status: str
+    timezone: str
+    total_sessions: int
+    completed_sessions: int
+    failed_sessions: int
+    total_time_bins: int
+    sessions: list[AggregationSessionRunStatus] = Field(default_factory=list)
+    data: list[CombinedTemporalAggregationDataPoint] = Field(default_factory=list)

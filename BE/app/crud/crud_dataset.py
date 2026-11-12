@@ -197,6 +197,19 @@ def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, 
     return result
 
 
+def get_dataset_latest_approved_version(
+    db: Session, dataset_id: UUID,
+) -> tuple[Dataset, DatasetVersion] | None:
+    """Get the newest version approved for downstream Data Scientist access."""
+    return (
+        db.query(Dataset, DatasetVersion)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .filter(Dataset.id == dataset_id, DatasetVersion.approval_status == "APPROVED")
+        .order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc())
+        .first()
+    )
+
+
 def get_dataset_version(
     db: Session,
     dataset_id: UUID,

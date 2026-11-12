@@ -17,7 +17,11 @@ from app.models.model_training import (
     ModelTrainingSplit,
     ModelValidationResult,
 )
-from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
+from app.models.traffic import (
+    TrafficAggregationJob,
+    TrafficAggregationSessionResult,
+    TrafficTimeSeries,
+)
 from app.models.user import Role, User
 
 __all__ = [
@@ -41,6 +45,7 @@ __all__ = [
     "RecordingSession",
     "Role",
     "TrafficAggregationJob",
+    "TrafficAggregationSessionResult",
     "TrafficTimeSeries",
     "User",
 ]

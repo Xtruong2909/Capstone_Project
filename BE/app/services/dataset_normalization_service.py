@@ -290,6 +290,7 @@ def normalize_dataset_structure_service(
     staging_meta_path = staging_dir / f"{staging_id}.json"
     records_before = 0
     records_after = 0
+    source_session_row_counts: dict[str, int] = {}
     normalized_columns: list[str] = []
     parquet_file: pq.ParquetFile | None = None
     try:
@@ -298,12 +299,24 @@ def normalize_dataset_structure_service(
 
             def pneuma_rows() -> Iterator[list[str]]:
                 for _session_id, _filename, source_path, delimiter in prepared_sources:
+                    point_count = 0
                     with source_path.open(
                         "r", encoding="utf-8-sig", errors="replace", newline=""
                     ) as infile:
                         reader = csv.reader(infile, delimiter=delimiter)
                         next(reader, None)
-                        yield from reader
+                        for row in reader:
+                            if row and any(row) and not (
+                                len(row) == len(PNEUMA_HEADERS)
+                                and tuple(value.strip().lower() for value in row) == PNEUMA_HEADERS
+                            ):
+                                end = len(row)
+                                while end and not row[end - 1].strip():
+                                    end -= 1
+                                point_count += max(0, (end - 4) // 6)
+                            yield row
+                    if _session_id is not None:
+                        source_session_row_counts[str(_session_id)] = point_count
 
             records_before, records_after = write_pneuma_parquet(
                 pneuma_rows(), staging_file_path, rename_map, _parse_number,
@@ -401,6 +414,7 @@ def normalize_dataset_structure_service(
         "source_version_id": str(source_version.id),
         "source_version_tag": source_version.version_tag,
         "source_session_ids": [str(item[0]) for item in prepared_sources if item[0]],
+        "source_session_row_counts": source_session_row_counts,
         "source_session_count": len(prepared_sources),
         "source_filenames": [item[1] for item in prepared_sources],
         "original_filename": f"{source_version.dataset.name}-normalized.parquet",
@@ -576,6 +590,7 @@ def export_normalized_dataset_service(
             cleaning_parameters={
                 "source_version_id": str(source_version_id),
                 "source_session_ids": source_session_ids,
+                "source_session_row_counts": staging_meta.get("source_session_row_counts", {}),
                 "source_session_count": int(staging_meta.get("source_session_count", len(source_session_ids) or 1)),
                 "source_filenames": staging_meta.get("source_filenames", []),
                 "export_format": format_upper,
