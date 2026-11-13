@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.dataset import DatasetPreviewResponse
 
@@ -58,6 +58,29 @@ class DatasetExportResult(BaseModel):
     message: str = Field(
         default="Đã xuất và tạo phiên bản dataset mới thành công."
     )
+
+
+class GroupProcessingDatasetResult(BaseModel):
+    dataset_id: UUID
+    dataset_name: str
+    status: Literal["PENDING", "RUNNING", "COMPLETED", "FAILED"]
+    session_count: int = 0
+    source_version_id: UUID | None = None
+    version_id: UUID | None = None
+    records_before: int | None = None
+    records_after: int | None = None
+    error_message: str | None = None
+
+
+class GroupProcessingJobResponse(BaseModel):
+    group_id: UUID
+    staging_id: UUID = Field(description="ID chung của lần Normalize, áp dụng cho mọi Dataset trong nhóm")
+    job_id: UUID
+    operation: Literal["NORMALIZE", "EXPORT"]
+    status: Literal["PENDING", "RUNNING", "COMPLETED", "PARTIAL_SUCCESS", "FAILED"]
+    total_datasets: int
+    processed_datasets: int
+    results: list[GroupProcessingDatasetResult] = Field(default_factory=list)
 
 
 # =====================================================================
@@ -176,3 +199,39 @@ class DatasetVersionStatusResponse(BaseModel):
     approved_by: UUID | None = None
     approval_note: str | None = None
     message: str | None = None
+
+
+class GroupDatasetVersionsResponse(BaseModel):
+    group_id: UUID
+    total_datasets: int
+    total_versions: int
+    versions: list[DatasetVersionListItem] = Field(default_factory=list)
+
+
+class GroupVersionSubmitRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"example": {"comment": "Đã kiểm tra dữ liệu, nhờ Admin duyệt nhóm."}})
+
+    comment: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Bình luận của Data Engineer gửi Admin khi duyệt các Dataset trong nhóm",
+    )
+
+
+class GroupVersionStatusResponse(BaseModel):
+    group_id: UUID
+    staging_id: UUID
+    total_datasets: int
+    approval_status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED", "MIXED"]
+    versions: list[DatasetVersionStatusResponse] = Field(default_factory=list)
+    message: str | None = None
+
+
+class GroupProcessingReportResponse(BaseModel):
+    group_id: UUID
+    staging_id: UUID
+    total_datasets: int
+    total_sessions: int
+    total_records_before: int
+    total_records_after: int
+    reports: list[ProcessingReportResponse] = Field(default_factory=list)

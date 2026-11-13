@@ -13,6 +13,8 @@ from app.database.database import get_db
 from app.models.dataset import DatasetVersion
 from app.models.user import User
 from app.schemas.admin import (
+    AdminGroupApprovalSummary,
+    AdminGroupReviewResponse,
     AdminStats,
     AuditLogPage,
     AuditLogResponse,
@@ -24,10 +26,12 @@ from app.schemas.admin import (
     UserStatusUpdate,
 )
 from app.schemas.dataset import (
+    GroupDatasetListResponse,
     RecordingSessionListResponse,
     RecordingSessionPreviewResponse,
 )
 from app.schemas.user import UserResponse
+from app.services import admin_group_review_service as group_review
 from app.services.audit_log_service import audit_action, record_audit_event
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
@@ -255,7 +259,94 @@ def list_audit_logs(
     )
 
 
-@router.get("/datasets", response_model=list[DatasetApprovalResponse], summary="Danh sách phiên bản dataset")
+@router.get(
+    "/datasets/groups",
+    response_model=list[AdminGroupApprovalSummary],
+    summary="Các nhóm Dataset đang chờ Admin xét duyệt",
+)
+def list_dataset_groups_for_approval(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[AdminGroupApprovalSummary]:
+    return group_review.list_groups_for_review(db, skip=skip, limit=limit)
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets",
+    response_model=GroupDatasetListResponse,
+    summary="Admin xem các Dataset và phiên bản Export trong nhóm",
+)
+def list_group_datasets_for_admin(
+    group_id: UUID,
+    db: Session = Depends(get_db),
+) -> GroupDatasetListResponse:
+    return group_review.list_group_datasets_for_review(db, group_id)
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="Admin xem Recording Sessions của Dataset trong nhóm",
+)
+def list_group_sessions_for_admin(
+    group_id: UUID,
+    dataset_id: UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+) -> RecordingSessionListResponse:
+    try:
+        return group_review.list_group_sessions_for_review(
+            db, group_id, dataset_id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="Admin xem dữ liệu CSV của Session trong nhóm",
+)
+def preview_group_session_for_admin(
+    group_id: UUID,
+    dataset_id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+) -> RecordingSessionPreviewResponse:
+    try:
+        return group_review.preview_group_session_for_review(
+            db, group_id, dataset_id, session_id, page=page, limit=limit,
+            column_offset=column_offset, representation=representation,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except DatasetPreviewFormatError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    except DatasetPreviewReadError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post(
+    "/datasets/groups/{group_id}/review",
+    response_model=AdminGroupReviewResponse,
+    summary="Admin phê duyệt hoặc từ chối các phiên bản đã gửi trong nhóm",
+)
+def review_dataset_group(
+    group_id: UUID,
+    action: DatasetApprovalAction,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> AdminGroupReviewResponse:
+    return group_review.review_group(db, group_id, action, admin)
+
+
+@router.get("/datasets", response_model=list[DatasetApprovalResponse], include_in_schema=False, summary="Danh sách phiên bản dataset")
 def list_datasets_for_approval(
     skip: int = 0,
     limit: int = 50,
@@ -269,6 +360,7 @@ def list_datasets_for_approval(
 @router.get(
     "/datasets/{dataset_id}/versions/{id}/sessions",
     response_model=RecordingSessionListResponse,
+    include_in_schema=False,
     summary="Admin xem Recording Sessions thuộc phiên bản Dataset",
 )
 def list_dataset_version_sessions_for_admin(
@@ -289,6 +381,7 @@ def list_dataset_version_sessions_for_admin(
 @router.get(
     "/datasets/{dataset_id}/versions/{id}/sessions/{session_id}/preview",
     response_model=RecordingSessionPreviewResponse,
+    include_in_schema=False,
     summary="Admin preview nội dung CSV của một Recording Session",
     description=(
         "Trả về dữ liệu dạng bảng có phân trang. representation=raw giữ nguyên cột CSV gốc; "
@@ -326,6 +419,7 @@ def preview_dataset_session_for_admin(
 
 @router.post(
     "/datasets/{dataset_id}/versions/{id}/review",
+    include_in_schema=False,
     summary="Phê duyệt hoặc từ chối phiên bản dataset",
 )
 def review_dataset(

@@ -157,6 +157,68 @@ def create_temporal_run(
     return job
 
 
+def create_group_temporal_runs(
+    db: Session,
+    jobs: list[TrafficAggregationJob],
+    session_results: list[TrafficAggregationSessionResult],
+) -> None:
+    try:
+        db.add_all(jobs)
+        db.add_all(session_results)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def list_group_temporal_jobs(
+    db: Session, job_ids: list[UUID],
+) -> list[TrafficAggregationJob]:
+    return db.query(TrafficAggregationJob).filter(
+        TrafficAggregationJob.id.in_(job_ids),
+    ).all()
+
+
+def group_temporal_series_query(
+    db: Session, job_ids: list[UUID], session_id: UUID | None,
+) -> Query:
+    query = db.query(TrafficTimeSeries, TrafficAggregationJob).join(
+        TrafficAggregationJob, TrafficAggregationJob.id == TrafficTimeSeries.aggregation_id,
+    ).filter(TrafficTimeSeries.aggregation_id.in_(job_ids))
+    if session_id is not None:
+        query = query.filter(TrafficTimeSeries.recording_session_id == str(session_id))
+    return query
+
+
+def count_group_temporal_series(
+    db: Session, job_ids: list[UUID], session_id: UUID | None,
+) -> int:
+    return group_temporal_series_query(db, job_ids, session_id).with_entities(
+        func.count(TrafficTimeSeries.id),
+    ).scalar() or 0
+
+
+def page_group_temporal_series(
+    db: Session, job_ids: list[UUID], session_id: UUID | None,
+    page: int, page_size: int,
+) -> list[tuple[TrafficTimeSeries, TrafficAggregationJob]]:
+    return group_temporal_series_query(db, job_ids, session_id).order_by(
+        TrafficAggregationJob.dataset_id,
+        TrafficTimeSeries.recording_session_id,
+        TrafficTimeSeries.time_bucket,
+    ).offset((page - 1) * page_size).limit(page_size).all()
+
+
+def list_group_temporal_series(
+    db: Session, job_ids: list[UUID],
+) -> list[tuple[TrafficTimeSeries, TrafficAggregationJob]]:
+    return group_temporal_series_query(db, job_ids, None).order_by(
+        TrafficAggregationJob.dataset_id,
+        TrafficTimeSeries.recording_session_id,
+        TrafficTimeSeries.time_bucket,
+    ).all()
+
+
 def save_temporal_session_result(
     db: Session,
     result: TrafficAggregationSessionResult,

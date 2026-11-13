@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -19,6 +21,19 @@ from sqlalchemy.orm import relationship
 from app.database.database import Base
 
 
+class DatasetGroup(Base):
+    __tablename__ = "dataset_groups"
+    __table_args__ = (UniqueConstraint("source", "drone_id", name="uq_dataset_group_source_drone"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(128), nullable=True)
+    source = Column(String(255), nullable=False)
+    drone_id = Column(String(32), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    datasets = relationship("Dataset", back_populates="group")
+
+
 class Dataset(Base):
     __tablename__ = "datasets"
 
@@ -30,11 +45,13 @@ class Dataset(Base):
     capture_date = Column(Date, nullable=True)
     recording_date = Column(Date, nullable=True)
     drone_id = Column(String(32), nullable=True)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("dataset_groups.id", ondelete="SET NULL"), nullable=True, index=True)
     location_name = Column(String(255), nullable=False)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     creator = relationship("User", foreign_keys=[created_by])
+    group = relationship("DatasetGroup", back_populates="datasets")
     versions = relationship("DatasetVersion", back_populates="dataset", cascade="all, delete-orphan")
 
 
@@ -71,6 +88,15 @@ class RecordingSession(Base):
     __table_args__ = (
         UniqueConstraint("dataset_id", "original_filename", name="uq_recording_session_filename"),
         UniqueConstraint("dataset_id", "checksum", name="uq_recording_session_checksum"),
+        CheckConstraint(
+            "(actual_recording_start IS NULL AND actual_recording_end IS NULL "
+            "AND continuous_recording IS NULL AND recording_time_source IS NULL) OR "
+            "(actual_recording_start IS NOT NULL AND actual_recording_end IS NOT NULL "
+            "AND actual_recording_end > actual_recording_start "
+            "AND continuous_recording IS NOT NULL AND recording_time_source IS NOT NULL "
+            "AND length(trim(recording_time_source)) > 0)",
+            name="ck_recording_capture_metadata",
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -80,6 +106,10 @@ class RecordingSession(Base):
     recording_date = Column(Date, nullable=False)
     scheduled_start = Column(DateTime(timezone=True), nullable=False)
     scheduled_end = Column(DateTime(timezone=True), nullable=False)
+    actual_recording_start = Column(DateTime(timezone=True), nullable=True)
+    actual_recording_end = Column(DateTime(timezone=True), nullable=True)
+    continuous_recording = Column(Boolean, nullable=True)
+    recording_time_source = Column(String(255), nullable=True)
     file_path = Column(String(512), nullable=False)
     file_size = Column(BigInteger, nullable=False)
     checksum = Column(String(64), nullable=False)
@@ -108,6 +138,23 @@ class DatasetUploadJob(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC),
                         onupdate=lambda: datetime.now(UTC))
+
+
+class DatasetGroupProcessingJob(Base):
+    __tablename__ = "dataset_group_processing_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id = Column(UUID(as_uuid=True), ForeignKey("dataset_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    staging_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    operation = Column(String(16), nullable=False)
+    status = Column(String(20), nullable=False, default="PENDING")
+    total_datasets = Column(Integer, nullable=False)
+    processed_datasets = Column(Integer, nullable=False, default=0)
+    results = Column(JSONB, nullable=False, default=list)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC),
+                        onupdate=lambda: datetime.now(UTC), nullable=False)
 
 
 class DatasetColumnMapping(Base):

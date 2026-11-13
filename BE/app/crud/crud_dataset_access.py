@@ -4,10 +4,108 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.selectable import Exists
 
-from app.models.dataset import Dataset, DatasetAccessGrant, DatasetVersion
+from app.models.dataset import Dataset, DatasetAccessGrant, DatasetGroup, DatasetVersion
 from app.models.user import User
 
 ACCESS_ROLES = ("data_scientist", "business_user")
+
+
+def get_group(db: Session, group_id: UUID) -> DatasetGroup | None:
+    return db.get(DatasetGroup, group_id)
+
+
+def list_groups(
+    db: Session, user: User, search: str | None, skip: int, limit: int,
+) -> list[DatasetGroup]:
+    membership = select(Dataset.id).where(Dataset.group_id == DatasetGroup.id)
+    if user.role_id != "admin":
+        membership = membership.where(access_filter(user.id))
+    query = select(DatasetGroup).where(exists(membership))
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(or_(
+            DatasetGroup.name.ilike(pattern), DatasetGroup.drone_id.ilike(pattern),
+        ))
+    return list(db.scalars(query.order_by(DatasetGroup.created_at.desc(), DatasetGroup.id)
+                           .offset(skip).limit(limit)))
+
+
+def list_approved_groups(
+    db: Session, user_id: UUID, search: str | None, skip: int, limit: int,
+) -> list[DatasetGroup]:
+    visible_approved = (
+        select(Dataset.id)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .where(
+            Dataset.group_id == DatasetGroup.id,
+            DatasetVersion.approval_status == "APPROVED",
+            access_filter(user_id),
+        )
+    )
+    query = select(DatasetGroup).where(exists(visible_approved))
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(or_(
+            DatasetGroup.name.ilike(pattern), DatasetGroup.drone_id.ilike(pattern),
+        ))
+    return list(db.scalars(
+        query.order_by(DatasetGroup.created_at.desc(), DatasetGroup.id)
+        .offset(skip).limit(limit)
+    ))
+
+
+def approved_group_dataset_ids_for_user(
+    db: Session, group_id: UUID, user_id: UUID,
+) -> set[UUID]:
+    rows = db.scalars(
+        select(Dataset.id)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .where(
+            Dataset.group_id == group_id,
+            DatasetVersion.approval_status == "APPROVED",
+            access_filter(user_id),
+        )
+        .distinct()
+    )
+    return set(rows)
+
+
+def list_group_datasets(db: Session, group_id: UUID) -> list[Dataset]:
+    return list(db.scalars(select(Dataset).where(Dataset.group_id == group_id)
+                           .order_by(Dataset.recording_date, Dataset.id)))
+
+
+def approved_group_dataset_ids(db: Session, group_id: UUID) -> set[UUID]:
+    rows = db.scalars(
+        select(Dataset.id).join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .where(Dataset.group_id == group_id, DatasetVersion.approval_status == "APPROVED")
+        .distinct()
+    )
+    return set(rows)
+
+
+def list_group_grants(
+    db: Session, group_id: UUID, user_id: UUID | None = None,
+) -> list[DatasetAccessGrant]:
+    query = (
+        select(DatasetAccessGrant)
+        .join(Dataset, Dataset.id == DatasetAccessGrant.dataset_id)
+        .options(joinedload(DatasetAccessGrant.user))
+        .where(Dataset.group_id == group_id)
+    )
+    if user_id is not None:
+        query = query.where(DatasetAccessGrant.user_id == user_id)
+    return list(db.scalars(query.order_by(DatasetAccessGrant.created_at, DatasetAccessGrant.id)))
+
+
+def list_eligible_group_users(
+    db: Session, search: str | None, skip: int, limit: int,
+) -> list[User]:
+    query = select(User).where(User.role_id.in_(ACCESS_ROLES))
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(or_(User.full_name.ilike(pattern), User.email.ilike(pattern)))
+    return list(db.scalars(query.order_by(User.full_name, User.id).offset(skip).limit(limit)))
 
 
 def access_filter(user_id: UUID) -> Exists:

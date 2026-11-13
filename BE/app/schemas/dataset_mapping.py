@@ -66,3 +66,25 @@ class DatasetColumnMappingsResponse(BaseModel):
     mapping_scope: str = "all_sessions_with_matching_columns"
     mapping_reused: bool = False
     mappings: list[DatasetColumnMappingItem] = Field(default_factory=list)
+
+
+class GroupMappingDataset(BaseModel):
+    dataset_id: UUID
+    dataset_version_id: UUID
+    session_count: int = Field(ge=0)
+
+
+class GroupDatasetColumnsResponse(BaseModel):
+    group_id: UUID
+    dataset_count: int = Field(ge=0)
+    session_count: int = Field(ge=0)
+    datasets: list[GroupMappingDataset]
+    columns: list[DatasetColumnInfo]
+
+
+class GroupDatasetMappingsResponse(BaseModel):
+    group_id: UUID
+    dataset_count: int = Field(ge=0)
+    session_count: int = Field(ge=0)
+    datasets: list[GroupMappingDataset]
+    mappings: list[DatasetColumnMappingItem]

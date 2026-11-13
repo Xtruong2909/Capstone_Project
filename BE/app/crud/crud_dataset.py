@@ -1,7 +1,9 @@
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, text
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, text
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session, selectinload
 
 from app.crud.crud_dataset_access import access_filter
 from app.crud.crud_recording_metadata import resolve_original_filename
@@ -9,6 +11,8 @@ from app.models.dataset import (
     DataCleaningHistory,  # Import model đã có sẵn trong init_db
     Dataset,
     DatasetColumnMapping,
+    DatasetGroup,
+    DatasetGroupProcessingJob,
     DatasetUploadJob,
     DatasetVersion,
     DatasetVersionSession,
@@ -23,6 +27,117 @@ def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
     return db.query(Dataset).filter(Dataset.name == name).first()
 
 
+def get_or_create_dataset_group(db: Session, source: str, drone_id: str) -> DatasetGroup:
+    """Return the persistent group shared by recording dates from one drone."""
+    normalized_source = source.strip().lower()
+    normalized_drone = drone_id.strip().lower()
+    statement = insert(DatasetGroup).values(
+        source=normalized_source, drone_id=normalized_drone,
+    ).on_conflict_do_nothing(index_elements=["source", "drone_id"])
+    db.execute(statement)
+    group = db.query(DatasetGroup).filter(
+        DatasetGroup.source == normalized_source,
+        DatasetGroup.drone_id == normalized_drone,
+    ).one()
+    return group
+
+
+def get_dataset_group_by_id(db: Session, group_id: UUID) -> DatasetGroup | None:
+    return db.query(DatasetGroup).filter(DatasetGroup.id == group_id).first()
+
+
+def create_group_processing_job(
+    db: Session, *, job: DatasetGroupProcessingJob,
+) -> DatasetGroupProcessingJob:
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_group_processing_job(
+    db: Session, job_id: UUID,
+) -> DatasetGroupProcessingJob | None:
+    return db.get(DatasetGroupProcessingJob, job_id)
+
+
+def get_active_group_processing_job(
+    db: Session, group_id: UUID,
+) -> DatasetGroupProcessingJob | None:
+    return db.query(DatasetGroupProcessingJob).filter(
+        DatasetGroupProcessingJob.group_id == group_id,
+        DatasetGroupProcessingJob.status.in_(("PENDING", "RUNNING")),
+    ).first()
+
+
+def get_latest_group_normalize_job(
+    db: Session, group_id: UUID,
+) -> DatasetGroupProcessingJob | None:
+    return db.query(DatasetGroupProcessingJob).filter(
+        DatasetGroupProcessingJob.group_id == group_id,
+        DatasetGroupProcessingJob.operation == "NORMALIZE",
+        DatasetGroupProcessingJob.status.in_(("COMPLETED", "PARTIAL_SUCCESS")),
+    ).order_by(DatasetGroupProcessingJob.created_at.desc()).first()
+
+
+def get_latest_completed_group_export_job(
+    db: Session, group_id: UUID,
+) -> DatasetGroupProcessingJob | None:
+    return db.query(DatasetGroupProcessingJob).filter(
+        DatasetGroupProcessingJob.group_id == group_id,
+        DatasetGroupProcessingJob.operation == "EXPORT",
+        DatasetGroupProcessingJob.status == "COMPLETED",
+    ).order_by(DatasetGroupProcessingJob.created_at.desc()).first()
+
+
+def save_group_processing_job(db: Session, job: DatasetGroupProcessingJob) -> None:
+    db.add(job)
+    db.commit()
+
+
+def list_group_datasets(
+    db: Session, group_id: UUID, visible_user_id: UUID | None,
+) -> list[Dataset]:
+    query = db.query(Dataset).options(selectinload(Dataset.group)).filter(
+        Dataset.group_id == group_id, Dataset.versions.any(),
+    )
+    if visible_user_id is not None:
+        query = query.filter(access_filter(visible_user_id))
+    return query.order_by(Dataset.recording_date, Dataset.id).all()
+
+
+def list_group_dataset_versions(
+    db: Session, group_id: UUID, approval_status: str | None = None,
+) -> list[DatasetVersion]:
+    query = db.query(DatasetVersion).join(Dataset).options(
+        selectinload(DatasetVersion.dataset),
+    ).filter(Dataset.group_id == group_id)
+    if approval_status is not None:
+        query = query.filter(DatasetVersion.approval_status == approval_status)
+    return query.order_by(
+        Dataset.recording_date, Dataset.id, DatasetVersion.created_at.desc(),
+    ).all()
+
+
+def get_group_dataset_versions_by_ids(
+    db: Session, group_id: UUID, version_ids: list[UUID],
+) -> list[DatasetVersion]:
+    if not version_ids:
+        return []
+    return db.query(DatasetVersion).join(Dataset).options(
+        selectinload(DatasetVersion.dataset),
+    ).filter(
+        Dataset.group_id == group_id,
+        DatasetVersion.id.in_(version_ids),
+    ).all()
+
+
+def get_dataset_group_ids(db: Session, dataset_ids: list[UUID]) -> dict[UUID, UUID | None]:
+    if not dataset_ids:
+        return {}
+    return dict(db.query(Dataset.id, Dataset.group_id).filter(Dataset.id.in_(dataset_ids)).all())
+
+
 def lock_dataset_upload(db: Session, name: str) -> None:
     """Serialize uploads for a dataset, including its first creation."""
     db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:name, 0))"), {"name": name})
@@ -35,20 +150,43 @@ def get_recording_sessions(db: Session, dataset_id: UUID) -> list[RecordingSessi
 def list_uploaded_datasets(
     db: Session, *, search: str | None, page: int, page_size: int,
     visible_user_id: UUID | None,
+    group_id: UUID | None = None,
+    drone_id: str | None = None,
+    recording_date_from: date | None = None,
+    recording_date_to: date | None = None,
 ) -> tuple[list[Dataset], int]:
-    """List pNEUMA groups once, scoped to granted datasets when needed."""
-    query = db.query(Dataset).filter(
+    """Page by group, then load only visible datasets in those groups."""
+    query = db.query(Dataset).options(selectinload(Dataset.group)).filter(
         Dataset.drone_id.is_not(None), Dataset.recording_date.is_not(None),
+        Dataset.group_id.is_not(None),
         Dataset.versions.any(),
     )
     if visible_user_id is not None:
         query = query.filter(access_filter(visible_user_id))
     if search:
-        query = query.filter(Dataset.name.ilike(f"%{search}%"))
-    total = query.count()
-    rows = query.order_by(Dataset.recording_date.desc(), Dataset.name).offset(
+        pattern = f"%{search}%"
+        query = query.filter(or_(
+            Dataset.name.ilike(pattern),
+            Dataset.group.has(DatasetGroup.name.ilike(pattern)),
+        ))
+    if group_id is not None:
+        query = query.filter(Dataset.group_id == group_id)
+    if drone_id is not None:
+        query = query.filter(Dataset.drone_id == drone_id.lower())
+    if recording_date_from is not None:
+        query = query.filter(Dataset.recording_date >= recording_date_from)
+    if recording_date_to is not None:
+        query = query.filter(Dataset.recording_date <= recording_date_to)
+    grouped = query.with_entities(Dataset.group_id).distinct()
+    total = grouped.count()
+    group_ids = [row[0] for row in grouped.order_by(Dataset.group_id).offset(
         (page - 1) * page_size,
-    ).limit(page_size).all()
+    ).limit(page_size).all()]
+    if not group_ids:
+        return [], total
+    rows = query.filter(Dataset.group_id.in_(group_ids)).order_by(
+        Dataset.group_id, Dataset.recording_date, Dataset.id,
+    ).all()
     return rows, total
 
 
@@ -291,6 +429,42 @@ def save_dataset_column_mapping(
         },
     )
     return saved_mapping
+
+
+def save_group_column_mappings(
+    db: Session,
+    *,
+    updates: list[tuple[UUID, UUID, list[dict[str, str | None]]]],
+    user_id: UUID,
+) -> None:
+    """Persist all versions in one transaction after service-level validation."""
+    try:
+        for dataset_id, version_id, mappings in updates:
+            saved = get_dataset_column_mapping(db, dataset_id, version_id)
+            if saved is None:
+                db.add(DatasetColumnMapping(
+                    dataset_id=dataset_id,
+                    dataset_version_id=version_id,
+                    mappings=mappings,
+                    updated_by=user_id,
+                ))
+            else:
+                saved.mappings = mappings
+                saved.updated_by = user_id
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    for dataset_id, version_id, mappings in updates:
+        record_audit_event(
+            user_id=user_id,
+            action="CONFIRM_DATASET_COLUMN_MAPPING",
+            module="Dataset",
+            status="SUCCESS",
+            description="Dataset column mapping updated through group",
+            resource_id=dataset_id,
+            details={"dataset_version_id": str(version_id), "mapping_count": len(mappings)},
+        )
 
 
 def create_dataset_version(

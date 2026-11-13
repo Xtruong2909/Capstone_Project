@@ -59,6 +59,15 @@ CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
 -- PHÂN HỆ 2: QUẢN LÝ BỘ DỮ LIỆU UAV & KIỂM ĐỊNH CHẤT LƯỢNG
 -- ====================================================================
 
+CREATE TABLE dataset_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(128),
+    source VARCHAR(255) NOT NULL,
+    drone_id VARCHAR(32) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_dataset_group_source_drone UNIQUE(source, drone_id)
+);
+
 CREATE TABLE datasets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(128) NOT NULL UNIQUE CHECK (length(trim(name)) >= 3),
@@ -68,10 +77,30 @@ CREATE TABLE datasets (
     capture_date DATE,
     recording_date DATE,
     drone_id VARCHAR(32),
+    group_id UUID REFERENCES dataset_groups(id) ON DELETE SET NULL,
     location_name VARCHAR(255) NOT NULL,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX ix_datasets_group_id ON datasets(group_id);
+
+CREATE TABLE dataset_group_processing_jobs (
+    id UUID PRIMARY KEY,
+    group_id UUID NOT NULL REFERENCES dataset_groups(id) ON DELETE CASCADE,
+    staging_id UUID NOT NULL,
+    operation VARCHAR(16) NOT NULL CHECK (operation IN ('NORMALIZE', 'EXPORT')),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    total_datasets INTEGER NOT NULL,
+    processed_datasets INTEGER NOT NULL DEFAULT 0,
+    results JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX ix_dataset_group_processing_jobs_group_id
+    ON dataset_group_processing_jobs(group_id);
+CREATE INDEX ix_dataset_group_processing_jobs_staging_id
+    ON dataset_group_processing_jobs(staging_id);
 
 CREATE TABLE dataset_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -147,6 +176,7 @@ CREATE TABLE data_quality_checks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL,
     started_by UUID REFERENCES users(id) ON DELETE SET NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'queued'
         CHECK (status IN ('queued', 'running', 'completed', 'failed')),

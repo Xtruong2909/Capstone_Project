@@ -37,6 +37,13 @@ def get_version_source_context(
         except (TypeError, ValueError):
             continue
 
+    source_version = version if source_version_id == version.id else db.query(DatasetVersion).filter(
+        DatasetVersion.id == source_version_id,
+        DatasetVersion.dataset_id == version.dataset_id,
+    ).first()
+    if source_version is None:
+        source_version_id = version.id
+
     source_sessions: list[RecordingSession]
     if session_ids:
         found = db.query(RecordingSession).filter(
@@ -50,10 +57,6 @@ def get_version_source_context(
     else:
         source_sessions = crud_dataset.list_all_version_sessions(db, source_version_id)
 
-    source_version = version if source_version_id == version.id else db.query(DatasetVersion).filter(
-        DatasetVersion.id == source_version_id,
-        DatasetVersion.dataset_id == version.dataset_id,
-    ).first()
     source_version_tag = source_version.version_tag if source_version else None
 
     return (
@@ -74,6 +77,23 @@ def get_version_source_context(
             for session in source_sessions
         ],
     )
+
+
+def get_version_recording_sessions(
+    db: Session, version: DatasetVersion,
+) -> list[RecordingSession]:
+    """Resolve uploaded sessions represented by an original or exported version."""
+    sessions = crud_dataset.list_all_version_sessions(db, version.id)
+    if sessions:
+        return sessions
+    _, _, summaries = get_version_source_context(db, version)
+    if not summaries:
+        return []
+    session_ids = [summary.session_id for summary in summaries]
+    sessions, _ = crud_dataset.list_dataset_sessions_by_ids(
+        db, version.dataset_id, session_ids, 1, len(session_ids),
+    )
+    return sessions
 
 
 def build_dataset_version_item(

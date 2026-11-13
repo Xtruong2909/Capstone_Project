@@ -2,14 +2,17 @@ from datetime import UTC, datetime, timedelta, timezone
 from itertools import islice
 from types import SimpleNamespace
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from fastapi import HTTPException
 
-from app.schemas.traffic_aggregation import DatasetVersionTemporalAggregationRequest
+from app.schemas.traffic_aggregation import (
+    GroupDatasetTemporalAggregationRequest,
+    GroupTemporalAggregationRequest,
+)
 from app.services import ds_temporal_aggregation_service as service
 
 
@@ -118,34 +121,29 @@ def test_legacy_row_count_fallback_matches_pneuma_expansion(tmp_path, monkeypatc
 
 def test_unapproved_version_is_rejected(monkeypatch) -> None:
     dataset_id = uuid4()
-    version_id = uuid4()
+    group_id = uuid4()
     monkeypatch.setattr(
-        service.repo, "get_dataset_version",
-        lambda db, id_: (
-            SimpleNamespace(id=dataset_id),
-            SimpleNamespace(id=version_id, approval_status="PENDING"),
-        ),
+        service.crud_dataset, "get_dataset_by_id",
+        lambda db, id_: SimpleNamespace(id=dataset_id, group_id=group_id),
     )
+    monkeypatch.setattr(service.crud_dataset, "get_dataset_latest_approved_version", lambda *_: None)
     monkeypatch.setattr(service, "check_dataset_access", lambda *args: None)
 
     with pytest.raises(HTTPException) as error:
         service.create_temporal_aggregation(
             None,
             SimpleNamespace(role_id="data_scientist"),
-            DatasetVersionTemporalAggregationRequest(dataset_version_id=version_id),
+            GroupDatasetTemporalAggregationRequest(group_id=group_id, dataset_id=dataset_id),
         )
     assert error.value.status_code == 403
 
 
 def test_data_scientist_without_dataset_grant_is_rejected(monkeypatch) -> None:
     dataset_id = uuid4()
-    version_id = uuid4()
+    group_id = uuid4()
     monkeypatch.setattr(
-        service.repo, "get_dataset_version",
-        lambda db, id_: (
-            SimpleNamespace(id=dataset_id),
-            SimpleNamespace(id=version_id, approval_status="APPROVED"),
-        ),
+        service.crud_dataset, "get_dataset_by_id",
+        lambda db, id_: SimpleNamespace(id=dataset_id, group_id=group_id),
     )
 
     def deny_access(user: Any, id_: Any, db: Any) -> None:
@@ -156,9 +154,166 @@ def test_data_scientist_without_dataset_grant_is_rejected(monkeypatch) -> None:
         service.create_temporal_aggregation(
             None,
             SimpleNamespace(role_id="data_scientist"),
-            DatasetVersionTemporalAggregationRequest(dataset_version_id=version_id),
+            GroupDatasetTemporalAggregationRequest(group_id=group_id, dataset_id=dataset_id),
         )
     assert error.value.status_code == 403
+
+
+def test_dataset_from_another_group_is_rejected(monkeypatch) -> None:
+    dataset_id = uuid4()
+    monkeypatch.setattr(
+        service.crud_dataset, "get_dataset_by_id",
+        lambda *_: SimpleNamespace(id=dataset_id, group_id=uuid4()),
+    )
+    with pytest.raises(HTTPException) as error:
+        service.create_temporal_aggregation(
+            None,
+            SimpleNamespace(role_id="data_scientist"),
+            GroupDatasetTemporalAggregationRequest(group_id=uuid4(), dataset_id=dataset_id),
+        )
+    assert error.value.status_code == 404
+
+
+def test_create_uses_latest_approved_version_and_all_sessions(monkeypatch) -> None:
+    group_id, dataset_id, version_id = uuid4(), uuid4(), uuid4()
+    session_ids = [uuid4() for _ in range(5)]
+    dataset = SimpleNamespace(id=dataset_id, group_id=group_id)
+    version = SimpleNamespace(id=version_id, approval_status="APPROVED")
+    selected = []
+    monkeypatch.setattr(service.crud_dataset, "get_dataset_by_id", lambda *_: dataset)
+    monkeypatch.setattr(
+        service.crud_dataset, "get_dataset_latest_approved_version",
+        lambda db, id_: (dataset, version),
+    )
+    monkeypatch.setattr(service, "check_dataset_access", lambda *_: None)
+    monkeypatch.setattr(
+        service.repo, "get_cleaning_history",
+        lambda *_: SimpleNamespace(parameters={"is_pneuma": True}),
+    )
+    monkeypatch.setattr(service, "_normalized_path", lambda *_: None)
+    monkeypatch.setattr(
+        service, "_source_sessions",
+        lambda *_: [SimpleNamespace(id=session_id) for session_id in session_ids],
+    )
+    monkeypatch.setattr(service.repo, "get_active_temporal_run", lambda *_: None)
+    monkeypatch.setattr(
+        service.repo, "create_temporal_run",
+        lambda db, job, results: selected.append((job, results)),
+    )
+
+    job, results = service.create_temporal_aggregation(
+        None,
+        SimpleNamespace(role_id="data_scientist"),
+        GroupDatasetTemporalAggregationRequest(group_id=group_id, dataset_id=dataset_id),
+    )
+
+    assert job.dataset_version_id == version_id
+    assert job.job_metadata["group_id"] == str(group_id)
+    assert job.total_sessions == 5
+    assert {result.session_id for result in results} == set(session_ids)
+    assert selected[0][0] is job
+
+
+def test_group_id_creates_one_public_run_for_all_datasets(monkeypatch) -> None:
+    group_id = uuid4()
+    datasets = [SimpleNamespace(id=uuid4(), group_id=group_id) for _ in range(4)]
+    saved = {}
+    monkeypatch.setattr(service.crud_dataset, "get_dataset_group_by_id", lambda *_: object())
+    monkeypatch.setattr(service.crud_dataset, "list_group_datasets", lambda *_: datasets)
+
+    def prepare(db, user, payload, *, persist):
+        assert persist is False
+        job_id = uuid4()
+        job = SimpleNamespace(
+            id=job_id, dataset_id=payload.dataset_id,
+            dataset_version_id=uuid4(), aggregation_interval=60,
+            status="PROCESSING", total_sessions=5, completed_sessions=0,
+            failed_sessions=0, job_metadata={"group_id": str(group_id)},
+        )
+        rows = [SimpleNamespace(
+            aggregation_id=job_id, session_id=uuid4(), status="QUEUED",
+            time_bins=0, records_read=0, error_message=None,
+        ) for _ in range(5)]
+        return job, rows
+
+    monkeypatch.setattr(service, "create_temporal_aggregation", prepare)
+    monkeypatch.setattr(
+        service.repo, "create_group_temporal_runs",
+        lambda db, jobs, results: saved.update(jobs=jobs, results=results),
+    )
+    jobs, results = service.create_group_temporal_aggregation(
+        None, SimpleNamespace(role_id="data_scientist"),
+        GroupTemporalAggregationRequest(group_id=group_id),
+    )
+    response = service.serialize_group_aggregation_run(jobs, results)
+    assert len(saved["jobs"]) == 4
+    assert len(saved["results"]) == 20
+    assert response.aggregation_id == jobs[0].id
+    assert response.total_datasets == 4
+    assert response.total_sessions == 20
+    assert {item.dataset_id for item in response.sessions} == {item.id for item in datasets}
+    assert jobs[0].job_metadata["group_job_ids"] == [str(job.id) for job in jobs]
+
+
+def test_group_creation_does_not_save_partial_jobs_on_validation_error(monkeypatch) -> None:
+    group_id = uuid4()
+    datasets = [SimpleNamespace(id=uuid4(), group_id=group_id) for _ in range(2)]
+    monkeypatch.setattr(service.crud_dataset, "get_dataset_group_by_id", lambda *_: object())
+    monkeypatch.setattr(service.crud_dataset, "list_group_datasets", lambda *_: datasets)
+
+    def prepare(db, user, payload, *, persist):
+        assert persist is False
+        if payload.dataset_id == datasets[1].id:
+            raise HTTPException(403, "Dataset has no approved version")
+        return SimpleNamespace(id=uuid4()), []
+
+    monkeypatch.setattr(service, "create_temporal_aggregation", prepare)
+    monkeypatch.setattr(
+        service.repo, "create_group_temporal_runs",
+        lambda *_: pytest.fail("must not save incomplete group"),
+    )
+    with pytest.raises(HTTPException) as error:
+        service.create_group_temporal_aggregation(
+            None, SimpleNamespace(role_id="data_scientist"),
+            GroupTemporalAggregationRequest(group_id=group_id),
+        )
+    assert error.value.status_code == 403
+
+
+def test_group_results_page_contains_dataset_and_session_ids(monkeypatch) -> None:
+    root_id, group_id = uuid4(), uuid4()
+    jobs = [SimpleNamespace(
+        id=job_id, dataset_id=uuid4(), dataset_version_id=uuid4(),
+        status="COMPLETED", total_sessions=1, completed_sessions=1,
+        failed_sessions=0, aggregation_interval=60,
+        job_metadata={"group_id": str(group_id), "group_job_ids": [str(root_id)]},
+    ) for job_id in (root_id, uuid4())]
+    results = [SimpleNamespace(
+        aggregation_id=job.id, session_id=uuid4(), status="COMPLETED",
+        time_bins=2, records_read=100, error_message=None,
+    ) for job in jobs]
+    timestamp = datetime(2018, 10, 24, 5, 30, tzinfo=UTC)
+    row = SimpleNamespace(
+        recording_session_id=str(results[1].session_id),
+        time_bucket=timestamp, vehicle_count=12,
+    )
+    monkeypatch.setattr(service, "_accessible_run", lambda *_: jobs[0])
+    monkeypatch.setattr(service, "_accessible_group_jobs", lambda *_: jobs)
+    monkeypatch.setattr(service, "_group_session_results", lambda *_: results)
+    monkeypatch.setattr(service, "_group_recording_starts", lambda *_: {})
+    monkeypatch.setattr(service.repo, "count_group_temporal_series", lambda *_: 4)
+    monkeypatch.setattr(service.repo, "page_group_temporal_series", lambda *_: [(row, jobs[1])])
+
+    response = service.get_temporal_aggregation_results(
+        None, SimpleNamespace(), root_id, None, 2, 1,
+    )
+    assert response.total_datasets == 2
+    assert response.total_sessions == 2
+    assert response.total_records == 4
+    assert response.total_pages == 4
+    assert response.data[0].dataset_id == jobs[1].dataset_id
+    assert response.data[0].session_id == results[1].session_id
+    assert response.sessions[0].dataset_id == jobs[0].dataset_id
 
 
 def test_results_show_recording_local_time_without_changing_saved_utc(monkeypatch) -> None:
@@ -170,6 +325,7 @@ def test_results_show_recording_local_time_without_changing_saved_utc(monkeypatc
     job = SimpleNamespace(
         id=aggregation_id, dataset_id=dataset_id, dataset_version_id=version_id,
         aggregation_interval=60, status="COMPLETED", total_sessions=1,
+        job_metadata={"group_id": str(uuid4())},
     )
     result = SimpleNamespace(
         session_id=session_id, status="COMPLETED", time_bins=1,
@@ -196,6 +352,8 @@ def test_results_show_recording_local_time_without_changing_saved_utc(monkeypatc
     )
 
     assert response.data[0].timestamp.isoformat() == "2018-10-24T08:30:00+03:00"
+    assert response.dataset_id == dataset_id
+    assert response.group_id == UUID(job.job_metadata["group_id"])
     assert stored_time.isoformat() == "2018-10-24T05:30:00+00:00"
 
 
@@ -207,6 +365,7 @@ def test_combined_results_keep_partial_status_and_recording_local_time(monkeypat
         id=aggregation_id, dataset_id=dataset_id, dataset_version_id=uuid4(),
         aggregation_interval=60, status="PARTIAL_SUCCESS", total_sessions=2,
         completed_sessions=1, failed_sessions=1,
+        job_metadata={"group_id": str(uuid4())},
     )
     results = [
         SimpleNamespace(
@@ -240,6 +399,8 @@ def test_combined_results_keep_partial_status_and_recording_local_time(monkeypat
     )
 
     assert response.status == "PARTIAL_SUCCESS"
+    assert response.dataset_id == dataset_id
+    assert response.group_id == UUID(job.job_metadata["group_id"])
     assert response.failed_sessions == 1
     assert response.timezone == "Europe/Athens"
     assert response.data[0].timestamp.isoformat() == "2018-10-24T08:30:00+03:00"

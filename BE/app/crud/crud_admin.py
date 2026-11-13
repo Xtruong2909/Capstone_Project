@@ -161,7 +161,10 @@ def create_audit_log(
 def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
     """Retrieve dataset versions for approval management."""
     versions = (
-        db.query(DatasetVersion, Dataset.name.label("dataset_name"))
+        db.query(
+            DatasetVersion, Dataset.name.label("dataset_name"),
+            Dataset.recording_date, Dataset.drone_id,
+        )
         .join(Dataset, DatasetVersion.dataset_id == Dataset.id)
         .filter(
             DatasetVersion.approval_status == "SUBMITTED",
@@ -174,11 +177,13 @@ def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 5
         .all()
     )
     result = []
-    for ver, dataset_name in versions:
+    for ver, dataset_name, recording_date, drone_id in versions:
         result.append({
             "id": ver.id,
             "dataset_id": ver.dataset_id,
             "dataset_name": dataset_name,
+            "recording_date": recording_date,
+            "drone_id": drone_id,
             "version_tag": ver.version_tag,
             "file_format": ver.file_format,
             "total_records": ver.total_records,
@@ -186,6 +191,33 @@ def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 5
             "created_at": ver.created_at,
         })
     return result
+
+
+def list_submitted_group_ids(db: Session) -> list[UUID]:
+    rows = (
+        db.query(Dataset.group_id)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .filter(
+            Dataset.group_id.is_not(None),
+            DatasetVersion.approval_status == "SUBMITTED",
+            DatasetVersion.submitted_by.is_not(None),
+            DatasetVersion.submitted_at.is_not(None),
+        )
+        .group_by(Dataset.group_id)
+        .order_by(func.max(DatasetVersion.submitted_at).desc())
+        .all()
+    )
+    return [row[0] for row in rows]
+
+
+def lock_dataset_versions(db: Session, version_ids: list[UUID]) -> list[DatasetVersion]:
+    return (
+        db.query(DatasetVersion)
+        .filter(DatasetVersion.id.in_(version_ids))
+        .order_by(DatasetVersion.id)
+        .with_for_update()
+        .all()
+    )
 
 
 def approve_or_reject_dataset_version(

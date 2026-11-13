@@ -3,16 +3,19 @@
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import uuid4
 
-from fastapi import FastAPI
+import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.api.v1.endpoints import admin
 from app.core.deps import get_current_user
 from app.database.database import get_db
 from app.models.dataset import Dataset, DatasetVersion, RecordingSession
-from app.services import dataset_preview_service, dataset_review_service
+from app.schemas.admin import DatasetApprovalAction
+from app.services import admin_group_review_service, dataset_preview_service, dataset_review_service
 
 
 def _admin_review_app(tmp_path: Path, monkeypatch):
@@ -114,18 +117,99 @@ def test_admin_session_review_endpoints_are_in_swagger(
 ) -> None:
     app, _, _, _ = _admin_review_app(tmp_path, monkeypatch)
     paths = app.openapi()["paths"]
-    base = "/api/v1/admin/datasets/{dataset_id}/versions/{id}"
-    assert f"{base}/sessions" in paths
-    assert f"{base}/sessions/{{session_id}}/preview" in paths
-    assert "/api/v1/admin/datasets" in paths
-    assert f"{base}/preview" not in paths
-    assert base not in paths
-    assert f"{base}/sessions/{{session_id}}" not in paths
-    assert paths[f"{base}/sessions/{{session_id}}/preview"]["get"]["tags"] == [
+    base = "/api/v1/admin/datasets/groups/{group_id}"
+    assert f"{base}/datasets" in paths
+    assert f"{base}/datasets/{{dataset_id}}/sessions" in paths
+    assert f"{base}/datasets/{{dataset_id}}/sessions/{{session_id}}/preview" in paths
+    assert f"{base}/review" in paths
+    assert "/api/v1/admin/datasets/groups" in paths
+    assert "/api/v1/admin/datasets" not in paths
+    assert paths[f"{base}/datasets/{{dataset_id}}/sessions/{{session_id}}/preview"]["get"]["tags"] == [
         "Administration",
     ]
-    assert paths[f"{base}/sessions"]["get"]["tags"] == ["Administration"]
+    assert paths[f"{base}/datasets/{{dataset_id}}/sessions"]["get"]["tags"] == ["Administration"]
     assert "Admin Dataset Review" not in {
         tag for path in paths.values() for operation in path.values()
         for tag in operation.get("tags", [])
     }
+
+
+def test_admin_reviews_group_dataset_sessions_and_csv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app, dataset, version, session = _admin_review_app(tmp_path, monkeypatch)
+    group_id = uuid4()
+    dataset.group_id = group_id
+    version.dataset = dataset
+    group = SimpleNamespace(id=group_id, name="Drone d1", drone_id="d1")
+    monkeypatch.setattr(
+        admin_group_review_service, "get_exported_group_versions",
+        lambda *_: (SimpleNamespace(), [version]),
+    )
+    monkeypatch.setattr(
+        admin_group_review_service.crud_dataset, "get_dataset_group_by_id",
+        lambda *_: group,
+    )
+    monkeypatch.setattr(
+        admin_group_review_service, "build_dataset_version_item",
+        lambda *_: SimpleNamespace(source_session_count=1),
+    )
+    base = f"/api/v1/admin/datasets/groups/{group_id}/datasets"
+    with TestClient(app) as client:
+        datasets = client.get(base)
+        sessions = client.get(f"{base}/{dataset.id}/sessions")
+        preview = client.get(
+            f"{base}/{dataset.id}/sessions/{session.id}/preview",
+            params={"representation": "raw"},
+        )
+    assert datasets.status_code == 200, datasets.text
+    assert datasets.json()["datasets"][0]["version_id"] == str(version.id)
+    assert sessions.status_code == 200, sessions.text
+    assert sessions.json()["sessions"][0]["session_id"] == str(session.id)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["rows"] == [{"id": "1", "flow": "100"}]
+
+
+def test_group_review_updates_only_submitted_versions_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    group_id = uuid4()
+    pending = SimpleNamespace(id=uuid4(), approval_status="SUBMITTED")
+    approved = SimpleNamespace(id=uuid4(), approval_status="APPROVED")
+    db = MagicMock()
+    monkeypatch.setattr(
+        admin_group_review_service, "get_exported_group_versions",
+        lambda *_: (object(), [pending, approved]),
+    )
+    monkeypatch.setattr(
+        admin_group_review_service.crud_admin, "lock_dataset_versions",
+        lambda *_: [pending, approved],
+    )
+    monkeypatch.setattr(admin_group_review_service, "record_audit_event", lambda **_: None)
+
+    result = admin_group_review_service.review_group(
+        db, group_id, DatasetApprovalAction(status="APPROVED"), SimpleNamespace(id=uuid4()),
+    )
+
+    assert result.status == "APPROVED"
+    assert result.reviewed_versions == 1
+    assert pending.approval_status == approved.approval_status == "APPROVED"
+    db.commit.assert_called_once_with()
+
+
+def test_group_review_rejects_when_nothing_was_submitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    group_id = uuid4()
+    version = SimpleNamespace(id=uuid4(), approval_status="PENDING")
+    db = MagicMock()
+    monkeypatch.setattr(
+        admin_group_review_service, "get_exported_group_versions",
+        lambda *_: (object(), [version]),
+    )
+    monkeypatch.setattr(
+        admin_group_review_service.crud_admin, "lock_dataset_versions",
+        lambda *_: [version],
+    )
+    with pytest.raises(HTTPException) as exc:
+        admin_group_review_service.review_group(
+            db, group_id, DatasetApprovalAction(status="APPROVED"), SimpleNamespace(id=uuid4()),
+        )
+    assert exc.value.status_code == 409
+    db.commit.assert_not_called()

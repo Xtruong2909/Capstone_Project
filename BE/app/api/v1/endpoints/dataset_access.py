@@ -7,17 +7,26 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_admin
 from app.database.database import get_db
 from app.models.user import User
-from app.schemas.dataset import RecordingSessionListResponse, RecordingSessionPreviewResponse
+from app.schemas.dataset import (
+    GroupDatasetListResponse,
+    RecordingSessionListResponse,
+    RecordingSessionPreviewResponse,
+)
 from app.schemas.dataset_access import (
     AccessibleDataset,
-    ApprovedDatasetResponse,
     DatasetAccessRequest,
     DatasetAccessResponse,
     EligibleDatasetUser,
+    GroupAccessCatalogItem,
+    GroupAccessResponse,
+    GroupUserAccess,
 )
 from app.services import dataset_access_service as service
 from app.services.dataset_consumer_service import (
+    list_approved_group_datasets,
+    list_approved_group_sessions,
     list_approved_recording_sessions,
+    preview_approved_group_session,
     preview_approved_recording_session,
 )
 
@@ -27,8 +36,97 @@ approved_router = APIRouter()
 
 
 @admin_router.get(
+    "/groups/catalog",
+    response_model=list[GroupAccessCatalogItem],
+    summary="Danh sách nhóm Dataset để Admin quản lý quyền truy cập",
+)
+def admin_group_catalog(
+    search: str | None = Query(None, max_length=255),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[GroupAccessCatalogItem]:
+    return service.list_accessible_groups(db, admin, search, skip, limit)
+
+
+@admin_router.get(
+    "/groups/{group_id}/eligible-users",
+    response_model=list[GroupUserAccess],
+    summary="Người dùng có thể được cấp quyền với cả nhóm Dataset",
+)
+def eligible_group_users(
+    group_id: UUID,
+    search: str | None = Query(None, max_length=255),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[GroupUserAccess]:
+    return service.list_group_eligible_users(db, group_id, search, skip, limit)
+
+
+@admin_router.post(
+    "/groups/{group_id}/access",
+    response_model=GroupAccessResponse,
+    summary="Cấp quyền cho tất cả Dataset đã duyệt trong nhóm",
+)
+def grant_group_access(
+    group_id: UUID,
+    payload: DatasetAccessRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> GroupAccessResponse:
+    return service.grant_group_access(db, group_id, payload.user_id, admin)
+
+
+@admin_router.get(
+    "/groups/{group_id}/access",
+    response_model=list[GroupUserAccess],
+    summary="Danh sách người dùng đã có quyền trong nhóm Dataset",
+)
+def list_group_access(
+    group_id: UUID,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[GroupUserAccess]:
+    return service.list_group_access(db, group_id, skip, limit)
+
+
+@admin_router.delete(
+    "/groups/{group_id}/access/{user_id}",
+    status_code=204,
+    summary="Thu hồi quyền của người dùng trên toàn nhóm Dataset",
+)
+def revoke_group_access(
+    group_id: UUID,
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> Response:
+    service.revoke_group_access(db, group_id, user_id, admin)
+    return Response(status_code=204)
+
+
+@router.get(
+    "/accessible-groups",
+    response_model=list[GroupAccessCatalogItem],
+    summary="Các nhóm Dataset người dùng có thể truy cập",
+)
+def accessible_groups(
+    search: str | None = Query(None, max_length=255),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[GroupAccessCatalogItem]:
+    return service.list_accessible_groups(db, current_user, search, skip, limit)
+
+
+@admin_router.get(
     "/catalog",
     response_model=list[AccessibleDataset],
+    include_in_schema=False,
     summary="Danh sách toàn bộ Dataset để Admin quản lý quyền truy cập",
 )
 def admin_dataset_catalog(
@@ -45,6 +143,7 @@ def admin_dataset_catalog(
 @admin_router.get(
     "/{dataset_id}/eligible-users",
     response_model=list[EligibleDatasetUser],
+    include_in_schema=False,
     summary="Danh sách người dùng có thể được cấp quyền truy cập dataset",
 )
 def eligible_users(
@@ -64,6 +163,7 @@ def eligible_users(
 @admin_router.post(
     "/{dataset_id}/access",
     response_model=DatasetAccessResponse,
+    include_in_schema=False,
     status_code=201,
     summary="Cấp quyền truy cập dataset cho người dùng",
     responses={409: {"description": "Dataset chưa có phiên bản APPROVED hoặc quyền đã tồn tại"}},
@@ -87,6 +187,7 @@ def grant_access(
 @admin_router.get(
     "/{dataset_id}/access",
     response_model=list[DatasetAccessResponse],
+    include_in_schema=False,
     summary="Danh sách người dùng đã được cấp quyền truy cập dataset",
 )
 def list_access(
@@ -105,6 +206,7 @@ def list_access(
 @admin_router.delete(
     "/{dataset_id}/access/{user_id}",
     status_code=204,
+    include_in_schema=False,
     summary="Thu hồi quyền truy cập dataset của người dùng",
 )
 def revoke_access(
@@ -125,6 +227,7 @@ def revoke_access(
 @router.get(
     "/accessible",
     response_model=list[AccessibleDataset],
+    include_in_schema=False,
     summary="Danh sách dataset người dùng được phép truy cập",
 )
 def accessible_datasets(
@@ -145,27 +248,77 @@ def accessible_datasets(
 
 @approved_router.get(
     "/approved",
-    response_model=list[ApprovedDatasetResponse],
-    summary="Danh sách dataset đã duyệt dành cho Data Scientist và Business User",
+    response_model=list[GroupAccessCatalogItem],
+    summary="Danh sách nhóm Dataset đã duyệt và được cấp quyền cho DS/BU",
 )
-def approved_datasets(
+def approved_groups(
     search: str | None = Query(None, max_length=255),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[ApprovedDatasetResponse]:
-    """Chỉ Data Scientist và Business User được gọi API này.
+) -> list[GroupAccessCatalogItem]:
+    return service.list_approved_groups(db, current_user, search, skip, limit)
 
-    Trả về các phiên bản APPROVED của dataset đã được Admin cấp quyền.
-    Admin và Data Engineer nhận lỗi 403.
-    """
-    return service.list_approved_datasets(db, current_user, search, skip, limit)
+
+@approved_router.get(
+    "/approved/groups/{group_id}/datasets",
+    response_model=GroupDatasetListResponse,
+    summary="DS/BU xem các Dataset đã duyệt trong nhóm",
+)
+def approved_group_datasets(
+    group_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> GroupDatasetListResponse:
+    return list_approved_group_datasets(db, current_user, group_id)
+
+
+@approved_router.get(
+    "/approved/groups/{group_id}/datasets/{dataset_id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="DS/BU xem các Recording Session của Dataset đã duyệt trong nhóm",
+)
+def approved_group_sessions(
+    group_id: UUID,
+    dataset_id: UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RecordingSessionListResponse:
+    return list_approved_group_sessions(
+        db, current_user, group_id, dataset_id, page, page_size,
+    )
+
+
+@approved_router.get(
+    "/approved/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="DS/BU xem dữ liệu Recording Session đã duyệt trong nhóm",
+)
+def approved_group_session_preview(
+    group_id: UUID,
+    dataset_id: UUID,
+    session_id: UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    column_offset: int = Query(0, ge=0),
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RecordingSessionPreviewResponse:
+    return preview_approved_group_session(
+        db, current_user, group_id, dataset_id, session_id,
+        page=page, limit=limit, column_offset=column_offset,
+        representation=representation,
+    )
 
 
 @approved_router.get(
     "/{dataset_id}/versions/{version_id}/sessions",
     response_model=RecordingSessionListResponse,
+    include_in_schema=False,
     summary="DS/BU xem danh sách Recording Sessions của Dataset Version đã duyệt",
     responses={
         403: {"description": "Sai vai trò, chưa có quyền hoặc phiên bản chưa duyệt"},
@@ -193,6 +346,7 @@ def list_consumer_dataset_sessions(
 @approved_router.get(
     "/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview",
     response_model=RecordingSessionPreviewResponse,
+    include_in_schema=False,
     summary="DS/BU xem trước nội dung CSV của một Recording Session",
     responses={
         403: {"description": "Không có quyền hoặc Version chưa được duyệt"},

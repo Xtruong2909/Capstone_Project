@@ -1,27 +1,68 @@
 # Train/Test Split – Backend
 
-## Phạm vi và kết nối với Feature Engineering
+## Split đã lưu
 
-### Cách dùng nhanh trong Swagger
+Ba API này hiển thị trong nhóm Swagger riêng **Train/Test Split**:
 
-1. Gọi `POST /api/feature-engineering/training`.
-2. Copy **toàn bộ JSON response** và dán vào body của
-   `POST /api/train-test-split/training`, rồi Execute.
-3. Không cần xóa `configuration` hoặc `sample_count`, không cần nhập
-   `recording_session_id`: backend suy ra từ samples khi chỉ có một session.
-4. Mặc định 70/30 và chronological. Có thể thêm `train_ratio` hoặc
-   `split_strategy: "purged_chronological"` vào JSON để đổi cách chia.
+- `POST /api/train-test-splits`: tạo hoặc lấy lại split đã lưu.
+- `GET /api/train-test-splits/{split_id}`: xem cấu hình, số mẫu, ngày và sessions của hai tập.
+- `GET /api/train-test-splits/{split_id}/preview`: xem bảng mẫu theo trang.
+
+Request tạo split:
+
+```json
+{
+  "feature_generation_id": "49344733-e6b7-4cfc-93c0-de3ab797013c",
+  "split_strategy": "DAY_BASED",
+  "train_ratio": 0.7,
+  "shuffle": false,
+  "forecast_horizons": [1, 3, 5]
+}
+```
+
+`DAY_BASED` là mặc định: xếp ngày ghi hình tăng dần và giữ nguyên ngày trong
+một tập; 4 ngày với tỷ lệ 0.7 sẽ chọn 3 ngày Train và ngày cuối làm Test.
+`SESSION_BASED` xếp sessions theo timestamp đầu tiên và không chia session;
+20 sessions với tỷ lệ 0.7 sẽ chọn 14 sessions Train và 6 Test. `shuffle=true`
+bị từ chối. Tỷ lệ `train_ratio_actual` được tính từ số mẫu thực tế, không phải
+tỷ lệ ngày hoặc sessions.
+
+Split chỉ được tạo từ Feature Generation `COMPLETED`. Mỗi cấu hình trên cùng
+Feature Generation có một `split_id` ổn định. API xác minh target muộn nhất
+của Train đứng trước lịch sử đầu tiên của Test; nếu có chồng lấn, API trả lỗi
+`TRAIN_TEST_DATA_LEAKAGE` và không lưu split. API không tạo lại Lag Features,
+không thay đổi dữ liệu và không huấn luyện mô hình.
+
+Preview hỗ trợ `subset=TRAIN|TEST`, `page`, `page_size`, và `session_id` tùy
+chọn, ví dụ:
+
+```text
+/api/train-test-splits/{split_id}/preview?subset=TEST&page=1&page_size=20
+```
+
+Gửi `split_id` đã tạo đến `POST /api/model-training/lag-features` để huấn luyện
+và đánh giá Random Forest riêng cho từng horizon. API huấn luyện không chia lại
+dữ liệu.
+
+## Split tương thích cho luồng Feature Engineering cũ
+
+`POST /api/feature-engineering/training` và
+`POST /api/feature-engineering/prediction` đã bị gỡ. API chia dữ liệu vẫn nhận
+các mẫu đặc trưng đã chuẩn bị; API không tự tạo đặc trưng từ dataset ID. Gửi
+payload mẫu cần thiết đến `POST /api/train-test-split/training`.
+
+Mặc định chia 70/30 theo thứ tự thời gian. Có thể thêm `train_ratio` hoặc
+`split_strategy: "purged_chronological"` để thay đổi cách chia.
 
 Metadata vẫn được kiểm tra: cấu hình phải khớp 5 lag/60 giây/horizon 1,3,5;
 sample_count phải bằng số samples. Không chấp nhận lẫn session khi suy ra ID.
 Các request cũ có recording_session_id tường minh vẫn được hỗ trợ.
 
 - Endpoint: `POST /api/train-test-split/training`.
-- Giữ nguyên `POST /api/feature-engineering/training`.
-- Feature Engineering hiện không lưu samples. Client gọi FE, giữ response rồi
-  gửi nguyên mảng `samples` và các metadata tương ứng sang API split.
+- Feature Engineering không lưu samples. Gửi `samples` đã chuẩn bị cùng
+  metadata tương ứng trực tiếp đến API chia dữ liệu.
 - `samples` là bắt buộc. Gửi chỉ ID trả 422, không tự gọi lại FE, cleaning hay aggregation.
-- Không ghi DB, không tạo bảng, không shuffle, không huấn luyện mô hình.
+- Không tạo lại Lag Features, không shuffle và không huấn luyện mô hình.
 - Dùng lại schema TrainingSample, repository get_version và phân quyền
   require_dataset_scientist. Bearer token bắt buộc; quyền admin/data_scientist
   và quyền truy cập dataset giống các API phân tích hiện tại.

@@ -185,7 +185,8 @@ def test_router_access_and_no_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_swagger_paths_and_auth() -> None:
     paths = app.openapi()["paths"]
-    assert "/api/feature-engineering/training" in paths
+    assert "/api/feature-engineering/training" not in paths
+    assert "/api/feature-engineering/prediction" not in paths
     operation = paths["/api/train-test-split/training"]["post"]
     assert operation["security"]
     assert operation["requestBody"]["required"]

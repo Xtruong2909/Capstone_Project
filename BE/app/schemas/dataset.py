@@ -67,15 +67,32 @@ class RecordingUploadResult(BaseModel):
     error_message: str | None = None
 
 
+class UploadedRecordingSession(BaseModel):
+    session_id: UUID
+    original_filename: str
+    scheduled_start: datetime
+    scheduled_end: datetime
+    status: str = Field(description="UPLOADED or EXISTING")
+
+
 class DatasetUploadGroup(BaseModel):
     name: str
+    group_id: UUID | None = None
+    group_name: str | None = None
     dataset_id: UUID | None = None
     version_id: UUID | None = None
+    recording_date: date | None = None
+    drone_id: str | None = None
     session_count: int = 0
-    processing_warning: str | None = None
+    sessions: list[UploadedRecordingSession] = Field(default_factory=list)
 
 
 class DatasetBatchUploadResponse(BaseModel):
+    group_id: UUID | None = Field(
+        default=None,
+        description="ID chung khi mọi Dataset trong lô thuộc cùng một drone; null nếu nhiều nhóm hoặc không có Dataset thành công.",
+    )
+    group_name: str | None = None
     total_files: int
     uploaded_count: int
     duplicate_count: int
@@ -84,16 +101,46 @@ class DatasetBatchUploadResponse(BaseModel):
     files: list[RecordingUploadResult]
 
     model_config = {"json_schema_extra": {"examples": [{
-        "total_files": 1, "uploaded_count": 1, "duplicate_count": 0,
+        "group_id": "35a8c86a-5149-4381-915d-5bb62ec5d307",
+        "total_files": 2, "uploaded_count": 2, "duplicate_count": 0,
         "failed_count": 0,
-        "datasets": [{"name": "20181024-d1", "dataset_id": "f50c1d5b-b61f-4261-a37c-786621e4bc9e",
-                      "version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7", "session_count": 1}],
-        "files": [{"original_filename": "20181024_d1_0830_0900.csv", "dataset_name": "20181024-d1",
-                   "status": "UPLOADED", "session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c"}],
+        "datasets": [
+            {
+                "name": "20181024-d1", "dataset_id": "f50c1d5b-b61f-4261-a37c-786621e4bc9e",
+                "version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+                "recording_date": "2018-10-24", "drone_id": "d1", "session_count": 1,
+                "sessions": [{"session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c",
+                              "original_filename": "20181024_d1_0830_0900.csv",
+                              "scheduled_start": "2018-10-24T08:30:00+03:00",
+                              "scheduled_end": "2018-10-24T09:00:00+03:00",
+                              "status": "UPLOADED"}],
+            },
+            {
+                "name": "20181029-d1", "dataset_id": "f1261b53-b61f-4261-a37c-786621e4bc9e",
+                "version_id": "f3a8ebdc-267a-4182-adf7-8db320c12fa7",
+                "recording_date": "2018-10-29", "drone_id": "d1", "session_count": 1,
+                "sessions": [{"session_id": "ea2a797f-5d1d-4fb9-81de-5fbfbfe9664c",
+                              "original_filename": "20181029_d1_0800_0830.csv",
+                              "scheduled_start": "2018-10-29T08:00:00+02:00",
+                              "scheduled_end": "2018-10-29T08:30:00+02:00",
+                              "status": "UPLOADED"}],
+            },
+        ],
+        "files": [
+            {"original_filename": "20181024_d1_0830_0900.csv", "dataset_name": "20181024-d1",
+             "status": "UPLOADED", "session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c"},
+            {"original_filename": "20181029_d1_0800_0830.csv", "dataset_name": "20181029-d1",
+             "status": "UPLOADED", "session_id": "ea2a797f-5d1d-4fb9-81de-5fbfbfe9664c"},
+        ],
     }]}}
 
 
 class DatasetUploadJobResponse(BaseModel):
+    group_id: UUID | None = Field(
+        default=None,
+        description="ID chung sau khi xử lý xong; null khi đang xử lý hoặc lô chứa nhiều nhóm.",
+    )
+    group_name: str | None = None
     job_id: UUID
     status: str
     total_files: int
@@ -104,6 +151,8 @@ class DatasetUploadJobResponse(BaseModel):
 
 class UploadedDatasetSummary(BaseModel):
     dataset_id: UUID
+    group_id: UUID | None = None
+    group_name: str | None = None
     name: str
     version_id: UUID
     version: str
@@ -113,8 +162,25 @@ class UploadedDatasetSummary(BaseModel):
     approval_status: str
 
 
-class UploadedDatasetListResponse(BaseModel):
+class UploadedDatasetGroupSummary(BaseModel):
+    group_id: UUID
+    group_name: str | None = None
+    source: str
+    drone_id: str
+    dataset_count: int
+    total_sessions: int
+    datasets: list[UploadedDatasetSummary] | None = None
+
+
+class GroupDatasetListResponse(BaseModel):
+    group_id: UUID
+    group_name: str | None = None
     datasets: list[UploadedDatasetSummary]
+    total: int
+
+
+class UploadedDatasetListResponse(BaseModel):
+    groups: list[UploadedDatasetGroupSummary]
     total: int
     page: int
     page_size: int
@@ -124,11 +190,13 @@ class UploadedDatasetDetail(UploadedDatasetSummary):
     source: str
     location_name: str
     description: str | None = None
+    related_datasets: list[UploadedDatasetSummary] = Field(default_factory=list)
 
 
 class RecordingSessionDetail(BaseModel):
     session_id: UUID
     dataset_id: UUID
+    group_id: UUID | None = None
     version_id: UUID
     original_filename: str
     drone_id: str

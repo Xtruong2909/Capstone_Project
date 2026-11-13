@@ -12,14 +12,14 @@ from app.schemas.traffic_aggregation import (
     CombinedTemporalAggregationResults,
     DatasetVersionAggregationResults,
     DatasetVersionAggregationStarted,
-    DatasetVersionTemporalAggregationRequest,
+    GroupTemporalAggregationRequest,
 )
 from app.services.ds_temporal_aggregation_service import (
-    create_temporal_aggregation,
+    create_group_temporal_aggregation,
     get_combined_temporal_aggregation_results,
     get_temporal_aggregation_results,
-    run_temporal_aggregation,
-    serialize_aggregation_run,
+    run_group_temporal_aggregation,
+    serialize_group_aggregation_run,
 )
 
 router = APIRouter()
@@ -31,9 +31,9 @@ router = APIRouter()
     status_code=status.HTTP_202_ACCEPTED,
     summary="Tổng hợp số phương tiện duy nhất theo từng phút và từng Session",
     description=(
-        "Chọn toàn bộ Recording Sessions của Dataset Version đã duyệt. "
+        "Chỉ cần group_id để tổng hợp mọi Dataset trong nhóm; mỗi Dataset dùng phiên bản APPROVED mới nhất. "
         "Đếm COUNT DISTINCT track_id trong mỗi time bin từ Parquet đã chuẩn hóa. "
-        "Xử lý nền và trả PROCESSING; xem tiến độ và kết quả qua API Results. "
+        "Tất cả Dataset và Session có một aggregation_id chung; xử lý nền và trả PROCESSING. "
         "vehicle_count không phải Traffic Flow qua counting line."
     ),
     responses={
@@ -43,18 +43,18 @@ router = APIRouter()
     },
 )
 def create_ds_aggregation(
-    payload: DatasetVersionTemporalAggregationRequest,
+    payload: GroupTemporalAggregationRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DatasetVersionAggregationStarted:
-    job, results = create_temporal_aggregation(db, current_user, payload)
+    jobs, results = create_group_temporal_aggregation(db, current_user, payload)
     background_tasks.add_task(
-        run_temporal_aggregation,
+        run_group_temporal_aggregation,
         db_session_factory=SessionLocal,
-        aggregation_id=job.id,
+        aggregation_id=jobs[0].id,
     )
-    return serialize_aggregation_run(job, results)
+    return serialize_group_aggregation_run(jobs, results)
 
 
 @router.get(
@@ -104,3 +104,5 @@ def get_ds_combined_aggregation_results(
     current_user: User = Depends(get_current_user),
 ) -> CombinedTemporalAggregationResults:
     return get_combined_temporal_aggregation_results(db, current_user, aggregation_id)
+
+

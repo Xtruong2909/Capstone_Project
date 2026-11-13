@@ -725,6 +725,7 @@ def test_quality_worker_forwards_outlier_configuration(
     path.write_text("track_id,timestamp,speed\n1,0,11\n", encoding="utf-8")
     check, session = _run_file_check(monkeypatch, path)
     check.status = "queued"
+    check.recording_session_id = None
     version = SimpleNamespace(id=check.dataset_version_id, file_format="CSV")
     monkeypatch.setattr(
         data_quality_service.crud_dataset, "get_dataset_version",
@@ -732,6 +733,8 @@ def test_quality_worker_forwards_outlier_configuration(
     )
     monkeypatch.setattr(data_quality_service, "_version_path", lambda version: path)
     monkeypatch.setattr(data_quality_service, "_get_mappings", lambda *args: {})
+    monkeypatch.setattr(data_quality_service.crud_dataset,
+                        "list_all_version_sessions", lambda db, version_id: [])
 
     data_quality_service.run_data_quality_check(check.id, outlier_rules=[_outlier_rule("speed")])
 

@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.crud import crud_dataset
-from app.models.dataset import DatasetColumnMapping, DatasetVersion
+from app.models.dataset import Dataset, DatasetColumnMapping, DatasetVersion
 from app.models.user import User
 from app.schemas.dataset import DatasetPreviewResponse
 from app.schemas.dataset_mapping import (
@@ -13,6 +13,9 @@ from app.schemas.dataset_mapping import (
     DatasetColumnMappingItem,
     DatasetColumnMappingsResponse,
     DatasetColumnsResponse,
+    GroupDatasetColumnsResponse,
+    GroupDatasetMappingsResponse,
+    GroupMappingDataset,
 )
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
@@ -22,6 +25,7 @@ from app.services.dataset_preview_service import (
     get_dataset_preview,
     resolve_stored_file_path,
 )
+from app.services.dataset_version_service import get_version_recording_sessions
 
 
 class DatasetMappingNotFoundError(FileNotFoundError):
@@ -36,6 +40,10 @@ class DatasetMappingValidationError(ValueError):
     """Raised when requested column mappings are invalid."""
 
 
+class DatasetMappingConflictError(ValueError):
+    """Raised when group members already have different mappings."""
+
+
 def _dataset_schema(
     db: Session,
     dataset_id: UUID,
@@ -46,7 +54,7 @@ def _dataset_schema(
             "Không tìm thấy dataset hoặc phiên bản đã upload"
         )
     _, version = dataset_version
-    sessions = crud_dataset.list_all_version_sessions(db, version.id)
+    sessions = get_version_recording_sessions(db, version)
     if sessions:
         columns: list[dict[str, str]] | None = None
         reference_filename = ""
@@ -165,6 +173,122 @@ def _validate_mappings(
         )
 
 
+def _group_schemas(
+    db: Session, group_id: UUID,
+) -> list[tuple[Dataset, DatasetVersion, list[dict[str, str]], int]]:
+    if crud_dataset.get_dataset_group_by_id(db, group_id) is None:
+        raise DatasetMappingNotFoundError("Không tìm thấy nhóm Dataset")
+    datasets = crud_dataset.list_group_datasets(db, group_id, None)
+    if not datasets:
+        raise DatasetMappingNotFoundError("Nhóm Dataset chưa có Dataset để mapping")
+    schemas: list[tuple[Dataset, DatasetVersion, list[dict[str, str]], int]] = []
+    reference_names: list[str] | None = None
+    for dataset in datasets:
+        try:
+            version, columns, session_count = _dataset_schema(db, dataset.id)
+        except (DatasetMappingNotFoundError, DatasetMappingReadError) as exc:
+            raise type(exc)(f"Dataset {dataset.name}: {exc}") from exc
+        names = [column["name"] for column in columns]
+        if reference_names is not None and names != reference_names:
+            raise DatasetMappingReadError(
+                f"Dataset {dataset.name} có cấu trúc cột khác các Dataset trong nhóm"
+            )
+        reference_names = names
+        schemas.append((dataset, version, columns, session_count))
+    return schemas
+
+
+def _group_dataset_items(
+    schemas: list[tuple[Dataset, DatasetVersion, list[dict[str, str]], int]],
+) -> list[GroupMappingDataset]:
+    return [GroupMappingDataset(
+        dataset_id=dataset.id, dataset_version_id=version.id, session_count=count,
+    ) for dataset, version, _, count in schemas]
+
+
+def _shared_group_mapping(
+    db: Session,
+    schemas: list[tuple[Dataset, DatasetVersion, list[dict[str, str]], int]],
+) -> dict[str, str]:
+    shared: dict[str, str] | None = None
+    for dataset, version, columns, _ in schemas:
+        mapping = _mapping_dict(_mapping_for_version(db, dataset.id, version.id))
+        if set(mapping) - {column["name"] for column in columns}:
+            mapping = {}
+        if shared is not None and mapping != shared:
+            raise DatasetMappingConflictError(
+                "Các Dataset trong nhóm đang có mapping khác nhau; hãy đồng bộ mapping từng Dataset trước"
+            )
+        shared = mapping
+    return shared or {}
+
+
+def get_group_dataset_columns(db: Session, group_id: UUID) -> GroupDatasetColumnsResponse:
+    schemas = _group_schemas(db, group_id)
+    return GroupDatasetColumnsResponse(
+        group_id=group_id, dataset_count=len(schemas),
+        session_count=sum(count for _, _, _, count in schemas),
+        datasets=_group_dataset_items(schemas),
+        columns=[DatasetColumnInfo(
+            source_column=column["name"], data_type=column["type"],
+            mapped_column=None, is_mapped=False,
+        ) for column in schemas[0][2]],
+    )
+
+
+def get_group_dataset_mappings(db: Session, group_id: UUID) -> GroupDatasetMappingsResponse:
+    schemas = _group_schemas(db, group_id)
+    shared = _shared_group_mapping(db, schemas)
+    return GroupDatasetMappingsResponse(
+        group_id=group_id, dataset_count=len(schemas),
+        session_count=sum(count for _, _, _, count in schemas),
+        datasets=_group_dataset_items(schemas),
+        mappings=[DatasetColumnMappingItem(source_column=source, target_column=target)
+                  for source, target in shared.items()],
+    )
+
+
+def patch_group_dataset_mappings(
+    db: Session, *, group_id: UUID,
+    requested_mappings: list[DatasetColumnMappingInput], user: User,
+) -> GroupDatasetMappingsResponse:
+    # Validate every dataset and session before writing any mapping.
+    schemas = _group_schemas(db, group_id)
+    source_columns = [column["name"] for column in schemas[0][2]]
+    requested_sources = [item.source_column for item in requested_mappings]
+    duplicates = sorted(source for source, count in Counter(requested_sources).items() if count > 1)
+    if duplicates:
+        raise DatasetMappingValidationError(
+            "Cột nguồn xuất hiện nhiều lần trong request: " + ", ".join(duplicates)
+        )
+    missing = sorted(set(requested_sources) - set(source_columns))
+    if missing:
+        raise DatasetMappingValidationError(
+            "Không tìm thấy cột nguồn trong nhóm Dataset: " + ", ".join(missing)
+        )
+    # A group request is the desired shared mapping, replacing divergent old maps.
+    merged: dict[str, str] = {}
+    for item in requested_mappings:
+        if item.target_column is None:
+            merged.pop(item.source_column, None)
+        else:
+            merged[item.source_column] = item.target_column
+    _validate_mappings(source_columns, merged)
+    updates = [(
+        dataset.id, version.id,
+        [{"source_column": source, "target_column": target}
+         for source, target in merged.items()],
+    ) for dataset, version, _, _ in schemas]
+    crud_dataset.save_group_column_mappings(db, updates=updates, user_id=user.id)
+    return GroupDatasetMappingsResponse(
+        group_id=group_id, dataset_count=len(schemas),
+        session_count=sum(count for _, _, _, count in schemas),
+        datasets=_group_dataset_items(schemas),
+        mappings=[DatasetColumnMappingItem(source_column=source, target_column=target)
+                  for source, target in merged.items()],
+    )
+
+
 def _response(
     dataset_id: UUID,
     version_id: UUID,
@@ -202,7 +326,7 @@ def get_dataset_columns(db: Session, dataset_id: UUID) -> DatasetColumnsResponse
         mapping_scope="all_sessions_with_matching_columns",
         mapping_reused=bool(
             saved_mapping
-            and saved_mapping.dataset_version_id != version.id
+            and getattr(saved_mapping, "dataset_version_id", version.id) != version.id
             and mapping_by_source
         ),
         columns=[

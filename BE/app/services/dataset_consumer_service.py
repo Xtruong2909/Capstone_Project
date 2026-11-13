@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.crud import crud_dataset_access as repo
 from app.models.user import User
-from app.schemas.dataset import RecordingSessionListResponse, RecordingSessionPreviewResponse
+from app.schemas.dataset import (
+    GroupDatasetListResponse,
+    RecordingSessionListResponse,
+    RecordingSessionPreviewResponse,
+)
 from app.services.dataset_access_service import check_dataset_access
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
@@ -15,12 +19,65 @@ from app.services.dataset_preview_service import (
     DatasetPreviewReadError,
 )
 from app.services.dataset_review_service import (
+    list_datasets_in_group,
     list_recording_sessions,
     preview_recording_session,
+    resolve_group_dataset_version,
 )
 
 
-def _require_approved_version(
+def _require_consumer(user: User) -> None:
+    if user.role_id not in repo.ACCESS_ROLES:
+        raise HTTPException(403, "Data Scientist or Business User role required")
+
+
+def list_approved_group_datasets(
+    db: Session, user: User, group_id: UUID,
+) -> GroupDatasetListResponse:
+    _require_consumer(user)
+    try:
+        return list_datasets_in_group(db, group_id, user)
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+def _approved_group_version_id(
+    db: Session, user: User, group_id: UUID, dataset_id: UUID,
+) -> UUID:
+    _require_consumer(user)
+    check_dataset_access(user, dataset_id, db)
+    try:
+        version = resolve_group_dataset_version(db, group_id, dataset_id, user)
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    require_approved_version(db, user, dataset_id, version.id)
+    return version.id
+
+
+def list_approved_group_sessions(
+    db: Session, user: User, group_id: UUID, dataset_id: UUID,
+    page: int, page_size: int,
+) -> RecordingSessionListResponse:
+    version_id = _approved_group_version_id(db, user, group_id, dataset_id)
+    return list_approved_recording_sessions(
+        db, user, dataset_id, version_id, page, page_size,
+    )
+
+
+def preview_approved_group_session(
+    db: Session, user: User, group_id: UUID, dataset_id: UUID,
+    session_id: UUID, *, page: int, limit: int, column_offset: int,
+    representation: str,
+) -> RecordingSessionPreviewResponse:
+    version_id = _approved_group_version_id(db, user, group_id, dataset_id)
+    return preview_approved_recording_session(
+        db, user, dataset_id, version_id, session_id,
+        page=page, limit=limit, column_offset=column_offset,
+        representation=representation,
+    )
+
+
+def require_approved_version(
     db: Session, user: User, dataset_id: UUID, version_id: UUID,
 ) -> None:
     # Data Engineers use these shared session endpoints during review before
@@ -46,7 +103,7 @@ def list_approved_recording_sessions(
     page_size: int,
 ) -> RecordingSessionListResponse:
     """List sessions only when the consumer can access the approved version."""
-    _require_approved_version(db, user, dataset_id, version_id)
+    require_approved_version(db, user, dataset_id, version_id)
     try:
         return list_recording_sessions(
             db, dataset_id, version_id, page=page, page_size=page_size,
@@ -68,7 +125,7 @@ def preview_approved_recording_session(
     representation: str,
 ) -> RecordingSessionPreviewResponse:
     """Return a bounded raw or normalized preview for one approved session."""
-    _require_approved_version(db, user, dataset_id, version_id)
+    require_approved_version(db, user, dataset_id, version_id)
     try:
         return preview_recording_session(
             db, dataset_id, version_id, session_id,

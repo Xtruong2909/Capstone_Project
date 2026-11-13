@@ -97,6 +97,23 @@ class TrafficTimeSeries(Base):
     __table_args__ = (
         CheckConstraint("aggregation_interval > 0", name="ck_traffic_interval"),
         CheckConstraint("vehicle_count >= 0", name="ck_traffic_count"),
+        CheckConstraint(
+            "coverage_seconds IS NULL OR (coverage_seconds >= 0 AND coverage_seconds <= aggregation_interval)",
+            name="ck_traffic_bin_coverage",
+        ),
+        CheckConstraint(
+            "bin_status IN ('COMPLETE', 'INCOMPLETE', 'UNKNOWN')",
+            name="ck_traffic_bin_status",
+        ),
+        CheckConstraint(
+            "(bin_status = 'COMPLETE' AND coverage_seconds = aggregation_interval "
+            "AND eligible_for_training IS TRUE) OR "
+            "(bin_status = 'INCOMPLETE' AND coverage_seconds < aggregation_interval "
+            "AND eligible_for_training IS FALSE) OR "
+            "(bin_status = 'UNKNOWN' AND coverage_seconds IS NULL "
+            "AND eligible_for_training IS NULL)",
+            name="ck_traffic_training_eligibility",
+        ),
         CheckConstraint("traffic_flow >= 0 AND traffic_flow < 'Infinity'", name="ck_traffic_flow"),
         CheckConstraint("mean_speed >= 0 AND mean_speed < 'Infinity'", name="ck_traffic_speed"),
         CheckConstraint(
@@ -142,6 +159,9 @@ class TrafficTimeSeries(Base):
     aggregation_interval = Column(Integer, nullable=False, default=60, server_default="60")
     roi_identifier = Column(String(64), nullable=False, default="MAIN_ROI")
     vehicle_count = Column(Integer, nullable=True)
+    coverage_seconds = Column(Numeric(8, 3), nullable=True)
+    bin_status = Column(String(12), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+    eligible_for_training = Column(Boolean, nullable=True)
     traffic_flow = Column(
         Numeric(10, 2), nullable=True, comment="Counting-line passages per minute"
     )

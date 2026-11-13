@@ -5,12 +5,20 @@ from app.models.dataset import (
     Dataset,
     DatasetAccessGrant,
     DatasetColumnMapping,
+    DatasetGroupProcessingJob,
     DatasetUploadJob,
     DatasetVersion,
     DatasetVersionSession,
     RecordingSession,
 )
 from app.models.experiment import EvaluationMetric, Experiment, ForecastResult
+from app.models.lag_feature import (
+    LagFeatureForest,
+    LagFeatureGeneration,
+    LagFeatureSample,
+    LagFeatureSplit,
+    LagFeatureSplitSample,
+)
 from app.models.model_training import (
     FinalModel,
     ModelTrainingExperiment,
@@ -32,6 +40,7 @@ __all__ = [
     "Dataset",
     "DatasetAccessGrant",
     "DatasetColumnMapping",
+    "DatasetGroupProcessingJob",
     "DatasetUploadJob",
     "DatasetVersion",
     "DatasetVersionSession",
@@ -39,6 +48,11 @@ __all__ = [
     "Experiment",
     "FinalModel",
     "ForecastResult",
+    "LagFeatureForest",
+    "LagFeatureGeneration",
+    "LagFeatureSample",
+    "LagFeatureSplit",
+    "LagFeatureSplitSample",
     "ModelTrainingExperiment",
     "ModelTrainingSplit",
     "ModelValidationResult",

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import IntEnum
 from typing import Literal
 from uuid import UUID
@@ -84,11 +84,30 @@ class DatasetApprovalResponse(BaseModel):
     id: UUID
     dataset_id: UUID
     dataset_name: str
+    recording_date: date | None = None
+    drone_id: str | None = None
     version_tag: str
     file_format: str
     total_records: int
     approval_status: str
     created_at: datetime
+
+
+class AdminGroupApprovalSummary(BaseModel):
+    group_id: UUID
+    group_name: str | None
+    drone_id: str
+    total_datasets: int
+    submitted_datasets: int
+    approved_datasets: int
+    rejected_datasets: int
+
+
+class AdminGroupReviewResponse(BaseModel):
+    group_id: UUID
+    status: Literal["APPROVED", "REJECTED", "MIXED"]
+    reviewed_versions: int
+    version_ids: list[UUID]
 
 
 class DatasetApprovalAction(BaseModel):

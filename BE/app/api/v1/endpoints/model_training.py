@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.database.database import get_db
 from app.models.user import User
+from app.schemas.lag_feature import LagForestTrainingRequest, LagForestTrainingResponse
 from app.schemas.model_training import (
     EvaluationMode,
     ExperimentComparisonRequest,
@@ -14,6 +15,7 @@ from app.schemas.model_training import (
 )
 from app.services import model_training_service as service
 from app.services.audit_log_service import record_audit_event
+from app.services.lag_feature_model_service import train_vehicle_forest
 
 router = APIRouter(prefix="/model-training", tags=["Huấn luyện mô hình"])
 
@@ -99,3 +101,14 @@ def get_experiment(
     experiment_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ) -> TrainingExperimentResponse:
     return service.get_detail(db, experiment_id, user)
+
+
+@router.post(
+    "/lag-features", response_model=LagForestTrainingResponse, status_code=201,
+    summary="Huấn luyện Random Forest từ Train/Test Split Lag Feature đã lưu",
+)
+def train_lag_feature_forest(
+    payload: LagForestTrainingRequest,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+) -> LagForestTrainingResponse:
+    return train_vehicle_forest(db, user, payload)

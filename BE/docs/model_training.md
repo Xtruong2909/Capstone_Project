@@ -13,6 +13,29 @@ lags, regenerate targets, shuffle, purge, or split data again.
    `uv run python -m scripts.apply_model_training_migration`.
 3. Restart the backend and refresh Swagger.
 
+## Lag Feature vehicle-count training
+
+The separate `POST /api/model-training/lag-features` API now accepts a saved
+Lag Feature `split_id`; it never partitions Feature Generation rows itself.
+Create the split first with `POST /api/train-test-splits`, then submit:
+
+```json
+{
+  "split_id": "SPLIT_UUID",
+  "n_estimators": 100,
+  "max_depth": 10
+}
+```
+
+The API reads the persisted TRAIN and TEST memberships, fits and evaluates a
+Random Forest independently for horizons +1, +3, and +5, and returns MAE/RMSE
+per horizon. It rejects splits that fail the stored or rechecked leakage
+boundary. The existing `/api/model-training/experiment` workflow remains
+separate and unchanged.
+
+Before using this flow, apply `migrations/20261121_lag_feature_generation.sql`
+and `migrations/20261122_persistent_train_test_splits.sql` to PostgreSQL.
+
 ## First experiment
 
 ### Swagger Parameters

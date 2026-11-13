@@ -9,22 +9,25 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from app.api.v1.endpoints import dataset_access as access_endpoints
 from app.api.v1.endpoints import datasets as endpoints
 from app.core import dataset_access
 from app.core.deps import get_current_user
 from app.database.database import get_db
-from app.models.dataset import Dataset, DatasetVersion, RecordingSession
-from app.services import dataset_preview_service, dataset_review_service
+from app.models.dataset import Dataset, DatasetGroup, DatasetVersion, RecordingSession
+from app.services import dataset_consumer_service, dataset_preview_service, dataset_review_service
 
 
 @pytest.fixture
 def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     dataset_id, version_id, session_id = uuid4(), uuid4(), uuid4()
+    group_id = uuid4()
     dataset = Dataset(
         id=dataset_id, name="20181024-d1", source="pNEUMA",
         location_name="Athens, Greece", drone_id="d1",
-        recording_date=date(2018, 10, 24),
+        recording_date=date(2018, 10, 24), group_id=group_id,
     )
+    dataset.group = DatasetGroup(id=group_id, name="Batch 01", source="pneuma", drone_id="d1")
     version = DatasetVersion(
         id=version_id, dataset_id=dataset_id, version_tag="v1.0",
         approval_status="PENDING",
@@ -49,8 +52,15 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(repo, "get_version_session_counts", lambda db, ids: {version_id: 1})
     monkeypatch.setattr(repo, "get_dataset_by_id",
                         lambda db, key: dataset if key == dataset_id else None)
+    monkeypatch.setattr(repo, "list_group_datasets",
+                        lambda db, key, visible_user_id: [dataset] if key == group_id else [])
+    monkeypatch.setattr(repo, "get_dataset_group_by_id",
+                        lambda db, key: dataset.group if key == group_id else None)
     monkeypatch.setattr(repo, "get_dataset_latest_version",
                         lambda db, key: (dataset, version) if key == dataset_id else None)
+    monkeypatch.setattr(repo, "get_dataset_latest_approved_version",
+                        lambda db, key: (dataset, version)
+                        if key == dataset_id and version.approval_status == "APPROVED" else None)
     monkeypatch.setattr(repo, "get_dataset_version",
                         lambda db, did, vid: (dataset, version)
                         if (did, vid) == (dataset_id, version_id) else None)
@@ -62,6 +72,7 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
                         if (vid, sid) == (version_id, session_id) else None)
     monkeypatch.setattr(repo, "get_dataset_column_mapping", lambda db, did, vid: None)
     monkeypatch.setattr(repo, "get_latest_dataset_column_mapping", lambda db, did: None)
+    monkeypatch.setattr(repo, "get_cleaning_history_by_version", lambda db, vid: None)
     engineer = SimpleNamespace(id=uuid4(), role_id="data_engineer")
     app = FastAPI()
     app.include_router(endpoints.router, prefix="/api/v1/datasets")
@@ -91,15 +102,201 @@ def test_dataset_list_detail_and_sessions(review: SimpleNamespace) -> None:
         sessions = client.get(review.base)
         one = client.get(f"{review.base}/{review.session.id}")
     assert listing.status_code == 200, listing.text
-    assert listing.json()["datasets"][0]["name"] == "20181024-d1"
-    assert listing.json()["datasets"][0]["total_sessions"] == 1
+    assert listing.json()["total"] == 1
+    assert listing.json()["groups"] == [{
+        "group_id": str(review.dataset.group_id), "group_name": "Batch 01",
+        "source": "pneuma", "drone_id": "d1",
+        "dataset_count": 1, "total_sessions": 1,
+    }]
     assert detail.status_code == 200, detail.text
     assert detail.json()["approval_status"] == "PENDING"
+    assert detail.json()["group_id"] == str(review.dataset.group_id)
+    assert detail.json()["related_datasets"][0]["dataset_id"] == str(review.dataset.id)
     assert sessions.status_code == 200, sessions.text
     assert sessions.json()["sessions"][0]["checksum"] == "a" * 64
     assert one.json()["scheduled_duration_seconds"] == 1800
+    assert one.json()["group_id"] == str(review.dataset.group_id)
     assert one.json()["actual_duration_seconds"] is None
     assert one.json()["validation_status"] is None
+
+
+def test_group_review_three_step_flow(review: SimpleNamespace) -> None:
+    group_base = f"/api/v1/datasets/groups/{review.dataset.group_id}/datasets"
+    dataset_base = f"{group_base}/{review.dataset.id}"
+    with TestClient(review.app) as client:
+        group = client.get(group_base)
+        sessions = client.get(f"{dataset_base}/sessions")
+        data = client.get(
+            f"{dataset_base}/sessions/{review.session.id}",
+            params={"representation": "raw", "limit": 2},
+        )
+        wrong_group = client.get(
+            f"/api/v1/datasets/groups/{uuid4()}/datasets/{review.dataset.id}/sessions",
+        )
+        wrong_session = client.get(
+            f"{dataset_base}/sessions/{uuid4()}", params={"representation": "raw"},
+        )
+        paths = {
+            path for path, methods in client.get("/openapi.json").json()["paths"].items()
+            if any(tag.startswith("Dataset Preview & Review")
+                   for tag in methods.get("get", {}).get("tags", []))
+        }
+    assert group.status_code == 200, group.text
+    assert group.json()["total"] == 1
+    assert group.json()["datasets"][0]["dataset_id"] == str(review.dataset.id)
+    assert sessions.status_code == 200, sessions.text
+    assert sessions.json()["sessions"][0]["session_id"] == str(review.session.id)
+    assert data.status_code == 200, data.text
+    assert len(data.json()["rows"]) == 2
+    assert wrong_group.status_code == 404
+    assert wrong_session.status_code == 404
+    assert paths == {
+        "/api/v1/datasets/groups/{group_id}/datasets",
+        "/api/v1/datasets/groups/{group_id}/datasets/{dataset_id}/sessions",
+        "/api/v1/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}",
+    }
+
+
+def test_group_review_consumer_requires_approved_version(
+    review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scientist = SimpleNamespace(id=uuid4(), role_id="data_scientist")
+    review.app.dependency_overrides[get_current_user] = lambda: scientist
+    monkeypatch.setattr(dataset_access, "check_dataset_access",
+                        lambda user, dataset_id, db: review.dataset)
+    monkeypatch.setattr(dataset_consumer_service, "check_dataset_access",
+                        lambda user, dataset_id, db: review.dataset)
+    monkeypatch.setattr(dataset_consumer_service.repo, "get_version",
+                        lambda db, version_id: review.version)
+    base = f"/api/v1/datasets/groups/{review.dataset.group_id}/datasets"
+    with TestClient(review.app) as client:
+        assert client.get(base).status_code == 404
+        assert client.get(f"{base}/{review.dataset.id}/sessions").status_code == 404
+        review.version.approval_status = "APPROVED"
+        assert client.get(base).status_code == 200
+        assert client.get(f"{base}/{review.dataset.id}/sessions").status_code == 200
+        assert client.get(
+            f"{base}/{review.dataset.id}/sessions/{review.session.id}",
+            params={"representation": "raw"},
+        ).status_code == 200
+
+
+def test_consumer_routes_check_approval_when_review_route_matches_first(
+    review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    review.app.include_router(access_endpoints.approved_router, prefix="/api/v1/datasets")
+    scientist = SimpleNamespace(id=uuid4(), role_id="data_scientist")
+    review.app.dependency_overrides[get_current_user] = lambda: scientist
+    monkeypatch.setattr(dataset_access, "check_dataset_access",
+                        lambda user, dataset_id, db: review.dataset)
+    monkeypatch.setattr(dataset_consumer_service, "check_dataset_access",
+                        lambda user, dataset_id, db: review.dataset)
+    monkeypatch.setattr(dataset_consumer_service.repo, "get_version",
+                        lambda db, version_id: review.version)
+
+    with TestClient(review.app) as client:
+        assert client.get(review.base).status_code == 403
+        assert client.get(f"{review.base}/{review.session.id}").status_code == 403
+        assert client.get(f"{review.base}/{review.session.id}/preview").status_code == 403
+        review.version.approval_status = "APPROVED"
+        assert client.get(review.base).status_code == 200
+        assert client.get(f"{review.base}/{review.session.id}").status_code == 200
+        assert client.get(f"{review.base}/{review.session.id}/preview",
+                          params={"representation": "raw"}).status_code == 200
+
+
+def test_dataset_list_filters_same_drone_across_recording_dates(
+    review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def list_groups(db: object, **kwargs: object) -> tuple[list[Dataset], int]:
+        captured.update(kwargs)
+        return [review.dataset], 1
+
+    monkeypatch.setattr(dataset_review_service.crud_dataset, "list_uploaded_datasets", list_groups)
+    with TestClient(review.app) as client:
+        response = client.get("/api/v1/datasets", params={
+            "group_id": str(review.dataset.group_id),
+            "drone_id": "d1",
+            "recording_date_from": "2018-10-24",
+            "recording_date_to": "2018-11-01",
+        })
+        invalid = client.get("/api/v1/datasets", params={
+            "recording_date_from": "2018-11-01",
+            "recording_date_to": "2018-10-24",
+        })
+
+    assert response.status_code == 200
+    assert response.json()["groups"][0]["datasets"][0]["name"] == "20181024-d1"
+    assert captured["drone_id"] == "d1"
+    assert captured["group_id"] == review.dataset.group_id
+    assert captured["recording_date_from"] == date(2018, 10, 24)
+    assert captured["recording_date_to"] == date(2018, 11, 1)
+    assert invalid.status_code == 422
+
+
+def test_dataset_list_shows_one_group_for_multiple_dates(
+    review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    other_id, other_version_id = uuid4(), uuid4()
+    other = Dataset(
+        id=other_id, name="20181029-d1", source="pNEUMA",
+        location_name="Athens, Greece", drone_id="d1",
+        recording_date=date(2018, 10, 29), group_id=review.dataset.group_id,
+    )
+    other.group = review.dataset.group
+    other_version = DatasetVersion(
+        id=other_version_id, dataset_id=other_id, version_tag="v1.0",
+        approval_status="PENDING",
+    )
+    repo = dataset_review_service.crud_dataset
+    monkeypatch.setattr(repo, "list_uploaded_datasets",
+                        lambda db, **kwargs: ([review.dataset, other], 1))
+    monkeypatch.setattr(repo, "get_latest_versions_for_datasets",
+                        lambda db, ids: {
+                            review.dataset.id: review.version, other_id: other_version,
+                        })
+    monkeypatch.setattr(repo, "get_version_session_counts",
+                        lambda db, ids: {review.version.id: 1, other_version_id: 2})
+
+    with TestClient(review.app) as client:
+        default = client.get("/api/v1/datasets")
+        expanded = client.get("/api/v1/datasets", params={
+            "group_id": str(review.dataset.group_id),
+        })
+
+    assert default.status_code == expanded.status_code == 200
+    assert default.json()["total"] == 1
+    assert default.json()["groups"][0]["dataset_count"] == 2
+    assert default.json()["groups"][0]["total_sessions"] == 3
+    assert "datasets" not in default.json()["groups"][0]
+    assert [item["name"] for item in expanded.json()["groups"][0]["datasets"]] == [
+        "20181024-d1", "20181029-d1",
+    ]
+
+
+def test_dataset_list_preserves_session_count_for_derived_version(
+    review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        dataset_review_service.crud_dataset, "get_version_session_counts",
+        lambda db, ids: {},
+    )
+    monkeypatch.setattr(
+        dataset_review_service.crud_dataset, "get_cleaning_history_by_version",
+        lambda db, version_id: SimpleNamespace(parameters={
+            "source_session_ids": [str(review.session.id)],
+        }),
+    )
+
+    with TestClient(review.app) as client:
+        listing = client.get("/api/v1/datasets")
+        detail = client.get(f"/api/v1/datasets/{review.dataset.id}")
+
+    assert listing.status_code == detail.status_code == 200
+    assert listing.json()["groups"][0]["total_sessions"] == 1
+    assert detail.json()["total_sessions"] == 1
 
 
 def test_session_preview_reads_raw_csv_with_pagination(review: SimpleNamespace) -> None:
@@ -241,9 +438,12 @@ def test_swagger_exposes_dataset_review_contracts(review: SimpleNamespace) -> No
     paths = review.app.openapi()["paths"]
     assert "/api/v1/datasets" in paths
     de_paths = (
-        "/api/v1/datasets/{dataset_id}",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions/{session_id}",
+        "/api/v1/datasets/groups/{group_id}/datasets",
+        "/api/v1/datasets/groups/{group_id}/datasets/{dataset_id}/sessions",
+        "/api/v1/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}",
     )
     for path in de_paths:
         assert paths[path]["get"]["tags"] == ["Dataset Preview & Review B\u01b0\u1edbc 2"]
+    assert "/api/v1/datasets/{dataset_id}" not in paths
+    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions/{session_id}" not in paths
     assert "/api/v1/datasets/{dataset_id}/preview" not in paths

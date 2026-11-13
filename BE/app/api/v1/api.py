@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     admin,
     auth,
-    data_quality,
     dataset_access,
     dataset_mapping,
     datasets,
@@ -38,9 +37,14 @@ api_router.include_router(
     tags=["Dataset Column Mapping Bước 3"],
 )
 api_router.include_router(
-    data_quality.router,
+    datasets.normalization_router,
     prefix="/datasets",
-    tags=["Thêm bước 4: Data Quality"],
+    tags=["Bước 4: Chuẩn hóa Dataset"],
+)
+api_router.include_router(
+    datasets.version_router,
+    prefix="/datasets",
+    tags=["Bước 5: Phiên bản & phê duyệt Dataset"],
 )
 api_router.include_router(
     dataset_access.approved_router,

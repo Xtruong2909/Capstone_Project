@@ -2,13 +2,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import BackgroundTasks
 from pydantic import ValidationError
 
-from app.api.v1.endpoints import data_quality as quality_api
 from app.api.v1.endpoints import datasets
-from app.api.v1.endpoints.data_quality import router
-from app.schemas.data_quality import DataQualityCheckRequest, DataQualityOutlierRule
+from app.schemas.data_quality import DataQualityCheckRequest
 from app.schemas.dataset_normalization import DatasetVersionSubmitRequest
 
 
@@ -88,32 +85,14 @@ def test_submit_does_not_require_separate_quality_check(monkeypatch: pytest.Monk
     assert version.submitted_at is not None
 
 
-def test_data_quality_routes_are_registered() -> None:
-    routes = {
-        (route.path, method)
-        for route in router.routes
-        for method in route.methods
-    }
+def test_data_quality_routes_are_not_exposed() -> None:
+    from app.main import app
 
-    assert (
-        "/{dataset_id}/quality-checks",
-        "POST",
-    ) in routes
-    assert (
-        "/{dataset_id}/quality-checks/{check_id}",
-        "GET",
-    ) in routes
-    assert (
-        "/{dataset_id}/quality-checks/{check_id}/report",
-        "GET",
-    ) in routes
-    assert (
-        "/{dataset_id}/quality-checks/{check_id}/issues",
-        "GET",
-    ) in routes
+    assert not any("/quality-checks" in getattr(route, "path", "") for route in app.routes)
+    assert not any("/quality-checks" in path for path in app.openapi()["paths"])
 
 
-def test_admin_can_preview_a_specific_dataset_version() -> None:
+def test_admin_can_preview_a_specific_recording_session() -> None:
     from app.api.v1.endpoints.admin import router as admin_router
     from app.main import app
 
@@ -123,50 +102,27 @@ def test_admin_can_preview_a_specific_dataset_version() -> None:
         for method in route.methods
     }
     assert (
-        "/datasets/{dataset_id}/versions/{id}/preview",
+        "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
         "GET",
     ) in route_contract
 
     operation = app.openapi()["paths"][
-        "/api/v1/admin/datasets/{dataset_id}/versions/{id}/preview"
+        "/api/v1/admin/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview"
     ]["get"]
     path_parameters = {
         parameter["name"]
         for parameter in operation["parameters"]
         if parameter["in"] == "path"
     }
-    assert path_parameters == {"dataset_id", "id"}
+    assert path_parameters == {"group_id", "dataset_id", "session_id"}
     parameters = {
         parameter["name"]: parameter
         for parameter in operation["parameters"]
         if parameter["in"] == "query"
     }
     assert parameters["page"]["schema"]["default"] == 1
-    assert parameters["page_size"]["schema"]["default"] == 20
+    assert parameters["limit"]["schema"]["default"] == 20
     assert parameters["representation"]["schema"]["default"] == "normalized"
-
-
-@pytest.mark.parametrize("configured", [False, True])
-def test_quality_check_passes_optional_rules_to_existing_worker(
-    monkeypatch: pytest.MonkeyPatch, configured: bool,
-) -> None:
-    started = SimpleNamespace(id=uuid4(), check_id=uuid4())
-    monkeypatch.setattr(quality_api, "start_data_quality_check", lambda *args, **kwargs: (started, None))
-    tasks = BackgroundTasks()
-    payload = DataQualityCheckRequest(outlier_rules=[DataQualityOutlierRule(
-        field="speed", max_value=10, unit="km/h", basis="Synthetic test only",
-    )]) if configured else None
-
-    response = quality_api.start_quality_check(
-        dataset_id=uuid4(), background_tasks=tasks, db=object(),
-        current_user=SimpleNamespace(id=uuid4()), payload=payload,
-    )
-
-    assert response is started
-    assert len(tasks.tasks) == 1
-    assert tasks.tasks[0].func is quality_api.run_data_quality_check
-    assert tasks.tasks[0].args == (started.check_id,)
-    assert tasks.tasks[0].kwargs["outlier_rules"] == (payload.outlier_rules if payload else None)
 
 
 @pytest.mark.parametrize("changes", [
@@ -191,14 +147,9 @@ def test_outlier_configuration_rejects_duplicate_fields_and_missing_basis() -> N
         DataQualityCheckRequest.model_validate({"outlier_rules": [rule]})
 
 
-def test_outlier_request_is_optional_in_existing_api_contract() -> None:
+def test_data_quality_request_schema_remains_available_for_internal_use() -> None:
     from app.main import app
 
     spec = app.openapi()
-    request = spec["paths"]["/api/v1/datasets/{dataset_id}/quality-checks"]["post"]["requestBody"]
-    assert not request.get("required", False)
-    assert "outlier_rules" in spec["components"]["schemas"]["DataQualityCheckRequest"]["properties"]
-    assert spec["components"]["schemas"]["DataQualityCheckRequest"]["examples"] == [
-        {"outlier_rules": []}
-    ]
-    assert "severity" in spec["components"]["schemas"]["DataQualityIssueItem"]["properties"]
+    assert not any("/quality-checks" in path for path in spec["paths"])
+    assert DataQualityCheckRequest().outlier_rules == []

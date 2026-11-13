@@ -6,13 +6,13 @@ services:
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: "123"
-      POSTGRES_DB: urban_traffic
+      POSTGRES_DB: traffic_urban
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d urban_traffic"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d traffic_urban"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -28,13 +28,14 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      DATABASE_URL: postgresql://admin:123@postgres:5432/urban_traffic
+      DATABASE_URL: postgresql://admin:123@postgres:5432/traffic_urban
     ports:
       - "8000:8000"
     volumes:
       - ./BE/app:/app/app
       - ./BE/tests:/app/tests
       - dataset_uploads:/app/uploads/datasets
+      - lag_feature_models:/app/artifacts/lag_feature_forests
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,3 +57,4 @@ services:
 volumes:
   postgres_data:
   dataset_uploads:
+  lag_feature_models:

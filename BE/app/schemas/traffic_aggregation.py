@@ -192,21 +192,29 @@ class TrafficAggregationBatchCalculationSummary(BaseModel):
     notes: list[str]
 
 
-class DatasetVersionTemporalAggregationRequest(BaseModel):
-    dataset_version_id: UUID = Field(description="Approved Dataset Version to aggregate.")
+class GroupTemporalAggregationRequest(BaseModel):
+    group_id: UUID = Field(description="Group containing the approved Datasets to aggregate.")
     aggregation_interval: int = Field(default=60, ge=1, le=86400)
 
     model_config = {
         "json_schema_extra": {
             "examples": [{
-                "dataset_version_id": "5ee90c27-3f2d-4a7e-969b-269acf4b1697",
+                "group_id": "ad8714dc-c786-49ce-8ee6-ce6e351863cb",
                 "aggregation_interval": 60,
             }],
         },
     }
 
 
+class GroupDatasetTemporalAggregationRequest(GroupTemporalAggregationRequest):
+    """Internal per-Dataset selection used by the group orchestration service."""
+
+    dataset_id: UUID
+
+
 class AggregationSessionRunStatus(BaseModel):
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
     session_id: UUID
     status: str
     time_bins: int
@@ -216,7 +224,10 @@ class AggregationSessionRunStatus(BaseModel):
 
 class DatasetVersionAggregationStarted(BaseModel):
     aggregation_id: UUID
-    dataset_version_id: UUID
+    group_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
+    total_datasets: int = 1
     status: str
     aggregation_interval: int
     total_sessions: int
@@ -227,6 +238,7 @@ class DatasetVersionAggregationStarted(BaseModel):
 
 
 class TemporalAggregationDataPoint(BaseModel):
+    dataset_id: UUID | None = None
     session_id: UUID
     timestamp: datetime
     vehicle_count: int
@@ -234,7 +246,10 @@ class TemporalAggregationDataPoint(BaseModel):
 
 class DatasetVersionAggregationResults(BaseModel):
     aggregation_id: UUID
-    dataset_version_id: UUID
+    group_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
+    total_datasets: int = 1
     session_id: UUID | None = None
     status: str
     aggregation_interval: int
@@ -249,6 +264,7 @@ class DatasetVersionAggregationResults(BaseModel):
 
 
 class CombinedTemporalAggregationDataPoint(BaseModel):
+    dataset_id: UUID | None = None
     session_id: UUID
     timestamp: datetime
     vehicle_count: int
@@ -256,7 +272,10 @@ class CombinedTemporalAggregationDataPoint(BaseModel):
 
 class CombinedTemporalAggregationResults(BaseModel):
     aggregation_id: UUID
-    dataset_version_id: UUID
+    group_id: UUID | None = None
+    dataset_id: UUID | None = None
+    dataset_version_id: UUID | None = None
+    total_datasets: int = 1
     aggregation_interval: int
     status: str
     timezone: str
@@ -266,3 +285,5 @@ class CombinedTemporalAggregationResults(BaseModel):
     total_time_bins: int
     sessions: list[AggregationSessionRunStatus] = Field(default_factory=list)
     data: list[CombinedTemporalAggregationDataPoint] = Field(default_factory=list)
+
+

@@ -18,6 +18,7 @@ import pyarrow.parquet as pq
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.crud import crud_dataset
 from app.crud import crud_traffic_aggregation as repo
 from app.models.dataset import DataCleaningHistory, DatasetVersion, RecordingSession
 from app.models.traffic import (
@@ -32,7 +33,8 @@ from app.schemas.traffic_aggregation import (
     CombinedTemporalAggregationResults,
     DatasetVersionAggregationResults,
     DatasetVersionAggregationStarted,
-    DatasetVersionTemporalAggregationRequest,
+    GroupDatasetTemporalAggregationRequest,
+    GroupTemporalAggregationRequest,
     TemporalAggregationDataPoint,
 )
 from app.services.dataset_access_service import check_dataset_access
@@ -87,17 +89,19 @@ def _normalized_path(version: DatasetVersion) -> Path:
 
 
 def create_temporal_aggregation(
-    db: Session, user: User, payload: DatasetVersionTemporalAggregationRequest,
+    db: Session, user: User, payload: GroupDatasetTemporalAggregationRequest,
+    *, persist: bool = True,
 ) -> tuple[TrafficAggregationJob, list[TrafficAggregationSessionResult]]:
     if user.role_id not in ("admin", "data_scientist"):
         raise HTTPException(403, "Data Scientist role required")
-    pair = repo.get_dataset_version(db, payload.dataset_version_id)
-    if pair is None:
-        raise HTTPException(404, "Dataset Version not found")
-    dataset, version = pair
+    dataset = crud_dataset.get_dataset_by_id(db, payload.dataset_id)
+    if dataset is None or dataset.group_id != payload.group_id:
+        raise HTTPException(404, "Dataset is not part of the selected group")
     check_dataset_access(user, dataset.id, db)
-    if version.approval_status != "APPROVED":
-        raise HTTPException(403, "Dataset Version is not approved")
+    pair = crud_dataset.get_dataset_latest_approved_version(db, dataset.id)
+    if pair is None:
+        raise HTTPException(403, "Dataset has no approved version")
+    dataset, version = pair
     history = repo.get_cleaning_history(db, version.id)
     if history is None or not (history.parameters or {}).get("is_pneuma"):
         raise HTTPException(409, "Dataset Version has no normalized pNEUMA provenance")
@@ -125,6 +129,7 @@ def create_temporal_aggregation(
         failed_sessions=0,
         job_metadata={
             "workflow": WORKFLOW_KEY,
+            "group_id": str(payload.group_id),
             "session_ids": [str(session.id) for session in sessions],
             "source": "normalized_parquet",
             "timezone": "UTC",
@@ -142,8 +147,105 @@ def create_temporal_aggregation(
         )
         for session in sessions
     ]
-    repo.create_temporal_run(db, job, results)
+    if persist:
+        repo.create_temporal_run(db, job, results)
     return job, results
+
+
+def create_group_temporal_aggregation(
+    db: Session, user: User, payload: GroupTemporalAggregationRequest,
+) -> tuple[list[TrafficAggregationJob], list[TrafficAggregationSessionResult]]:
+    """Create one durable child run per Dataset and one shared public run ID."""
+    if user.role_id not in ("admin", "data_scientist"):
+        raise HTTPException(403, "Data Scientist role required")
+    if crud_dataset.get_dataset_group_by_id(db, payload.group_id) is None:
+        raise HTTPException(404, "Dataset group not found")
+    datasets = crud_dataset.list_group_datasets(db, payload.group_id, None)
+    if not datasets:
+        raise HTTPException(404, "No Dataset found in this group")
+    jobs: list[TrafficAggregationJob] = []
+    results: list[TrafficAggregationSessionResult] = []
+    for dataset in datasets:
+        child_payload = GroupDatasetTemporalAggregationRequest(
+            group_id=payload.group_id,
+            dataset_id=dataset.id,
+            aggregation_interval=payload.aggregation_interval,
+        )
+        job, child_results = create_temporal_aggregation(
+            db, user, child_payload, persist=False,
+        )
+        jobs.append(job)
+        results.extend(child_results)
+    root_id = jobs[0].id
+    job_ids = [str(job.id) for job in jobs]
+    for job in jobs:
+        job.job_metadata = {
+            **job.job_metadata,
+            "group_root_id": str(root_id),
+            "group_job_ids": job_ids if job.id == root_id else None,
+        }
+    repo.create_group_temporal_runs(db, jobs, results)
+    return jobs, results
+
+
+def serialize_group_aggregation_run(
+    jobs: list[TrafficAggregationJob],
+    results: list[TrafficAggregationSessionResult],
+) -> DatasetVersionAggregationStarted:
+    root = jobs[0]
+    dataset_ids = {job.id: job.dataset_id for job in jobs}
+    version_ids = {job.id: job.dataset_version_id for job in jobs}
+    return DatasetVersionAggregationStarted(
+        aggregation_id=root.id,
+        group_id=UUID(root.job_metadata["group_id"]),
+        dataset_id=root.dataset_id if len(jobs) == 1 else None,
+        dataset_version_id=root.dataset_version_id if len(jobs) == 1 else None,
+        total_datasets=len(jobs),
+        aggregation_interval=root.aggregation_interval,
+        status=_group_status(jobs),
+        total_sessions=sum(job.total_sessions for job in jobs),
+        completed_sessions=sum(job.completed_sessions for job in jobs),
+        failed_sessions=sum(job.failed_sessions for job in jobs),
+        total_time_bins=sum(result.time_bins for result in results),
+        sessions=[_group_session_status(
+            result, dataset_ids[result.aggregation_id], version_ids[result.aggregation_id],
+        ) for result in results],
+    )
+
+
+def _group_status(jobs: list[TrafficAggregationJob]) -> str:
+    if any(job.status in ("PROCESSING", "QUEUED", "RUNNING") for job in jobs):
+        return "PROCESSING"
+    if all(job.status == "COMPLETED" for job in jobs):
+        return "COMPLETED"
+    if any(job.completed_sessions for job in jobs):
+        return "PARTIAL_SUCCESS"
+    return "FAILED"
+
+
+def _group_session_status(
+    result: TrafficAggregationSessionResult, dataset_id: UUID, version_id: UUID,
+) -> AggregationSessionRunStatus:
+    return AggregationSessionRunStatus(
+        **{
+            **_session_status(result).model_dump(),
+            "dataset_id": dataset_id,
+            "dataset_version_id": version_id,
+        },
+    )
+
+
+def run_group_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -> None:
+    db = db_session_factory()
+    try:
+        root = repo.get_aggregation_job(db, aggregation_id)
+        if root is None:
+            return
+        job_ids = [UUID(value) for value in (root.job_metadata or {}).get("group_job_ids") or []]
+    finally:
+        db.close()
+    for job_id in job_ids:
+        run_temporal_aggregation(db_session_factory=db_session_factory, aggregation_id=job_id)
 
 
 def _count_normalized_points(session: RecordingSession) -> int:
@@ -284,6 +386,8 @@ def serialize_aggregation_run(
 ) -> DatasetVersionAggregationStarted:
     return DatasetVersionAggregationStarted(
         aggregation_id=job.id,
+        group_id=(job.job_metadata or {}).get("group_id"),
+        dataset_id=job.dataset_id,
         dataset_version_id=job.dataset_version_id,
         aggregation_interval=job.aggregation_interval,
         status=job.status,
@@ -430,11 +534,156 @@ def _accessible_run(db: Session, user: User, aggregation_id: UUID) -> TrafficAgg
     return job
 
 
+def _accessible_group_jobs(
+    db: Session, user: User, root: TrafficAggregationJob,
+) -> list[TrafficAggregationJob]:
+    ids = [UUID(value) for value in (root.job_metadata or {}).get("group_job_ids") or []]
+    jobs = repo.list_group_temporal_jobs(db, ids)
+    if len(jobs) != len(ids) or not ids or root.id not in ids:
+        raise HTTPException(409, "Aggregation group is incomplete")
+    by_id = {job.id: job for job in jobs}
+    ordered = [by_id[job_id] for job_id in ids]
+    for job in ordered:
+        if (job.job_metadata or {}).get("group_root_id") != str(root.id):
+            raise HTTPException(409, "Aggregation group is inconsistent")
+        check_dataset_access(user, job.dataset_id, db)
+        pair = repo.get_dataset_version(db, job.dataset_version_id)
+        if pair is None or pair[1].approval_status != "APPROVED":
+            raise HTTPException(403, "Dataset Version is not approved")
+    return ordered
+
+
+def get_accessible_temporal_jobs(
+    db: Session, user: User, aggregation_id: UUID,
+) -> list[TrafficAggregationJob]:
+    """Resolve the public run ID and enforce access to every child Dataset."""
+    root = _accessible_run(db, user, aggregation_id)
+    if (root.job_metadata or {}).get("group_job_ids"):
+        return _accessible_group_jobs(db, user, root)
+    return [root]
+
+
+def _group_session_results(
+    db: Session, jobs: list[TrafficAggregationJob],
+) -> list[TrafficAggregationSessionResult]:
+    return [
+        result for job in jobs for result in repo.list_temporal_session_results(db, job.id)
+    ]
+
+
+def _group_recording_starts(
+    db: Session, jobs: list[TrafficAggregationJob],
+    results: list[TrafficAggregationSessionResult],
+) -> dict[UUID, datetime | None]:
+    by_job: dict[UUID, list[UUID]] = {}
+    for result in results:
+        by_job.setdefault(result.aggregation_id, []).append(result.session_id)
+    return {
+        session.id: recording_start_from_filename(session.original_filename)
+        for job in jobs
+        for session in repo.get_sessions_by_ids(db, job.dataset_id, by_job.get(job.id, []))
+    }
+
+
+def _group_results(
+    db: Session, user: User, root: TrafficAggregationJob,
+    session_id: UUID | None, page: int, page_size: int,
+) -> DatasetVersionAggregationResults:
+    jobs = _accessible_group_jobs(db, user, root)
+    results = _group_session_results(db, jobs)
+    selected = [result for result in results if result.session_id == session_id]
+    if session_id is not None and not selected:
+        raise HTTPException(404, "Session is not part of this aggregation run")
+    relevant = selected if session_id is not None else results
+    ids = [job.id for job in jobs]
+    count = repo.count_group_temporal_series(db, ids, session_id)
+    rows = repo.page_group_temporal_series(db, ids, session_id, page, page_size)
+    starts = _group_recording_starts(db, jobs, relevant)
+    job_by_id = {job.id: job for job in jobs}
+    return DatasetVersionAggregationResults(
+        aggregation_id=root.id,
+        group_id=UUID(root.job_metadata["group_id"]),
+        dataset_id=jobs[0].dataset_id if len(jobs) == 1 else None,
+        dataset_version_id=jobs[0].dataset_version_id if len(jobs) == 1 else None,
+        total_datasets=len({job_by_id[result.aggregation_id].dataset_id for result in relevant}),
+        aggregation_interval=root.aggregation_interval,
+        status=selected[0].status if session_id is not None else _group_status(jobs),
+        session_id=session_id,
+        total_sessions=len(relevant),
+        total_time_bins=count,
+        total_records=count,
+        page=page,
+        page_size=page_size,
+        total_pages=math.ceil(count / page_size),
+        sessions=[_group_session_status(
+            result,
+            job_by_id[result.aggregation_id].dataset_id,
+            job_by_id[result.aggregation_id].dataset_version_id,
+        ) for result in relevant],
+        data=[TemporalAggregationDataPoint(
+            dataset_id=job.dataset_id,
+            session_id=UUID(row.recording_session_id),
+            timestamp=recording_timestamp(
+                row.time_bucket, starts.get(UUID(row.recording_session_id)),
+            ),
+            vehicle_count=row.vehicle_count,
+        ) for row, job in rows],
+    )
+
+
+def _group_combined_results(
+    db: Session, user: User, root: TrafficAggregationJob,
+) -> CombinedTemporalAggregationResults:
+    jobs = _accessible_group_jobs(db, user, root)
+    results = _group_session_results(db, jobs)
+    starts = _group_recording_starts(db, jobs, results)
+    zone_names = {
+        start.tzinfo.key for start in starts.values()
+        if start is not None and isinstance(start.tzinfo, ZoneInfo)
+    }
+    timezone_name = (
+        next(iter(zone_names)) if len(starts) == len(results)
+        and all(start is not None for start in starts.values())
+        and len(zone_names) == 1 else "UTC"
+    )
+    zone = ZoneInfo(timezone_name)
+    rows = repo.list_group_temporal_series(db, [job.id for job in jobs])
+    by_id = {job.id: job for job in jobs}
+    return CombinedTemporalAggregationResults(
+        aggregation_id=root.id,
+        group_id=UUID(root.job_metadata["group_id"]),
+        dataset_id=jobs[0].dataset_id if len(jobs) == 1 else None,
+        dataset_version_id=jobs[0].dataset_version_id if len(jobs) == 1 else None,
+        total_datasets=len(jobs),
+        aggregation_interval=root.aggregation_interval,
+        status=_group_status(jobs),
+        timezone=timezone_name,
+        total_sessions=sum(job.total_sessions for job in jobs),
+        completed_sessions=sum(job.completed_sessions for job in jobs),
+        failed_sessions=sum(job.failed_sessions for job in jobs),
+        total_time_bins=len(rows),
+        sessions=[_group_session_status(
+            result,
+            by_id[result.aggregation_id].dataset_id,
+            by_id[result.aggregation_id].dataset_version_id,
+        ) for result in results],
+        data=[CombinedTemporalAggregationDataPoint(
+            dataset_id=job.dataset_id,
+            session_id=UUID(row.recording_session_id),
+            timestamp=(row.time_bucket if row.time_bucket.tzinfo else
+                       row.time_bucket.replace(tzinfo=UTC)).astimezone(zone),
+            vehicle_count=row.vehicle_count,
+        ) for row, job in rows],
+    )
+
+
 def get_temporal_aggregation_results(
     db: Session, user: User, aggregation_id: UUID,
     session_id: UUID | None, page: int, page_size: int,
 ) -> DatasetVersionAggregationResults:
     job = _accessible_run(db, user, aggregation_id)
+    if (job.job_metadata or {}).get("group_job_ids"):
+        return _group_results(db, user, job, session_id, page, page_size)
     results = repo.list_temporal_session_results(db, job.id)
     selected = next((result for result in results if result.session_id == session_id), None)
     if session_id is not None and selected is None:
@@ -448,6 +697,8 @@ def get_temporal_aggregation_results(
     }
     return DatasetVersionAggregationResults(
         aggregation_id=job.id,
+        group_id=(job.job_metadata or {}).get("group_id"),
+        dataset_id=job.dataset_id,
         dataset_version_id=job.dataset_version_id,
         aggregation_interval=job.aggregation_interval,
         status=selected.status if selected is not None else job.status,
@@ -480,6 +731,8 @@ def get_combined_temporal_aggregation_results(
 ) -> CombinedTemporalAggregationResults:
     """Return every saved session bin, preserving its source Session ID."""
     job = _accessible_run(db, user, aggregation_id)
+    if (job.job_metadata or {}).get("group_job_ids"):
+        return _group_combined_results(db, user, job)
     results = repo.list_temporal_session_results(db, job.id)
     sessions = repo.get_sessions_by_ids(
         db, job.dataset_id, [result.session_id for result in results],
@@ -510,6 +763,8 @@ def get_combined_temporal_aggregation_results(
         ))
     return CombinedTemporalAggregationResults(
         aggregation_id=job.id,
+        group_id=(job.job_metadata or {}).get("group_id"),
+        dataset_id=job.dataset_id,
         dataset_version_id=job.dataset_version_id,
         aggregation_interval=job.aggregation_interval,
         status=job.status,
