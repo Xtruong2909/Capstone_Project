@@ -25,6 +25,8 @@ Pop-Location
 ```
 
 This includes the per-dataset experiment-name migration required by the experiment browser.
+Before running it, apply the Lag Feature generation and Train/Test Split migrations,
+because the experiment-batch migration references those tables.
 
 ## Administrator audit logs
 
@@ -39,12 +41,22 @@ Get-Content -Raw 'BE\migrations\20261107_complete_audit_logs.sql' |
 ```
 
 The endpoint returns `{ total, skip, limit, items }` and supports `user_id`, exact
-`action`, exact `module`, `status=SUCCESS|FAILED`, timezone-aware `start_date` and
+`action`, exact `module`, exact `resource_id`, `status=SUCCESS|FAILED`, timezone-aware `start_date` and
 `end_date`, and free-text `search`. Results are sorted newest first with UUID as the
 stable tie-breaker. Authentication, user administration, dataset, feature-engineering,
 train/test, model-training, traffic aggregation, and unhandled system errors are logged
 by the backend where those operations exist. There are no API routes to create, edit,
-or delete audit events.
+or delete audit events. New split-scoped training runs record `RUN_EXPERIMENT` with
+`module=Model Training` and `resource_id=experiment_id` after completion or failure.
+Apply `migrations/20261127_backfill_experiment_audit_history.sql` to show older
+saved experiments as `IMPORT_EXPERIMENT_HISTORY`; these entries carry
+`details.historical_backfill=true` and the original timestamps, so they are not
+mistaken for events captured when the original run occurred.
+
+`GET /api/v1/admin/experiments/overview` includes the group, aggregation, feature
+generation, and split IDs for recent training runs, Train/Test sample counts, and
+saved metrics for all three methods and horizons. Its `limit` controls the number
+of recent experiments returned.
 
 ## Outgoing email
 
@@ -255,9 +267,19 @@ Each minute's `vehicle_count` is `COUNT DISTINCT track_id` within its own Record
 
 Use `GET /api/lag-features/{feature_generation_id}` for status, `/sessions` for each Session's sample count, `/preview?page=1&page_size=20` for saved rows, and `/summary` for horizon counts. The path parameter is the `feature_generation_id` returned by Generate, not a Dataset or Session ID. These endpoints read PostgreSQL. Feature Generation uses observed consecutive minutes without coverage flags. Five lags plus the +5 target require ten consecutive time bins, so a completed Session with fewer than ten bins appears in `/sessions` with `sample_count: 0`.
 
-`POST /api/train-test-splits` creates a reusable Train/Test split from a COMPLETED `feature_generation_id`, grouped by recording day (`DAY_BASED`, default) or whole Session (`SESSION_BASED`). It returns a stable `split_id`; `GET /api/train-test-splits/{split_id}` returns the saved summary, and `/preview?subset=TRAIN|TEST&page=1&page_size=20` pages through the saved samples. The split API checks that Train targets do not overlap Test feature history and never trains a model. `POST /api/model-training/lag-features` now accepts `split_id` and fits/evaluates the three Random Forest horizons using only the saved Train and Test memberships. The existing traffic-flow Training and Experiment APIs remain unchanged. `POST /api/predictions` accepts `model_id`, `aggregation_id`, and `session_id`; it uses the chosen saved forest and the latest five consecutive counts from that Session, without refitting. The response contains forecast timestamps and predicted vehicle counts for horizons 1, 3, and 5.
+`POST /api/train-test-splits` creates a reusable Train/Test split from a COMPLETED `feature_generation_id`, grouped by recording day (`DAY_BASED`, default) or whole Session (`SESSION_BASED`). It returns a stable `split_id`; `GET /api/train-test-splits/{split_id}` returns the saved summary, and `/preview?subset=TRAIN|TEST&page=1&page_size=20` pages through the saved samples. The split API checks that Train targets do not overlap Test feature history and never trains a model. For repeatable experiments, submit the saved `split_id` and each configuration to `POST /api/model-training/experiments`; the backend manages experiment batches internally, assigns Ex-01, Ex-02, etc., and stores per-horizon metrics, predictions, and model metadata. The experiment comparison endpoint reports Test metrics but does not select a model. `POST /api/predictions` accepts `model_id`, `aggregation_id`, and `session_id`; it uses the chosen saved forest and the latest five consecutive counts from that Session, without refitting. The response contains forecast timestamps and predicted vehicle counts for horizons 1, 3, and 5; a per-horizon model ID returns that horizon.
 
-Apply `migrations/20261121_lag_feature_generation.sql` and `migrations/20261122_persistent_train_test_splits.sql` to any PostgreSQL database before calling these endpoints. They create the feature/model/split tables, backfill `aggregation_id` for any feature rows saved by an earlier revision, and add the forest-to-split reference. The Docker backend stores fitted model artifacts in the `lag_feature_models` volume.
+Apply `migrations/20261121_lag_feature_generation.sql` and `migrations/20261122_persistent_train_test_splits.sql` before the model-training migration script. The script also applies `20261123_model_training_batches.sql`, which adds Batch support and preserves existing experiment history. These migrations create the feature/model/split tables, backfill `aggregation_id` for any feature rows saved by an earlier revision, and add the forest-to-split reference. The Docker backend stores fitted model artifacts in the `lag_feature_models` volume.
+
+### Experiment Evaluation (RQ2/RQ3)
+
+The six Model Training endpoints keep their existing paths. Completed split-scoped experiments save Test predictions for Random Forest, Persistence (`lag_1`), and Historical Average (the mean of each horizon's **Train** targets). The separate Swagger section **Thí nghiệm - Evaluation RQ2/RQ3** provides three read-only tables:
+
+1. `GET /api/model-training/experiments/{experiment_id}/evaluation/horizon-results` lists Random Forest Test forecasts with input, forecast, and actual timestamps, actual/predicted vehicle counts, absolute and squared error, plus MAE/MSE/RMSE for each horizon. It supports `horizon`, `session_id`, `page`, and `page_size`.
+2. `GET /api/model-training/experiments/{experiment_id}/evaluation/comparison` lists all three methods; filter by `model`, `horizon`, and `session_id` and paginate with `page` and `page_size`.
+3. `GET /api/model-training/experiments/{experiment_id}/evaluation/summary` returns nine aggregate metric sets and six signed Random Forest minus baseline MAE/RMSE differences. Negative differences mean Random Forest has lower error. The response includes the Historical Average method and saved Train target means.
+
+All API timestamps are UTC. `display_timezone: "Europe/Athens"` tells Frontend which timezone to use for local display. These endpoints read persisted Test results and do not retrain or change the saved split. Apply `migrations/20261125_model_training_evaluation_results.sql` and `migrations/20261126_backfill_saved_experiment_baselines.sql` to existing PostgreSQL databases after the earlier Model Training migrations. The backfill computes baseline results for previously completed split-scoped experiments without fitting Random Forest again.
 
 ### Data Quality Validation
 

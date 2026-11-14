@@ -44,6 +44,7 @@ def test_day_based_keeps_recording_days_whole_and_reports_sample_ratio() -> None
     assert len(plan.test_rows) == 5
     assert plan.train_ratio_actual == pytest.approx(9 / 14)
     assert plan.train_ratio_actual != 0.7
+    assert plan.warnings == []
     assert plan.samples_by_horizon == {
         f"h{horizon}": {"total": 14, "train": 9, "test": 5}
         for horizon in (1, 3, 5)
@@ -139,6 +140,44 @@ def test_split_requires_completed_feature_generation(monkeypatch) -> None:
 
     assert error.value.status_code == 409
     assert "COMPLETED" in error.value.detail
+
+
+def test_saved_split_response_hides_legacy_ratio_warning() -> None:
+    split = SimpleNamespace(
+        id=uuid4(),
+        feature_generation_id=uuid4(),
+        status="COMPLETED",
+        split_strategy="DAY_BASED",
+        train_ratio_requested=0.7,
+        train_ratio_actual=0.72,
+        forecast_horizons=[1, 3, 5],
+        shuffle=False,
+        total_sessions=2,
+        train_sessions=[],
+        test_sessions=[],
+        total_samples=25,
+        train_sample_count=18,
+        test_sample_count=7,
+        samples_by_horizon={},
+        leakage_check={
+            "checked": True,
+            "has_leakage": False,
+            "rule": service.SPLIT_LEAKAGE_RULE,
+            "train_latest_target_time": datetime(2026, 1, 1, 8, tzinfo=UTC),
+            "test_earliest_history_time": datetime(2026, 1, 2, 8, tzinfo=UTC),
+        },
+        warnings=[
+            service.RATIO_DIFFERENCE_WARNING,
+            "At least one Train or Test subset contains fewer than two samples.",
+        ],
+        created_at=datetime.now(UTC),
+    )
+
+    response = service._response(split)
+
+    assert response.warnings == [
+        "At least one Train or Test subset contains fewer than two samples.",
+    ]
 
 
 def test_preview_filters_requested_subset_and_maps_table_columns(monkeypatch) -> None:

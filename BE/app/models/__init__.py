@@ -20,11 +20,16 @@ from app.models.lag_feature import (
     LagFeatureSplitSample,
 )
 from app.models.model_training import (
+    ExperimentBatch,
+    ExperimentTrainedModel,
     FinalModel,
     ModelTrainingExperiment,
+    ModelTrainingForecastResult,
+    ModelTrainingSplitExperimentCounter,
     ModelTrainingSplit,
     ModelValidationResult,
 )
+from app.models.prediction import PredictionResult, PredictionRun
 from app.models.traffic import (
     TrafficAggregationJob,
     TrafficAggregationSessionResult,
@@ -46,6 +51,8 @@ __all__ = [
     "DatasetVersionSession",
     "EvaluationMetric",
     "Experiment",
+    "ExperimentBatch",
+    "ExperimentTrainedModel",
     "FinalModel",
     "ForecastResult",
     "LagFeatureForest",
@@ -54,8 +61,12 @@ __all__ = [
     "LagFeatureSplit",
     "LagFeatureSplitSample",
     "ModelTrainingExperiment",
+    "ModelTrainingForecastResult",
+    "ModelTrainingSplitExperimentCounter",
     "ModelTrainingSplit",
     "ModelValidationResult",
+    "PredictionResult",
+    "PredictionRun",
     "RecordingSession",
     "Role",
     "TrafficAggregationJob",

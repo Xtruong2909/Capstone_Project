@@ -187,7 +187,8 @@ def test_swagger_paths_and_auth() -> None:
     paths = app.openapi()["paths"]
     assert "/api/feature-engineering/training" not in paths
     assert "/api/feature-engineering/prediction" not in paths
-    operation = paths["/api/train-test-split/training"]["post"]
+    assert "/api/train-test-split/training" not in paths
+    operation = paths["/api/train-test-splits"]["post"]
     assert operation["security"]
     assert operation["requestBody"]["required"]
 

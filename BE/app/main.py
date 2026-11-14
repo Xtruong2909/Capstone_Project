@@ -12,11 +12,12 @@ from sqlalchemy.orm import Session
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.ai_assistant import router as ai_assistant_router
 from app.api.v1.endpoints.lag_feature import router as lag_feature_router
-from app.api.v1.endpoints.model_prediction import router as model_prediction_router
 from app.api.v1.endpoints.model_training import router as model_training_router
-from app.api.v1.endpoints.train_test_split import router as train_test_split_router
+from app.api.v1.endpoints.model_training_evaluation import (
+    router as model_training_evaluation_router,
+)
+from app.api.v1.endpoints.prediction import router as prediction_router
 from app.api.v1.endpoints.train_test_splits import router as train_test_splits_router
-from app.api.v1.endpoints.vehicle_prediction import router as vehicle_prediction_router
 from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
 from app.database.database import get_db
 from app.services.audit_log_service import record_audit_event
@@ -64,11 +65,10 @@ app.add_middleware(
 # Register API v1 Routers
 app.include_router(api_router, prefix=API_V1_STR)
 app.include_router(lag_feature_router, prefix="/api")
-app.include_router(train_test_split_router, prefix="/api")
 app.include_router(train_test_splits_router, prefix="/api")
 app.include_router(model_training_router, prefix="/api")
-app.include_router(model_prediction_router, prefix="/api")
-app.include_router(vehicle_prediction_router, prefix="/api")
+app.include_router(model_training_evaluation_router, prefix="/api")
+app.include_router(prediction_router, prefix="/api")
 app.include_router(ai_assistant_router, prefix="/api")
 
 

@@ -65,6 +65,7 @@ class AuditLogResponse(BaseModel):
     module: str
     status: Literal["SUCCESS", "FAILED"]
     description: str | None = None
+    resource_type: str
     resource_id: str | None = None
     details: dict | None = None
     ip_address: str | None = None
@@ -146,6 +147,16 @@ class ExperimentOverviewItem(BaseModel):
     created_at: datetime
     experiment_type: str = "FORECASTING"
     split_id: UUID | None = None
+    group_id: UUID | None = None
+    group_name: str | None = None
+    aggregation_id: UUID | None = None
+    feature_generation_id: UUID | None = None
+    train_samples: int | None = None
+    test_samples: int | None = None
+    forecast_horizons: list[int] = Field(default_factory=list)
+    metrics_by_model_and_horizon: dict[str, dict[str, dict]] = Field(default_factory=dict)
+    error: str | None = None
+    completed_at: datetime | None = None
     hyperparameters: dict | None = None
     evaluation_mode: str | None = None
     logs: list[TrainingLogEntry] = Field(default_factory=list)

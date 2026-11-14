@@ -17,7 +17,6 @@ from app.schemas.admin import (
     AdminGroupReviewResponse,
     AdminStats,
     AuditLogPage,
-    AuditLogResponse,
     DatasetApprovalAction,
     DatasetApprovalResponse,
     ExperimentsOverviewResponse,
@@ -32,6 +31,7 @@ from app.schemas.dataset import (
 )
 from app.schemas.user import UserResponse
 from app.services import admin_group_review_service as group_review
+from app.services import admin_monitoring_service as monitoring
 from app.services.audit_log_service import audit_action, record_audit_event
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
@@ -216,13 +216,25 @@ def list_roles(
     return [RoleResponse.model_validate(r) for r in roles]
 
 
-@router.get("/audit-logs", response_model=AuditLogPage, summary="Nhật ký hoạt động hệ thống")
+@router.get(
+    "/audit-logs",
+    response_model=AuditLogPage,
+    summary="Nhật ký hoạt động hệ thống và thí nghiệm",
+    description=(
+        "Lọc thí nghiệm bằng module=Model Training và resource_id=experiment_id. "
+        "Các sự kiện huấn luyện mới được ghi sau khi chạy xong."
+    ),
+)
 def list_audit_logs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     user_id: UUID | None = None,
     action: Annotated[str | None, Query(max_length=100)] = None,
     module: Annotated[str | None, Query(max_length=100)] = None,
+    resource_id: Annotated[
+        str | None,
+        Query(max_length=255, description="ID tài nguyên; dùng experiment_id để lọc thí nghiệm"),
+    ] = None,
     status_filter: Annotated[
         Literal["SUCCESS", "FAILED"] | None, Query(alias="status")
     ] = None,
@@ -231,31 +243,19 @@ def list_audit_logs(
     search: Annotated[str | None, Query(max_length=255)] = None,
     db: Session = Depends(get_db),
 ) -> AuditLogPage:
-    """Search and page the append-only audit trail; timestamps must include timezone."""
-    if start_date and (start_date.tzinfo is None or start_date.utcoffset() is None):
-        raise HTTPException(status_code=422, detail="start_date must include a timezone")
-    if end_date and (end_date.tzinfo is None or end_date.utcoffset() is None):
-        raise HTTPException(status_code=422, detail="end_date must include a timezone")
-    if start_date and end_date and start_date > end_date:
-        raise HTTPException(status_code=422, detail="start_date must not be later than end_date")
-
-    total, logs = crud_admin.get_audit_logs(
+    """Search persisted events, including Model Training experiments."""
+    return monitoring.list_audit_logs(
         db,
         skip=skip,
         limit=limit,
         user_id=user_id,
         action=action,
         module=module,
+        resource_id=resource_id,
         status=status_filter,
         start_date=start_date,
         end_date=end_date,
         search=search,
-    )
-    return AuditLogPage(
-        total=total,
-        skip=skip,
-        limit=limit,
-        items=[AuditLogResponse.model_validate(log) for log in logs],
     )
 
 
@@ -516,11 +516,14 @@ def review_dataset_legacy(
     )
 
 
-@router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
+@router.get(
+    "/experiments/overview",
+    response_model=ExperimentsOverviewResponse,
+    summary="Tổng quan thí nghiệm Train/Test và Evaluation",
+)
 def get_experiments_overview(
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> ExperimentsOverviewResponse:
     """Giám sát trạng thái, metrics và nhật ký chạy thí nghiệm AI/ML."""
-    data = crud_admin.get_experiments_overview_data(db, limit=limit)
-    return ExperimentsOverviewResponse(**data)
+    return monitoring.get_experiments_overview(db, limit=limit)

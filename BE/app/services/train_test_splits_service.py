@@ -35,6 +35,9 @@ SPLIT_LEAKAGE_RULE = (
     "min(test timestamp - lag history duration)"
 )
 HORIZONS = (1, 3, 5)
+RATIO_DIFFERENCE_WARNING = (
+    "train_ratio_actual differs from train_ratio_requested because splits keep whole days or sessions together."
+)
 
 
 @dataclass(frozen=True)
@@ -176,10 +179,6 @@ def build_split_plan(
         for horizon in forecast_horizons
     }
     warnings = []
-    if not math.isclose(actual_ratio, train_ratio, rel_tol=0, abs_tol=1e-12):
-        warnings.append(
-            "train_ratio_actual differs from train_ratio_requested because splits keep whole days or sessions together."
-        )
     if len(train_rows) < 2 or len(test_rows) < 2:
         warnings.append("At least one Train or Test subset contains fewer than two samples.")
 
@@ -219,7 +218,10 @@ def _response(split: LagFeatureSplit) -> LagTrainTestSplitResponse:
         test_sample_count=split.test_sample_count,
         samples_by_horizon=split.samples_by_horizon,
         leakage_check=LagSplitLeakageCheck.model_validate(split.leakage_check),
-        warnings=split.warnings,
+        warnings=[
+            warning for warning in split.warnings
+            if warning != RATIO_DIFFERENCE_WARNING
+        ],
         created_at=split.created_at,
     )
 

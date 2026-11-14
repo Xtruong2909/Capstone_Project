@@ -151,32 +151,39 @@ class Metric(BaseModel):
 class ExperimentComparisonRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     experiment_ids: list[UUID] = Field(min_length=2, max_length=20)
+    forecast_horizons: list[Literal[1, 3, 5]] = Field(default_factory=lambda: [1, 3, 5], min_length=1)
 
     @model_validator(mode="after")
     def unique_ids(self) -> Self:
         if len(set(self.experiment_ids)) != len(self.experiment_ids):
             raise ValueError("Experiment IDs must be distinct")
+        if len(set(self.forecast_horizons)) != len(self.forecast_horizons):
+            raise ValueError("forecast_horizons must be distinct")
         return self
 
 
 class ComparisonMetric(BaseModel):
     mae: float = Field(ge=0, allow_inf_nan=False)
     rmse: float = Field(ge=0, allow_inf_nan=False)
+    sample_count: int = Field(ge=1)
 
 
-class ComparisonExperiment(Hyperparameters):
+class MetricImprovement(BaseModel):
+    mae: float = Field(allow_inf_nan=False)
+    rmse: float = Field(allow_inf_nan=False)
+
+
+class ComparisonExperiment(BaseModel):
     experiment_id: UUID
     experiment_name: str
-    training_time_sec: float | None
-    prediction_time_sec: float | None
-    performance: dict[str, ComparisonMetric]
+    hyperparameters: Hyperparameters
+    performance_by_model_and_horizon: dict[str, dict[str, ComparisonMetric]]
+    improvement_vs_baselines: dict[str, dict[str, MetricImprovement]]
 
 
 class ExperimentComparisonResponse(BaseModel):
+    forecast_horizons: list[int]
     experiments: list[ComparisonExperiment]
-    best_by_horizon: dict[str, str]
-    best_experiment_ids_by_horizon: dict[str, UUID]
-    tied_experiment_ids_by_horizon: dict[str, list[UUID]]
 
 
 class Prediction(BaseModel):
@@ -188,6 +195,8 @@ class Prediction(BaseModel):
     predicted_traffic_flow: float
     absolute_error: float
     squared_error: float
+    dataset_id: UUID | None = None
+    session_id: UUID | None = None
 
 
 class ModelSummary(BaseModel):
@@ -228,22 +237,32 @@ class TrainingLogEntry(BaseModel):
 class TrainingExperimentResponse(BaseModel):
     experiment_id: UUID
     experiment_name: str
-    dataset_version_id: UUID
+    name: str | None = None
+    dataset_version_id: UUID | None
     split_id: UUID
+    train_samples: int | None = None
+    test_samples: int | None = None
     model: str
     forecast_horizons: list[int]
     hyperparameters: Hyperparameters
-    status: Literal["PENDING", "RUNNING", "COMPLETED", "FAILED"]
+    baseline_configuration: dict[str, str] = Field(default_factory=dict)
+    model_ids: dict[str, UUID] = Field(default_factory=dict)
+    status: Literal["PENDING", "QUEUED", "RUNNING", "COMPLETED", "FAILED"]
     training_time_sec: float | None
     prediction_time_sec: float | None
+    training_time_ms: float | None = None
+    prediction_time_ms: float | None = None
     execution_time_sec: float | None
     evaluation_mode: EvaluationMode
     official_evaluation_eligible: bool
     evaluation_policy: str
     performance_by_horizon: dict[str, dict[str, Metric]]
+    performance_by_model_and_horizon: dict[str, dict[str, Metric]] = Field(default_factory=dict)
     prediction_rows: list[Prediction]
     result_tables: ResultTables = Field(default_factory=ResultTables)
     library_versions: dict[str, str]
     logs: list[TrainingLogEntry] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     error: str | None
     created_at: datetime
+    completed_at: datetime | None = None

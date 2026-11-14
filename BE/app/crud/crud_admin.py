@@ -2,13 +2,16 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Text, cast, func, or_
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetVersion
+from app.models.dataset import Dataset, DatasetGroup, DatasetVersion
 from app.models.experiment import Experiment
+from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
 from app.models.model_training import ModelTrainingExperiment, ModelTrainingSplit
+from app.models.traffic import TrafficAggregationJob
 from app.models.user import Role, User
 from app.schemas.admin import UserCreate, UserRoleId
 from app.services.audit_log_service import record_audit_event
@@ -89,6 +92,7 @@ def get_audit_logs(
     user_id: UUID | None = None,
     action: str | None = None,
     module: str | None = None,
+    resource_id: str | None = None,
     status: str | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
@@ -102,6 +106,8 @@ def get_audit_logs(
         query = query.filter(func.lower(AuditLog.action) == action.lower())
     if module:
         query = query.filter(func.lower(AuditLog.module) == module.lower())
+    if resource_id:
+        query = query.filter(AuditLog.resource_id == resource_id)
     if status:
         query = query.filter(AuditLog.status == status)
     if start_date is not None:
@@ -239,107 +245,50 @@ def approve_or_reject_dataset_version(
     return version
 
 
-def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
-    """Return legacy forecasting and persisted Data Scientist training runs."""
-    legacy_total = db.query(Experiment).count()
-    training_total = db.query(ModelTrainingExperiment).count()
-    total_experiments = legacy_total + training_total
+def count_experiments(db: Session, model: type, status: str | None = None) -> int:
+    """Count persisted experiments, optionally restricted to one status."""
+    query = db.query(model)
+    if status is not None:
+        query = query.filter(model.status == status)
+    return query.count()
 
-    def count_status(model: type, value: str) -> int:
-        return db.query(model).filter(model.status == value).count()
 
-    stats = {
-        "total_experiments": total_experiments,
-        "pending_count": count_status(ModelTrainingExperiment, "PENDING"),
-        "running_count": (
-            count_status(Experiment, "RUNNING") + count_status(ModelTrainingExperiment, "RUNNING")
-        ),
-        "completed_count": (
-            count_status(Experiment, "COMPLETED") + count_status(ModelTrainingExperiment, "COMPLETED")
-        ),
-        "failed_count": (
-            count_status(Experiment, "FAILED") + count_status(ModelTrainingExperiment, "FAILED")
-        ),
-    }
-
-    legacy_query = (
+def list_recent_legacy_experiments(db: Session, limit: int) -> list[Experiment]:
+    """Fetch recent legacy forecasting experiments."""
+    return (
         db.query(Experiment)
         .order_by(Experiment.created_at.desc())
         .limit(limit)
         .all()
     )
 
-    experiments: list[dict] = []
-    for exp in legacy_query:
-        metrics_dict = None
-        if exp.evaluation_metric:
-            metrics_dict = {
-                "mae": float(exp.evaluation_metric.mae),
-                "rmse": float(exp.evaluation_metric.rmse),
-            }
 
-        experiments.append({
-            "id": exp.id,
-            "name": exp.name,
-            "model_type": exp.model_type,
-            "target_variable": exp.target_variable,
-            "temporal_aggregation_sec": exp.temporal_aggregation_sec,
-            "status": exp.status,
-            "execution_time_sec": float(exp.execution_time_sec) if exp.execution_time_sec else None,
-            "creator_name": exp.creator.full_name if exp.creator else None,
-            "dataset_version_tag": exp.dataset_version.version_tag if exp.dataset_version else None,
-            "dataset_name": exp.dataset_version.dataset.name if exp.dataset_version and exp.dataset_version.dataset else None,
-            "metrics": metrics_dict,
-            "created_at": exp.created_at,
-            "experiment_type": "FORECASTING",
-            "logs": [],
-        })
-
-    training_query = (
+def list_recent_training_experiments(db: Session, limit: int) -> list[tuple]:
+    """Fetch recent training runs with their saved split and group context."""
+    return (
         db.query(
             ModelTrainingExperiment,
             User.full_name.label("creator_name"),
             DatasetVersion.version_tag.label("dataset_version_tag"),
             Dataset.name.label("dataset_name"),
+            LagFeatureGeneration.id.label("feature_generation_id"),
+            TrafficAggregationJob.id.label("aggregation_id"),
+            TrafficAggregationJob.aggregation_interval.label("aggregation_interval"),
+            DatasetGroup.id.label("group_id"),
+            DatasetGroup.name.label("group_name"),
         )
-        .join(ModelTrainingSplit, ModelTrainingExperiment.split_id == ModelTrainingSplit.id)
-        .join(DatasetVersion, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
-        .join(Dataset, DatasetVersion.dataset_id == Dataset.id)
+        .outerjoin(ModelTrainingSplit, ModelTrainingExperiment.split_id == ModelTrainingSplit.id)
+        .outerjoin(DatasetVersion, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
+        .outerjoin(Dataset, DatasetVersion.dataset_id == Dataset.id)
+        .outerjoin(LagFeatureSplit, ModelTrainingExperiment.lag_feature_split_id == LagFeatureSplit.id)
+        .outerjoin(LagFeatureGeneration, LagFeatureSplit.feature_generation_id == LagFeatureGeneration.id)
+        .outerjoin(TrafficAggregationJob, LagFeatureGeneration.aggregation_id == TrafficAggregationJob.id)
+        .outerjoin(
+            DatasetGroup,
+            DatasetGroup.id == cast(TrafficAggregationJob.job_metadata["group_id"].as_string(), PGUUID),
+        )
         .outerjoin(User, ModelTrainingExperiment.created_by == User.id)
         .order_by(ModelTrainingExperiment.created_at.desc())
         .limit(limit)
         .all()
     )
-    for exp, creator_name, version_tag, dataset_name in training_query:
-        random_forest_h1 = (
-            (exp.performance_by_horizon or {}).get("1", {}).get("random_forest", {})
-        )
-        experiments.append({
-            "id": exp.id,
-            "name": exp.name,
-            "model_type": (exp.configuration or {}).get("model", "RANDOM_FOREST"),
-            "target_variable": "traffic_flow",
-            "temporal_aggregation_sec": 60,
-            "status": exp.status,
-            "execution_time_sec": exp.execution_time_sec,
-            "creator_name": creator_name,
-            "dataset_version_tag": version_tag,
-            "dataset_name": dataset_name,
-            "metrics": {
-                "mae": random_forest_h1["mae"],
-                "rmse": random_forest_h1["rmse"],
-            } if "mae" in random_forest_h1 and "rmse" in random_forest_h1 else None,
-            "created_at": exp.created_at,
-            "experiment_type": "MODEL_TRAINING",
-            "split_id": exp.split_id,
-            "hyperparameters": (exp.configuration or {}).get("hyperparameters"),
-            "evaluation_mode": (exp.evaluation or {}).get("evaluation_mode"),
-            "logs": exp.logs or [],
-        })
-
-    experiments.sort(key=lambda item: item["created_at"], reverse=True)
-
-    return {
-        "stats": stats,
-        "experiments": experiments[:limit],
-    }
