@@ -148,7 +148,7 @@ Group access reuses the existing per-Dataset grants. Every current Dataset in th
 
 `GET /api/v1/datasets/{dataset_id}/preview?page=1&page_size=20&representation=normalized`
 returns a paginated preview from the latest uploaded version without modifying the original
-file. It is available to authenticated Data Engineers, Admins, and Data Scientists/Business Users
+file. It is available to authenticated Data Engineers, Admins, and Data Scientists
 with a dataset access grant. `dataset_id` is the dataset UUID;
 `page_size` must be between 1 and 100. CSV, JSON, XLS, XLSX, and Parquet files are supported.
 For an exactly matching pNEUMA CSV header, the default `normalized` representation expands
@@ -160,7 +160,7 @@ versioned sidecar index next to the immutable uploaded file so later pages do no
 ### Dataset column mapping
 
 These endpoints are available to authenticated Data Engineers. Read-only GET endpoints also allow
-Admins and Data Scientists/Business Users with a dataset access grant; PATCH remains restricted
+Admins and Data Scientists with a dataset access grant; PATCH remains restricted
 to Data Engineers. They configure display/consumer
 column names for the latest uploaded version; they do not transform or overwrite the source file.
 
@@ -231,7 +231,7 @@ user role is one of `data_scientist` or `business_user`.
 | `GET`    | `/api/v1/admin/datasets/{dataset_id}/access`           | List users already granted access to the dataset                 |
 | `DELETE` | `/api/v1/admin/datasets/{dataset_id}/access/{user_id}` | Revoke access                                                    |
 | `GET`    | `/api/v1/datasets/accessible`                          | List datasets visible to the current authenticated user          |
-| `GET`    | `/api/v1/datasets/approved`                            | List approved datasets visible to Data Scientist / Business User |
+| `GET`    | `/api/v1/datasets/approved`                            | List approved datasets visible to Data Scientist |
 
 The key rule is that dataset access is not global; it is scoped by dataset. This is why the admin APIs require
 `dataset_id` in the path and then accept a single `user_id` in the request body when granting access.
@@ -244,7 +244,7 @@ Example grant request:
 }
 ```
 
-Data Scientists and Business Users browse approved data by group, Dataset, then Recording Session:
+Data Scientists browse approved data by group, Dataset, then Recording Session:
 
 1. `GET /api/v1/datasets/approved` lists groups containing at least one approved Dataset granted to the caller. It accepts optional `search` (group name/drone), `skip=0`, and `limit=50` (1–100).
 2. `GET /api/v1/datasets/approved/groups/{group_id}/datasets` lists only approved Datasets in that group granted to the caller. Each item includes the selected approved `version_id`.
@@ -575,11 +575,11 @@ Chưa thấy HTTP API riêng cho Dataset Detail, Download, Analysis, Traffic Agg
 Vì vậy test Business User không được training hiện xác minh dependency dành cho training, không phải một API training đang tồn tại. Khi triển khai các router mới, phải sử dụng dependency phù hợp và phân giải mọi ID file/version/experiment về dataset gốc trước khi trả dữ liệu. Quyền dataset-wide áp dụng cho toàn bộ phiên bản hiện tại và tương lai của dataset đó; không tự bổ sung bộ lọc approval ngoài nghiệp vụ đã có.
 
 
-### DS/BU xem trước dữ liệu đã duyệt
+### Data Scientist xem trước dữ liệu đã duyệt
 
-Trong nhóm Swagger **Data Scientist / Business User**:
+Trong nhóm Swagger **Data Scientist Dataset Access**:
 
-1. Đăng nhập DS/BU và Authorize bằng access token.
+1. Đăng nhập Data Scientist và Authorize bằng access token.
 2. Gọi `GET /api/v1/datasets/approved`, lấy `dataset_id` và `version_id`.
 3. Gọi `GET /api/v1/datasets/{dataset_id}/versions/{version_id}/preview?page=1&page_size=20`.
 
@@ -589,8 +589,15 @@ Response gồm metadata, `dataset_version_id`, `columns`, `rows`, `warnings` và
 `pagination` (page, page_size, returned_rows, has_more, total_rows).
 Áp dụng mapping của đúng phiên bản đã chọn, không tự lấy bản mới nhất.
 
-Chỉ DS/BU có grant dataset và phiên bản được chọn là `APPROVED` mới được xem.
+Chỉ Data Scientist có grant dataset và phiên bản được chọn là `APPROVED` mới được xem.
 Admin/DE, chưa có quyền hoặc phiên bản chưa duyệt: `403`. Thiếu/sai token: `401`.
 Dataset/version không tồn tại, sai dataset cha hoặc thiếu file: `404`.
 Định dạng không hỗ trợ: `415`; tham số sai hoặc lỗi đọc dữ liệu: `422`.
 API chỉ đọc, không sửa file và không trả đường dẫn lưu trữ server.
+
+### Chia sẻ kết quả cho Business User
+
+Business User xem dữ liệu nghiên cứu qua API `/api/shared-results`. Các API nội bộ đọc Dataset,
+Train/Test Split và Experiment không trả dữ liệu cho role này. Data Scientist công bố từng
+resource và bật từng section qua `/api/shares`; việc thu hồi có hiệu lực ở request kế tiếp.
+Xem [hướng dẫn Result Sharing](docs/result_sharing.md) để biết migration, payload và phân trang.

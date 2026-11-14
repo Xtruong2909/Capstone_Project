@@ -35,6 +35,7 @@ from app.models.traffic import (
     TrafficAggregationSessionResult,
     TrafficTimeSeries,
 )
+from app.models import sharing as sharing  # noqa: F401
 from app.models.user import Role, User
 
 __all__ = [

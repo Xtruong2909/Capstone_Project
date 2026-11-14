@@ -17,6 +17,8 @@ from app.api.v1.endpoints.model_training_evaluation import (
     router as model_training_evaluation_router,
 )
 from app.api.v1.endpoints.prediction import router as prediction_router
+from app.api.v1.endpoints.sharing import bu_router as sharing_bu_router
+from app.api.v1.endpoints.sharing import ds_router as sharing_ds_router
 from app.api.v1.endpoints.train_test_splits import router as train_test_splits_router
 from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
 from app.database.database import get_db
@@ -70,6 +72,8 @@ app.include_router(model_training_router, prefix="/api")
 app.include_router(model_training_evaluation_router, prefix="/api")
 app.include_router(prediction_router, prefix="/api")
 app.include_router(ai_assistant_router, prefix="/api")
+app.include_router(sharing_ds_router, prefix="/api/shares", tags=["Chia sẻ kết quả - Data Scientist"])
+app.include_router(sharing_bu_router, prefix="/api/shared-results", tags=["Kết quả được chia sẻ - Business User"])
 
 
 @app.exception_handler(Exception)

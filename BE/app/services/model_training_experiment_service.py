@@ -393,6 +393,8 @@ def get_experiment(
     user: User,
     experiment_id: UUID,
 ) -> TrainingExperimentResponse:
+    if user.role_id == "business_user":
+        raise HTTPException(403, "Business Users must use published shared results")
     experiment = repository.get_experiment(db, experiment_id)
     if experiment is None:
         raise HTTPException(404, "Experiment not found")

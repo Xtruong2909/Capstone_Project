@@ -49,7 +49,7 @@ api_router.include_router(
 api_router.include_router(
     dataset_access.approved_router,
     prefix="/datasets",
-    tags=["Data Scientist / Business User"],
+    tags=["Data Scientist Dataset Access"],
 )
 api_router.include_router(
     ds_temporal_aggregation.router,

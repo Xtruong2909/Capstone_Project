@@ -325,10 +325,16 @@ def test_admin_dataset_catalog_lists_all_datasets_with_search_and_pagination(
 def test_accessible_only_current_user_and_empty_default(state: SimpleNamespace, role: str) -> None:
     target = getattr(state, role)
     state.current = target
-    assert request(state.app, "GET", "/datasets/accessible")[1] == []
+    if role == "business":
+        assert request(state.app, "GET", "/datasets/accessible")[0] == 403
+    else:
+        assert request(state.app, "GET", "/datasets/accessible")[1] == []
     service.grant_access(state.db, state.datasets[0], target.id, state.admin)
     status, body = request(state.app, "GET", f"/datasets/accessible?user_id={state.admin.id}")
-    assert status == 200 and [d["id"] for d in body] == [str(state.datasets[0])]
+    if role == "business":
+        assert status == 403
+    else:
+        assert status == 200 and [d["id"] for d in body] == [str(state.datasets[0])]
 
 
 @pytest.mark.parametrize("role", ["scientist", "business"])
@@ -342,6 +348,10 @@ def test_approved_groups_allowed_roles(
     monkeypatch.setattr(repo, "list_group_datasets", lambda *_: [object(), object()])
     monkeypatch.setattr(repo, "approved_group_dataset_ids_for_user", lambda *_: {state.datasets[0]})
     status, body = request(state.app, "GET", "/datasets/approved?search=Traffic&skip=1&limit=2")
+    if role == "business":
+        assert status == 403
+        query.assert_not_called()
+        return
     assert status == 200
     assert body[0]["group_id"] == str(group.id)
     assert body[0]["approved_datasets"] == 1
@@ -378,7 +388,7 @@ def test_approved_groups_have_hierarchical_swagger_paths() -> None:
         ),
     ):
         operation = paths[path]["get"]
-        assert operation["tags"] == ["Data Scientist / Business User"]
+        assert operation["tags"] == ["Data Scientist Dataset Access"]
         assert expected_params.issubset({item["name"] for item in operation.get("parameters", [])})
     assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions" not in paths
 
@@ -677,7 +687,7 @@ def test_consumer_session_review_guards_and_response(
     monkeypatch.setattr(consumer, "preview_recording_session", preview_session)
     base = f"/datasets/{ds}/versions/{version_id}"
     status, body = request(state.app, "GET", base + "/sessions?page=1&page_size=20")
-    if (role in ("scientist", "business") and approval == "APPROVED") or role == "engineer":
+    if (role == "scientist" and approval == "APPROVED") or role == "engineer":
         assert status == 200
         assert body["sessions"][0]["session_id"] == str(session_id)
         list_sessions.assert_called_once_with(
@@ -716,10 +726,10 @@ def test_consumer_session_review_swagger_and_old_route_removed() -> None:
     assert paths[
         "/api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions"
     ]["get"]["tags"] == [
-        "Data Scientist / Business User"
+        "Data Scientist Dataset Access"
     ]
     assert paths[
         "/api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview"
-    ]["get"]["tags"] == ["Data Scientist / Business User"]
+    ]["get"]["tags"] == ["Data Scientist Dataset Access"]
     assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions" not in paths
     assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview" not in paths

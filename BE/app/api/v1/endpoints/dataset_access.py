@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_current_user, require_admin, require_not_business_user
 from app.database.database import get_db
 from app.models.user import User
 from app.schemas.dataset import (
@@ -31,8 +31,8 @@ from app.services.dataset_consumer_service import (
 )
 
 admin_router = APIRouter(dependencies=[Depends(require_admin)])
-router = APIRouter()
-approved_router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_not_business_user)])
+approved_router = APIRouter(dependencies=[Depends(require_not_business_user)])
 
 
 @admin_router.get(
@@ -249,7 +249,7 @@ def accessible_datasets(
 @approved_router.get(
     "/approved",
     response_model=list[GroupAccessCatalogItem],
-    summary="Danh sách nhóm Dataset đã duyệt và được cấp quyền cho DS/BU",
+    summary="Danh sách nhóm Dataset đã duyệt cho Data Scientist",
 )
 def approved_groups(
     search: str | None = Query(None, max_length=255),
@@ -264,7 +264,7 @@ def approved_groups(
 @approved_router.get(
     "/approved/groups/{group_id}/datasets",
     response_model=GroupDatasetListResponse,
-    summary="DS/BU xem các Dataset đã duyệt trong nhóm",
+    summary="Data Scientist xem các Dataset đã duyệt trong nhóm",
 )
 def approved_group_datasets(
     group_id: UUID,
@@ -277,7 +277,7 @@ def approved_group_datasets(
 @approved_router.get(
     "/approved/groups/{group_id}/datasets/{dataset_id}/sessions",
     response_model=RecordingSessionListResponse,
-    summary="DS/BU xem các Recording Session của Dataset đã duyệt trong nhóm",
+    summary="Data Scientist xem các Recording Session của Dataset đã duyệt",
 )
 def approved_group_sessions(
     group_id: UUID,
@@ -295,7 +295,7 @@ def approved_group_sessions(
 @approved_router.get(
     "/approved/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
     response_model=RecordingSessionPreviewResponse,
-    summary="DS/BU xem dữ liệu Recording Session đã duyệt trong nhóm",
+    summary="Data Scientist xem dữ liệu Recording Session đã duyệt",
 )
 def approved_group_session_preview(
     group_id: UUID,
@@ -319,7 +319,7 @@ def approved_group_session_preview(
     "/{dataset_id}/versions/{version_id}/sessions",
     response_model=RecordingSessionListResponse,
     include_in_schema=False,
-    summary="DS/BU xem danh sách Recording Sessions của Dataset Version đã duyệt",
+    summary="Data Scientist xem Recording Sessions của Dataset Version đã duyệt",
     responses={
         403: {"description": "Sai vai trò, chưa có quyền hoặc phiên bản chưa duyệt"},
         404: {"description": "Không tìm thấy dataset, phiên bản hoặc file"},
@@ -347,7 +347,7 @@ def list_consumer_dataset_sessions(
     "/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview",
     response_model=RecordingSessionPreviewResponse,
     include_in_schema=False,
-    summary="DS/BU xem trước nội dung CSV của một Recording Session",
+    summary="Data Scientist xem trước CSV của một Recording Session",
     responses={
         403: {"description": "Không có quyền hoặc Version chưa được duyệt"},
         404: {"description": "Không tìm thấy Dataset, Version, Session hoặc file"},
