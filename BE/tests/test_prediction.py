@@ -4,6 +4,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import HTTPException
@@ -19,6 +20,20 @@ from app.models.user import User
 from app.schemas.prediction import ForecastRequest
 from app.services import prediction_service as service
 from app.services.lag_window_service import VehicleObservation, latest_lags
+
+
+def test_prediction_timestamps_use_athens_offset_for_recording_date() -> None:
+    winter_origin = datetime(2018, 11, 1, 6, 14, tzinfo=UTC)
+    winter_display = service._display_time(winter_origin)
+    assert winter_display.isoformat() == "2018-11-01T08:14:00+02:00"
+    assert service._display_iso("2018-11-01T06:14:00+00:00") == winter_display.isoformat()
+    assert (winter_display + timedelta(minutes=1)).isoformat() == "2018-11-01T08:15:00+02:00"
+    assert winter_display.astimezone(UTC) == winter_origin
+
+    summer_origin = datetime(2018, 7, 1, 6, 14, tzinfo=UTC)
+    summer_display = service._display_time(summer_origin)
+    assert summer_display.isoformat() == "2018-07-01T09:14:00+03:00"
+    assert summer_display.tzinfo == ZoneInfo("Europe/Athens")
 
 
 def test_only_vietnamese_prediction_routes_are_documented() -> None:
@@ -122,6 +137,7 @@ def test_seven_prediction_apis_with_saved_artifacts(monkeypatch: pytest.MonkeyPa
                 "experiment_id": experiment_id, "eligible_only": True,
             })
             assert sessions.status_code == 200, sessions.text
+            assert sessions.json()["timestamp_timezone"] == "Europe/Athens"
             assert sessions.json()["total_records"] > 0
             session_id = sessions.json()["sessions"][0]["session_id"]
             payload = {"experiment_id": experiment_id, "session_ids": [session_id],
@@ -130,6 +146,7 @@ def test_seven_prediction_apis_with_saved_artifacts(monkeypatch: pytest.MonkeyPa
             assert forecast.status_code == 201, forecast.text
             result = forecast.json()
             assert result["status"] == "COMPLETED"
+            assert result["timestamp_timezone"] == "Europe/Athens"
             assert result["experiment_id"] == experiment_id
             assert result["results_by_session"][0]["lag_features"].keys() == {
                 f"lag_{i}" for i in range(1, 6)
@@ -142,14 +159,17 @@ def test_seven_prediction_apis_with_saved_artifacts(monkeypatch: pytest.MonkeyPa
             detail = client.get(f"/api/prediction/forecasts/{forecast_id}")
             assert detail.status_code == 200
             assert detail.json()["session_ids"] == [session_id]
+            assert detail.json()["session_snapshots"][0]["forecast_origin_time"] == result["results_by_session"][0]["forecast_origin_time"]
             table = client.get(f"/api/prediction/forecasts/{forecast_id}/results", params={
                 "session_id": session_id, "page_size": 2,
             })
             assert table.status_code == 200
             assert table.json()["total_records"] == 3
             assert len(table.json()["results"]) == 2
+            assert table.json()["timestamp_timezone"] == "Europe/Athens"
             assert all(row["actual_vehicle_count"] is None for row in table.json()["results"])
             origin = datetime.fromisoformat(result["results_by_session"][0]["forecast_origin_time"])
+            assert origin.utcoffset() == origin.astimezone(ZoneInfo("Europe/Athens")).utcoffset()
             for point in result["results_by_session"][0]["predictions"]:
                 assert datetime.fromisoformat(point["forecast_timestamp"]) == origin + timedelta(minutes=point["horizon"])
                 assert point["model_id"] == experiment["model_ids"][str(point["horizon"])]
@@ -157,6 +177,8 @@ def test_seven_prediction_apis_with_saved_artifacts(monkeypatch: pytest.MonkeyPa
             assert chart.status_code == 200
             assert len(chart.json()["historical"]) == 5
             assert len(chart.json()["forecast"]) == 3
+            assert chart.json()["timestamp_timezone"] == "Europe/Athens"
+            assert chart.json()["historical"][-1]["timestamp"] == origin.isoformat()
             absent = client.post("/api/prediction/forecasts", json={
                 **payload, "session_ids": [str(uuid4())],
             })

@@ -1,48 +1,31 @@
 # Trợ lý AI cho Data Scientist
 
-Backend dùng thư viện `google-genai`. Scope guard chạy trước truy vấn dữ liệu
-và trước Gemini. Câu ngoài phạm vi trả về câu từ chối cố định; câu thiếu ngữ
-cảnh được yêu cầu làm rõ. Với yêu cầu hợp lệ, backend lấy tối đa bốn trích
-đoạn từ `ai_assistant_knowledge.md` và tài liệu mô hình/feature/split/prediction
-liên quan bằng truy xuất từ khóa. Không gửi prompt vượt phạm vi sang Gemini.
+`POST /api/ai/assistant` yêu cầu Bearer token của Data Scientist hoặc Admin. Backend giới hạn 10 lượt/phút/người dùng trong một process. Cấu hình `GEMINI_API_KEY`, `GEMINI_MODEL` và `GEMINI_TIMEOUT_MS` trong `BE/.env`.
 
-System prompt cố định chỉ cho phép hỗ trợ đồ án UAV/pNEUMA, phân tích dữ liệu,
-lag features, train/test, Random Forest, thí nghiệm, MAE/RMSE và dự báo giao
-thông. Câu hỏi, dữ liệu database và tài liệu truy xuất luôn được coi là dữ liệu
-tham khảo không đáng tin cậy, không thể ghi đè quy tắc. Không có kết quả cụ thể
-thì trợ lý phải nói rõ thiếu dữ liệu; không được tự tạo số liệu hoặc kết quả
-thí nghiệm. Gemini được yêu cầu trả lời bằng tiếng Việt Unicode có đầy đủ dấu;
-các thuật ngữ kỹ thuật tiếng Anh có thể giữ nguyên.
+Trợ lý nhận một trong năm `action`: `CHAT`, `EXPERIMENT_ANALYSIS`, `MODEL_RECOMMENDATION`, `EXPERIMENT_COMPARISON`, `FORECAST_EXPLANATION`. Response giữ `action`, `status`, `result`. Chỉ phần diễn giải được gửi đến Gemini; chỉ số, ID, lựa chọn thí nghiệm tốt nhất và dữ liệu dự báo lấy từ PostgreSQL sau kiểm tra quyền.
 
-Backend dùng thư viện `google-genai`. Thêm các biến sau vào `BE/.env` (không đưa API key lên Frontend hoặc Git), rồi khởi động lại Backend:
-
-```dotenv
-GEMINI_API_KEY=<api-key-của-bạn>
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_TIMEOUT_MS=30000
-```
-
-Endpoint duy nhất: `POST /api/ai/assistant`, yêu cầu Bearer token của Data Scientist hoặc Admin. Mỗi người dùng tối đa 10 lượt/phút trong một process Backend; giới hạn của Google vẫn áp dụng riêng.
-
-Ví dụ phân tích một thí nghiệm đã hoàn thành:
+Ví dụ phân tích thí nghiệm hiện tại:
 
 ```json
-{
-  "action": "EXPERIMENT_ANALYSIS",
-  "experiment_ids": ["5af4e12e-0b70-4516-936f-2376f550f9fe"]
-}
+{"action":"EXPERIMENT_ANALYSIS","experiment_ids":["EXPERIMENT_UUID"]}
 ```
 
-Đổi `action` thành `MODEL_RECOMMENDATION` để nhận cấu hình Random Forest hợp lệ; dùng một hoặc nhiều `experiment_ids`. Để so sánh, dùng `EXPERIMENT_COMPARISON` và ít nhất hai ID. Backend chỉ chọn thí nghiệm có MAE trung bình nhỏ nhất (RMSE trung bình phân xử) khi cùng dataset version, split, chính sách đánh giá và tập Test. Kết quả không đạt điều kiện chính thức vẫn được cảnh báo.
+Để so sánh, dùng `EXPERIMENT_COMPARISON` với ít nhất hai `experiment_ids`. Trợ lý chỉ chọn `best_experiment_id` khi các thí nghiệm cùng Split, chính sách đánh giá, horizon và tập Test. Các chỉ số Random Forest, Persistence và Historical Average được tính từ kết quả Test đã lưu, không lấy từ một hàng dự báo đơn lẻ.
 
-Để giải thích dự báo, dùng `FORECAST_EXPLANATION` với `prediction_id` là ID của một dòng trong `forecast_results`. Backend đọc cả ba horizon thuộc cùng Final Model và thời điểm quan sát. Chat thông thường chỉ cần `{"action":"CHAT","message":"Random Forest hoạt động như thế nào?"}`. Muốn hỏi về số liệu của dự án, thêm `experiment_ids`, `prediction_id`, `model_id` hoặc `dataset_version_id` để giới hạn phạm vi dữ liệu được truy xuất. Mọi truy vấn đều là truy vấn cố định trong repository và kiểm tra quyền dataset; không có SQL do Gemini tạo.
+Giải thích dự báo hiện tại dùng `FORECAST_EXPLANATION` với `forecast_id` là UUID trả về từ `POST /api/prediction/forecasts`:
 
-Response giữ envelope `action`, `status`, `result`; trường trong `result` phụ thuộc action:
+```json
+{"action":"FORECAST_EXPLANATION","forecast_id":"FORECAST_UUID"}
+```
 
-- `CHAT`: chỉ `message`.
-- `EXPERIMENT_ANALYSIS`: `summary`, `strengths`, `weaknesses`, `recommendations`.
-- `MODEL_RECOMMENDATION`: `summary`, `suggested_configuration`, `reason`.
-- `EXPERIMENT_COMPARISON`: `summary`, `best_experiment_id`, `comparison`. Mỗi mục comparison lấy từ số liệu đã lưu; `best_experiment_id` bị lược bỏ nếu các thí nghiệm không đủ điều kiện so sánh.
-- `FORECAST_EXPLANATION`: `summary`, `forecast_trends`, `explanation`.
+Trợ lý đọc các Session và horizon của lần dự báo đó. Thời gian trong ngữ cảnh dự báo là Europe/Athens, với offset đúng ngày ghi hình. Chỉ người tạo được hỏi về dự báo của mình; Admin có thể xem nếu có quyền đối với dữ liệu. `prediction_id` kiểu số và `dataset_version_id` vẫn được chấp nhận để tương thích API cũ.
 
-Trường không có dữ liệu hoặc không áp dụng được lược bỏ, không trả `null`. Gemini chỉ tạo phần diễn giải; số liệu comparison và forecast lấy từ PostgreSQL. Backend yêu cầu Gemini trả JSON theo schema riêng của action rồi xác thực bằng Pydantic.
+Chat về nhóm và các thí nghiệm của nó bằng `group_id`:
+
+```json
+{"action":"CHAT","group_id":"GROUP_UUID","message":"Phân tích thí nghiệm mới nhất của nhóm này"}
+```
+
+Backend chọn lượt Aggregation đã hoàn thành mới nhất của nhóm. Có thể dùng `aggregation_id` để chỉ định một lượt cụ thể; nếu gửi cả hai ID, chúng phải thuộc cùng nhóm.
+
+Nếu câu hỏi chỉ nêu khái niệm, `CHAT` chỉ cần `message`. Hệ thống giới hạn chủ đề, truy xuất tài liệu dự án theo từ khóa và không cho Gemini chạy truy vấn hoặc sửa dữ liệu. Nếu không có dữ liệu được lưu, trợ lý phải nói rõ không đủ thông tin thay vì tạo số liệu.

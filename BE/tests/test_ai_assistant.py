@@ -12,7 +12,11 @@ from google.genai import errors
 from app.schemas.ai_assistant import AssistantAction, AssistantRequest, AssistantResult
 from app.services import ai_assistant_service as service
 from app.services import gemini_service
-from app.services.ai_intent_service import infer_action, prediction_id_from_question
+from app.services.ai_intent_service import (
+    forecast_id_from_question,
+    infer_action,
+    prediction_id_from_question,
+)
 
 
 def _experiment(experiment_id, split_id, *, mae=12.0, eligible=False, test_origin=None):
@@ -221,6 +225,138 @@ def test_forecast_id_detection_does_not_confuse_horizon_with_record_id():
     assert infer_action("Giải thích dự báo này") == AssistantAction.FORECAST_EXPLANATION
     assert prediction_id_from_question("Giải thích dự báo +1, +3, +5 phút") is None
     assert prediction_id_from_question("Giải thích dự báo ID #42") == 42
+    forecast_id = uuid4()
+    assert forecast_id_from_question(f"Giải thích forecast_id: {forecast_id}") == forecast_id
+    assert forecast_id_from_question("Giải thích dự báo +1, +3, +5 phút") is None
+
+
+def test_chat_selects_structured_action_when_current_ids_are_supplied():
+    user = SimpleNamespace(id=uuid4(), role_id="data_scientist")
+    forecast_id, experiment_id = uuid4(), uuid4()
+    forecast_request = service._resolve_chat_action(None, AssistantRequest(
+        message="Giải thích dự báo này", forecast_id=forecast_id,
+    ), user)
+    experiment_request = service._resolve_chat_action(None, AssistantRequest(
+        message="Phân tích thí nghiệm này", experiment_ids=[experiment_id],
+    ), user)
+    assert forecast_request.action == AssistantAction.FORECAST_EXPLANATION
+    assert experiment_request.action == AssistantAction.EXPERIMENT_ANALYSIS
+
+
+@pytest.fixture
+def lag_experiment_facts(monkeypatch):
+    experiment_id, split_id, generation_id, aggregation_id = (uuid4() for _ in range(4))
+    experiment = SimpleNamespace(
+        id=experiment_id, name="Ex-05", split_id=None,
+        lag_feature_split_id=split_id, status="COMPLETED",
+        configuration={"model": "RANDOM_FOREST", "forecast_horizons": [1, 3, 5],
+                       "hyperparameters": {"n_estimators": 100}},
+        evaluation={"evaluation_mode": "exploratory",
+                    "evaluation_policy": "persisted-lag-feature-split",
+                    "official_evaluation_eligible": True},
+        training_time_sec=1.0, prediction_time_sec=0.1,
+    )
+    split = SimpleNamespace(id=split_id)
+    generation = SimpleNamespace(id=generation_id, aggregation_id=aggregation_id)
+    monkeypatch.setattr(service.repo, "get_experiment", lambda db, key: experiment)
+    monkeypatch.setattr(service, "get_accessible_split", lambda db, user, key: (split, generation))
+    monkeypatch.setattr(service.repo, "get_aggregation_job", lambda db, key:
+                        SimpleNamespace(job_metadata={"group_id": str(uuid4())}))
+    monkeypatch.setattr(service.repo, "get_evaluation_metrics", lambda db, key: [
+        (model, horizon, 2, 1.5, 4.0)
+        for model in ("RANDOM_FOREST", "PERSISTENCE", "HISTORICAL_AVERAGE")
+        for horizon in (1, 3, 5)
+    ])
+    dataset_id, session_id = uuid4(), uuid4()
+    origin = datetime(2018, 11, 1, 6, 10, tzinfo=UTC)
+    monkeypatch.setattr(service.repo, "get_test_signature", lambda db, key: [
+        (dataset_id, session_id, horizon, origin + timedelta(minutes=i),
+         origin + timedelta(minutes=i + horizon), 10.0)
+        for horizon in (1, 3, 5) for i in range(2)
+    ])
+    user = SimpleNamespace(id=uuid4(), role_id="data_scientist")
+    return experiment_id, aggregation_id, user, dataset_id, session_id, origin
+
+
+def test_lag_experiment_uses_saved_test_metrics(lag_experiment_facts, monkeypatch):
+    experiment_id, aggregation_id, user, *_ = lag_experiment_facts
+    captured = {}
+    def fake_analysis(action, context, message):
+        captured.update(context)
+        return AssistantResult(summary="Đã phân tích")
+    monkeypatch.setattr(service, "generate_analysis", fake_analysis)
+    monkeypatch.setattr(service, "get_accessible_temporal_jobs", lambda db, user, key: [])
+    result = service.run_assistant(None, AssistantRequest(
+        action="EXPERIMENT_ANALYSIS", experiment_ids=[experiment_id],
+        aggregation_id=aggregation_id,
+    ), user)
+    fact = captured["experiments"][0]
+    assert result.result.summary == "Đã phân tích"
+    assert fact["aggregation_id"] == str(aggregation_id)
+    assert fact["test_sample_count"] == 2
+    assert fact["performance_by_horizon"]["3"]["random_forest"] == {
+        "mae": 1.5, "rmse": 2.0,
+    }
+
+
+def test_new_forecast_uses_athens_time_and_saved_rows(lag_experiment_facts, monkeypatch):
+    experiment_id, _, user, dataset_id, session_id, origin = lag_experiment_facts
+    forecast_id = uuid4()
+    run = SimpleNamespace(
+        id=forecast_id, experiment_id=experiment_id, created_by=user.id,
+        status="COMPLETED", session_count=1, session_errors=[],
+    )
+    monkeypatch.setattr(service.repo, "get_prediction_run", lambda db, key: run)
+    monkeypatch.setattr(service.repo, "get_prediction_results", lambda db, key: [
+        SimpleNamespace(dataset_id=dataset_id, session_id=session_id, model_id=uuid4(),
+                        horizon=h, forecast_origin_time=origin,
+                        forecast_timestamp=origin + timedelta(minutes=h),
+                        predicted_vehicle_count=10.5, actual_vehicle_count=None,
+                        lag_features={"lag_1": 9})
+        for h in (1, 3, 5)
+    ])
+    captured = {}
+    def fake_analysis(action, context, message):
+        captured.update(context)
+        return AssistantResult(summary="Xu hướng", forecast_trends=["Ổn định"],
+                               explanation="Ba mốc dự báo đã lưu")
+    monkeypatch.setattr(service, "generate_analysis", fake_analysis)
+    result = service.run_assistant(None, AssistantRequest(
+        action="FORECAST_EXPLANATION", forecast_id=forecast_id,
+    ), user)
+    assert result.result.summary == "Xu hướng"
+    assert captured["forecast"]["forecasts"][0]["forecast_time"] == "2018-11-01T08:11:00+02:00"
+    assert all(item["actual_vehicle_count"] is None for item in captured["forecast"]["forecasts"])
+    run.created_by = uuid4()
+    with pytest.raises(HTTPException) as exc:
+        service.run_assistant(None, AssistantRequest(
+            action="FORECAST_EXPLANATION", forecast_id=forecast_id,
+        ), user)
+    assert exc.value.status_code == 404
+
+
+def test_group_id_resolves_latest_completed_aggregation(monkeypatch):
+    group_id, aggregation_id = uuid4(), uuid4()
+    user = SimpleNamespace(id=uuid4(), role_id="data_scientist")
+    job = SimpleNamespace(
+        id=aggregation_id, job_metadata={"group_id": str(group_id)},
+        total_sessions=20, records_created=301,
+    )
+    monkeypatch.setattr(service.repo, "get_latest_group_aggregation", lambda db, key: job)
+    monkeypatch.setattr(service, "get_accessible_temporal_jobs", lambda db, user, key: [job])
+    monkeypatch.setattr(service.repo, "list_recent_aggregation_experiments", lambda db, key: [])
+    captured = {}
+    def fake_analysis(action, context, message):
+        captured.update(context)
+        return AssistantResult(message="Nhóm có 20 phiên ghi hình.")
+    monkeypatch.setattr(service, "generate_analysis", fake_analysis)
+    response = service.run_assistant(None, AssistantRequest(
+        action="CHAT", group_id=group_id, message="Nhóm dataset này có bao nhiêu session?",
+    ), user)
+    assert response.result.message == "Nhóm có 20 phiên ghi hình."
+    assert captured["aggregation_id"] == str(aggregation_id)
+    assert captured["group_id"] == str(group_id)
+    assert captured["sessions"] == 20
 
 
 def test_chat_automatically_recommends_from_latest_experiment(facts, monkeypatch):
@@ -552,7 +688,7 @@ def test_chat_scope_gate_retrieves_project_knowledge(monkeypatch):
     assert seen["action"] == AssistantAction.CHAT
     assert any(
         item["source"] == "ai_assistant_knowledge.md"
-        and "feature_engineering.md" in item["content"]
+        and "lag_1" in item["content"]
         for item in seen["context"]["knowledge_base"]
     )
 

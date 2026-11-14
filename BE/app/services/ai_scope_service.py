@@ -28,6 +28,10 @@ _PROJECT_TERMS = (
     "experiment",
     "train test",
     "experiment id",
+    "aggregation_id",
+    "forecast_id",
+    "session_id",
+    "group_id",
     "thí nghiệm",
     "mae",
     "rmse",
@@ -59,10 +63,8 @@ _AMBIGUOUS_PHRASES = (
 _DOCUMENT_ROOT = Path(__file__).resolve().parents[2] / "docs"
 _KNOWLEDGE_FILES = (
     "ai_assistant_knowledge.md",
-    "feature_engineering.md",
-    "train_test_split.md",
     "model_training.md",
-    "model_prediction.md",
+    "prediction.md",
 )
 _MAX_CHUNKS = 4
 _MAX_CHUNK_CHARS = 1800

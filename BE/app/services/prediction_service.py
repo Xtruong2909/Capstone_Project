@@ -7,6 +7,7 @@ import math
 import time
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import numpy as np
 from fastapi import HTTPException
@@ -44,6 +45,7 @@ from app.services.train_test_splits_service import get_accessible_split
 
 HORIZONS = (1, 3, 5)
 FEATURE_ORDER = tuple(f"lag_{number}" for number in range(1, 6))
+ATHENS = ZoneInfo("Europe/Athens")
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,15 @@ def _require_scientist(user: User) -> None:
 
 def _utc(value: datetime) -> datetime:
     return (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC)
+
+
+def _display_time(value: datetime) -> datetime:
+    """Convert a stored UTC instant to the recording's Athens wall time."""
+    return _utc(value).astimezone(ATHENS)
+
+
+def _display_iso(value: str) -> str:
+    return _display_time(datetime.fromisoformat(value)).isoformat()
 
 
 def _experiment_scope(
@@ -220,8 +231,8 @@ def list_sessions(
         sessions.append(PredictionSession(
             session_id=session.id, dataset_id=job.dataset_id,
             dataset_version_id=version.id,
-            start_time=_utc(bins[0].time_bucket) if bins else None,
-            end_time=_utc(bins[-1].time_bucket) if bins else None,
+            start_time=_display_time(bins[0].time_bucket) if bins else None,
+            end_time=_display_time(bins[-1].time_bucket) if bins else None,
             aggregation_interval=job.aggregation_interval,
             total_records=len(bins), available_consecutive_minutes=streak,
             prediction_eligible=eligible, ineligible_reason=reason,
@@ -239,13 +250,13 @@ def _run_response(db: Session, run: PredictionRun, experiment: ModelTrainingExpe
         by_session[snapshot["session_id"]] = ForecastSessionResult(
             session_id=snapshot["session_id"], dataset_id=snapshot["dataset_id"],
             dataset_version_id=snapshot["dataset_version_id"],
-            forecast_origin_time=snapshot["forecast_origin_time"],
+            forecast_origin_time=_display_time(datetime.fromisoformat(snapshot["forecast_origin_time"])),
             lag_features=snapshot["lag_features"], predictions=[],
         )
     for row in repo.run_results(db, run.id):
         by_session[str(row.session_id)].predictions.append(ForecastPrediction(
             horizon=row.horizon, model_id=row.model_id,
-            forecast_timestamp=_utc(row.forecast_timestamp),
+            forecast_timestamp=_display_time(row.forecast_timestamp),
             predicted_vehicle_count=row.predicted_vehicle_count,
             actual_vehicle_count=row.actual_vehicle_count,
         ))
@@ -254,7 +265,7 @@ def _run_response(db: Session, run: PredictionRun, experiment: ModelTrainingExpe
         experiment_name=experiment.name, status=run.status,
         results_by_session=list(by_session.values()),
         session_errors=run.session_errors, prediction_time_ms=run.prediction_time_ms,
-        created_at=_utc(run.created_at),
+        created_at=_display_time(run.created_at),
     )
 
 
@@ -423,7 +434,7 @@ def forecast_history(
             forecast_id=run.id, experiment_id=run.experiment_id,
             experiment_name=name, session_count=run.session_count,
             forecast_horizons=run.requested_horizons, status=run.status,
-            prediction_time_ms=run.prediction_time_ms, created_at=_utc(run.created_at),
+            prediction_time_ms=run.prediction_time_ms, created_at=_display_time(run.created_at),
         ))
     return ForecastHistoryResponse(forecasts=visible, total_records=total, page=page, page_size=page_size)
 
@@ -436,9 +447,16 @@ def forecast_detail(db: Session, user: User, run_id: UUID) -> ForecastDetail:
         hyperparameters=(experiment.configuration or {}).get("hyperparameters", {}),
         selected_model_ids={key: value["model_id"] for key, value in run.model_artifacts.items()},
         session_ids=[item["session_id"] for item in run.session_snapshots],
-        session_snapshots=run.session_snapshots,
+        session_snapshots=[{
+            **snapshot,
+            "forecast_origin_time": _display_iso(snapshot["forecast_origin_time"]),
+            "historical": [
+                {**point, "timestamp": _display_iso(point["timestamp"])}
+                for point in snapshot["historical"]
+            ],
+        } for snapshot in run.session_snapshots],
         prediction_time_ms=run.prediction_time_ms, status=run.status,
-        created_at=_utc(run.created_at),
+        created_at=_display_time(run.created_at),
     )
 
 
@@ -454,8 +472,8 @@ def forecast_results(
         forecast_id=run_id, total_records=total, page=page, page_size=page_size,
         results=[ForecastResultRow(
             session_id=row.session_id, experiment_id=row.experiment_id, model_id=row.model_id,
-            horizon=row.horizon, forecast_origin_time=_utc(row.forecast_origin_time),
-            forecast_timestamp=_utc(row.forecast_timestamp),
+            horizon=row.horizon, forecast_origin_time=_display_time(row.forecast_origin_time),
+            forecast_timestamp=_display_time(row.forecast_timestamp),
             predicted_vehicle_count=row.predicted_vehicle_count,
             actual_vehicle_count=row.actual_vehicle_count,
             absolute_error=(abs(row.actual_vehicle_count - row.predicted_vehicle_count)
@@ -474,7 +492,11 @@ def forecast_chart(
         raise HTTPException(404, "Phiên ghi hình không có dự báo trong lần chạy này")
     rows = [row for row in repo.run_results(db, run_id) if row.session_id == session_id]
     return ForecastChart(
-        forecast_id=run_id, session_id=session_id, historical=snapshot["historical"],
-        forecast=[{"timestamp": _utc(row.forecast_timestamp), "horizon": row.horizon,
+        forecast_id=run_id, session_id=session_id,
+        historical=[
+            {**point, "timestamp": _display_iso(point["timestamp"])}
+            for point in snapshot["historical"]
+        ],
+        forecast=[{"timestamp": _display_time(row.forecast_timestamp), "horizon": row.horizon,
                    "predicted_vehicle_count": row.predicted_vehicle_count} for row in rows],
     )

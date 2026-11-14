@@ -32,7 +32,8 @@ SYSTEM_PROMPT = (
 ACTION_INSTRUCTIONS = {
     AssistantAction.EXPERIMENT_ANALYSIS: (
         "Trả về JSON chỉ gồm summary, strengths, weaknesses, recommendations. "
-        "Phân tích MAE/RMSE theo từng horizon; không tự tạo chỉ số."
+        "Phân tích MAE/RMSE của Random Forest và hai baseline trên cùng tập Test "
+        "theo từng horizon; không tự tạo chỉ số."
     ),
     AssistantAction.MODEL_RECOMMENDATION: (
         "Trả về JSON chỉ gồm summary, suggested_configuration, reason. Đề xuất cấu hình "
@@ -48,15 +49,17 @@ ACTION_INSTRUCTIONS = {
         "Trả về JSON chỉ gồm summary, forecast_trends (mảng xu hướng theo các horizon), "
         "explanation. "
         "Giải thích dự báo +1,+3,+5 phút và xu hướng. "
-        "Không khẳng định sai số hay giá trị thực tế khi actual_value là null."
+        "Phân biệt session_id nếu dự báo nhiều session. Thời gian dự báo dùng múi giờ "
+        "Europe/Athens trong context. Không khẳng định sai số hay giá trị thực tế "
+        "khi actual_vehicle_count là null."
     ),
     AssistantAction.CHAT: (
         "Trả về JSON chỉ gồm message. "
         "Chỉ trả lời kiến thức về phân tích dữ liệu và dự báo giao thông trong phạm vi đồ án. "
-        "Khi người dùng yêu cầu phân tích dataset hiện tại, dùng metadata, quality_check và "
-        "traffic_overview trong context để nêu nhận xét cụ thể, phân biệt số bản ghi file "
-        "với số điểm tổng hợp theo thời gian. Nếu chưa có báo cáo hay dữ liệu tổng hợp, "
-        "nói rõ phần đó chưa có. "
+        "Khi có aggregation_id, dùng số dataset, session, time bin và thí nghiệm "
+        "đã lưu trong context. Khi có dataset_version_id cũ, dùng metadata, "
+        "quality_check và traffic_overview nếu chúng hiện diện. Phân biệt số bản ghi "
+        "file với số điểm tổng hợp theo thời gian. "
         "Nếu không có dữ liệu dự án, có thể giải thích khái niệm liên quan nhưng không bịa số liệu."
     ),
 }

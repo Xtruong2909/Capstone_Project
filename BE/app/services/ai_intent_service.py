@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+from uuid import UUID
 
 from app.schemas.ai_assistant import AssistantAction
 
@@ -48,3 +49,15 @@ def prediction_id_from_question(question: str) -> int | None:
     normalized = normalize_question(question)
     match = re.search(r"(?:prediction id|du bao id|id du bao|#)\s*#?\s*(\d+)\b", normalized)
     return int(match.group(1)) if match else None
+
+
+def forecast_id_from_question(question: str) -> UUID | None:
+    """Resolve only a labeled forecast UUID, never a horizon or unrelated ID."""
+    match = re.search(
+        r"(?:forecast_id|forecast id|id dự báo|mã dự báo)\s*[:#]?\s*"
+        r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b",
+        question,
+        flags=re.IGNORECASE,
+    )
+    return UUID(match.group(1)) if match else None

@@ -23,8 +23,17 @@ class AssistantRequest(BaseModel):
     action: AssistantAction = AssistantAction.CHAT
     experiment_ids: list[UUID] = Field(default_factory=list, max_length=20)
     prediction_id: int | None = Field(default=None, ge=1)
+    forecast_id: UUID | None = Field(
+        default=None, description="ID lần dự báo từ POST /api/prediction/forecasts",
+    )
     model_id: UUID | None = None
     dataset_version_id: UUID | None = None
+    aggregation_id: UUID | None = Field(
+        default=None, description="ID lượt tổng hợp thời gian của nhóm Dataset",
+    )
+    group_id: UUID | None = Field(
+        default=None, description="ID nhóm Dataset; dùng Aggregation đã hoàn thành mới nhất của nhóm",
+    )
     message: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
@@ -38,8 +47,11 @@ class AssistantRequest(BaseModel):
             raise ValueError("Đề xuất mô hình cần ít nhất một experiment_id")
         if self.action == AssistantAction.EXPERIMENT_COMPARISON and count < 2:
             raise ValueError("So sánh cần ít nhất hai experiment_id")
-        if self.action == AssistantAction.FORECAST_EXPLANATION and self.prediction_id is None:
-            raise ValueError("Giải thích dự báo cần prediction_id")
+        if self.prediction_id is not None and self.forecast_id is not None:
+            raise ValueError("Chỉ chọn một trong forecast_id hoặc prediction_id")
+        if (self.action == AssistantAction.FORECAST_EXPLANATION
+                and self.prediction_id is None and self.forecast_id is None):
+            raise ValueError("Giải thích dự báo cần forecast_id")
         if self.action == AssistantAction.CHAT and not (self.message and self.message.strip()):
             raise ValueError("Chat cần nội dung message")
         return self

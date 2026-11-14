@@ -16,7 +16,7 @@ The Data Scientist selects a completed experiment and one or more recording sess
 
 Apply `migrations/20261128_manual_prediction.sql` to PostgreSQL before starting the new API. The existing experiment, aggregation and legacy prediction APIs remain available.
 
-The origin timestamp is the timestamp of the last observed aggregation bin, matching the timestamp convention in Lag Feature Generation. Forecasts are at origin plus 1, 3 or 5 minutes. Database and API timestamps are UTC; responses identify `Europe/Athens` as the display timezone.
+The origin timestamp is the timestamp of the last observed aggregation bin, matching the timestamp convention in Lag Feature Generation. Forecasts are at origin plus 1, 3 or 5 minutes. PostgreSQL retains UTC instants. Prediction API timestamps are serialized in `Europe/Athens` with the correct UTC offset for the recording date (for example, `2018-11-01T06:14:00Z` is returned as `2018-11-01T08:14:00+02:00`). The `timestamp_timezone` response field identifies the API timezone; no stored timestamps are rewritten.
 
 The forecast is a demonstration on selected sessions. If a selected session appeared in training, its forecast must not be interpreted as independent evaluation. Actual counts and forecast errors stay null until a separate, source-verified reconciliation process supplies real observations.
 

@@ -53,6 +53,7 @@ class PredictionSessionsResponse(BaseModel):
     total_records: int
     page: int
     page_size: int
+    timestamp_timezone: Literal["Europe/Athens"] = "Europe/Athens"
 
 
 class ForecastPrediction(BaseModel):
@@ -77,7 +78,7 @@ class ForecastResponse(BaseModel):
     experiment_id: UUID
     experiment_name: str
     status: str
-    timestamp_timezone: Literal["UTC"] = "UTC"
+    timestamp_timezone: Literal["Europe/Athens"] = "Europe/Athens"
     display_timezone: Literal["Europe/Athens"] = "Europe/Athens"
     results_by_session: list[ForecastSessionResult]
     session_errors: list[dict] = Field(default_factory=list)
@@ -101,6 +102,7 @@ class ForecastHistoryResponse(BaseModel):
     total_records: int
     page: int
     page_size: int
+    timestamp_timezone: Literal["Europe/Athens"] = "Europe/Athens"
 
 
 class ForecastDetail(BaseModel):
@@ -114,7 +116,7 @@ class ForecastDetail(BaseModel):
     prediction_time_ms: float
     status: str
     created_at: datetime
-    timestamp_timezone: Literal["UTC"] = "UTC"
+    timestamp_timezone: Literal["Europe/Athens"] = "Europe/Athens"
     display_timezone: Literal["Europe/Athens"] = "Europe/Athens"
 
 
@@ -136,7 +138,7 @@ class ForecastResultsResponse(BaseModel):
     total_records: int
     page: int
     page_size: int
-    timestamp_timezone: Literal["UTC"] = "UTC"
+    timestamp_timezone: Literal["Europe/Athens"] = "Europe/Athens"
     display_timezone: Literal["Europe/Athens"] = "Europe/Athens"
 
 
@@ -145,5 +147,5 @@ class ForecastChart(BaseModel):
     session_id: UUID
     historical: list[dict]
     forecast: list[dict]
-    timestamp_timezone: Literal["UTC"] = "UTC"
+    timestamp_timezone: Literal["Europe/Athens"] = "Europe/Athens"
     display_timezone: Literal["Europe/Athens"] = "Europe/Athens"
