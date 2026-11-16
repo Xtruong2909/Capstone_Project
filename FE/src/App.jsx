@@ -25,13 +25,16 @@ import EngineerPipelineStudioPage from './features/engineer/pages/EngineerPipeli
 import ScientistLayout from './features/scientist/ScientistLayout'
 import ScientistOverviewPage from './features/scientist/pages/ScientistOverviewPage'
 import ScientistApprovedDatasetsPage from './features/scientist/pages/ScientistApprovedDatasetsPage'
+import ScientistDatasetSessionsPage from './features/scientist/pages/ScientistDatasetSessionsPage'
 import ScientistDatasetPreviewPage from './features/scientist/pages/ScientistDatasetPreviewPage'
 import ScientistTrainingPage from './features/scientist/pages/ScientistTrainingPage'
 import ScientistPredictionPage from './features/scientist/pages/ScientistPredictionPage'
 import ScientistExperimentsPage from './features/scientist/pages/ScientistExperimentsPage'
+import ScientistExperimentSetupPage from './features/scientist/pages/ScientistExperimentSetupPage'
+import ScientistSharesPage from './features/scientist/pages/ScientistSharesPage'
+import BusinessSharedResultsPage from './features/business/pages/BusinessSharedResultsPage'
 
 // Other role workspaces
-import RoleDashboardPage from './features/roles/RoleDashboardPage'
 
 export default function App() {
   return (
@@ -70,11 +73,19 @@ export default function App() {
         <Route path="/scientist" element={<ScientistLayout />}>
           <Route index element={<ScientistOverviewPage />} />
           <Route path="datasets" element={<ScientistApprovedDatasetsPage />} />
+          <Route path="datasets/groups/:groupId" element={<ScientistApprovedDatasetsPage />} />
+          <Route path="datasets/groups/:groupId/train" element={<ScientistTrainingPage />} />
+          <Route path="datasets/groups/:groupId/predict" element={<ScientistPredictionPage />} />
           <Route path="experiments" element={<ScientistExperimentsPage />} />
+          <Route path="experiments/groups/:groupId" element={<ScientistExperimentsPage />} />
+          <Route path="experiments/groups/:groupId/new" element={<ScientistExperimentSetupPage />} />
+          <Route path="experiments/groups/:groupId/:experimentId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/:datasetId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/:datasetId/:experimentId" element={<ScientistExperimentsPage />} />
-          <Route path="preview" element={<ScientistDatasetPreviewPage />} />
-          <Route path="datasets/:datasetId/versions/:versionId" element={<ScientistDatasetPreviewPage />} />
+          <Route path="shares" element={<ScientistSharesPage />} />
+          <Route path="preview" element={<Navigate to="/scientist/datasets" replace />} />
+          <Route path="datasets/:datasetId/versions/:versionId" element={<ScientistDatasetSessionsPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId/sessions/:sessionId/preview" element={<ScientistDatasetPreviewPage />} />
           <Route path="datasets/:datasetId/versions/:versionId/train" element={<ScientistTrainingPage />} />
           <Route path="datasets/:datasetId/versions/:versionId/predict" element={<ScientistPredictionPage />} />
         </Route>
@@ -82,16 +93,7 @@ export default function App() {
 
       {/* Business User Portal */}
       <Route element={<ProtectedRoute allowedRoles={['business_user']} />}>
-        <Route
-          path="/business"
-          element={
-            <RoleDashboardPage
-              roleTitle="Business User Portal"
-              roleCode="business_user"
-              description="Cổng thông tin dành cho Người dùng nghiệp vụ: Theo dõi Dashboard lưu lượng, vận tốc, mật độ giao thông, so sánh kết quả thực tế với dự báo và xuất báo cáo PDF / Excel."
-            />
-          }
-        />
+        <Route path="/business" element={<BusinessSharedResultsPage />} />
       </Route>
 
       {/* Fallback */}

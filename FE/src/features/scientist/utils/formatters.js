@@ -59,6 +59,18 @@ export function formatRecordingDateTime(value) {
       })
 }
 
+// Experiment predictions are stored as UTC instants. pNEUMA recordings use
+// Europe/Athens wall time, whose UTC offset changes with daylight saving.
+export function formatAthensRecordingDateTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Athens', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(date)
+}
+
 export function formatDate(iso) {
   if (!iso) return '-'
   try {

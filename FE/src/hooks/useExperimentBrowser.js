@@ -3,8 +3,6 @@ import { scientistService } from '../services/scientistService'
 import { trafficForecastService } from '../services/trafficForecastService'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
 
-const PAGE_SIZE = 100
-
 export function useApprovedDatasetCatalog() {
   const [versions, setVersions] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -18,13 +16,8 @@ export function useApprovedDatasetCatalog() {
     setError(null)
     const load = async () => {
       try {
-        const all = []
-        let page = []
-        do {
-          page = await scientistService.listApprovedDatasets({ skip: all.length, limit: PAGE_SIZE })
-          all.push(...page)
-        } while (page.length === PAGE_SIZE)
-        if (!cancelled) setVersions(all)
+        const versions = await scientistService.listApprovedDatasets()
+        if (!cancelled) setVersions(versions)
       } catch (err) {
         if (!cancelled) setError(extractErrorMessage(err, 'Không thể tải danh sách dataset.'))
       } finally {
@@ -50,16 +43,17 @@ export function useApprovedDatasetCatalog() {
 
 async function loadVersionExperiments(versionId) {
   const all = []
-  let page = []
-  do {
-    page = await trafficForecastService.listTrainingExperiments({
+  let page = 1
+  while (true) {
+    const result = await trafficForecastService.listTrainingExperiments({
       datasetVersionId: versionId,
-      skip: all.length,
-      limit: PAGE_SIZE,
+      page,
+      pageSize: 100,
     })
-    all.push(...page)
-  } while (page.length === PAGE_SIZE)
-  return all
+    all.push(...result.data)
+    if (page >= result.total_pages) return all
+    page += 1
+  }
 }
 
 export function useDatasetExperimentBrowser(datasetId, versions, experimentId) {

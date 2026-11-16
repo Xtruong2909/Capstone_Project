@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   UserCheck,
+  Share2,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useLanguage } from '../../hooks/useLanguage'
@@ -24,13 +25,14 @@ const NAV_ITEMS = [
   { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet,
     end: true,
     // Training / Prediction pages are opened from the approved dataset list
-    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/(train|predict)\/?$|^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/?$/,
+    extraActivePattern: /^\/scientist\/datasets\//,
   },
   {
     to: '/scientist/experiments',
     label: 'Thí nghiệm',
     icon: FlaskConical,
   },
+  { to: '/scientist/shares', label: 'Chia sẻ kết quả', icon: Share2 },
 ]
 
 export default function ScientistLayout() {
