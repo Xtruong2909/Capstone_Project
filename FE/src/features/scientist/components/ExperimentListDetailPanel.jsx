@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ClipboardList,
   Eye,
@@ -82,9 +82,21 @@ export default function ExperimentListDetailPanel({
   const [modelFilter, setModelFilter] = useState('ALL')
   const [horizonFilter, setHorizonFilter] = useState('ALL')
   const [detailPage, setDetailPage] = useState(1)
+  const pendingScrollPosition = useRef(null)
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [sortOrder, setSortOrder] = useState('newest')
+
+  useLayoutEffect(() => {
+    if (pendingScrollPosition.current == null) return
+    window.scrollTo({ top: pendingScrollPosition.current, left: window.scrollX, behavior: 'instant' })
+    pendingScrollPosition.current = null
+  }, [detailPage])
+
+  const changeDetailPage = (nextPage) => {
+    pendingScrollPosition.current = window.scrollY
+    setDetailPage(Math.max(1, Math.min(totalDetailPages, nextPage)))
+  }
 
   const visibleExperiments = useMemo(() => {
     const query = searchText.trim().toLocaleLowerCase()
@@ -530,7 +542,7 @@ export default function ExperimentListDetailPanel({
                               type="button"
                               className="btn-secondary"
                               disabled={detailPage <= 1}
-                              onClick={() => setDetailPage((p) => Math.max(1, p - 1))}
+                              onClick={() => changeDetailPage(detailPage - 1)}
                             >
                               <ChevronLeft size={14} /> Trước
                             </button>
@@ -541,9 +553,7 @@ export default function ExperimentListDetailPanel({
                               type="button"
                               className="btn-secondary"
                               disabled={detailPage >= totalDetailPages}
-                              onClick={() =>
-                                setDetailPage((p) => Math.min(totalDetailPages, p + 1))
-                              }
+                              onClick={() => changeDetailPage(detailPage + 1)}
                             >
                               Sau <ChevronRight size={14} />
                             </button>

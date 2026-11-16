@@ -15,9 +15,13 @@ function formatMetric(val, digits = 4) {
   return Number(val).toFixed(digits)
 }
 
-function formatSec(sec) {
-  if (sec == null || Number.isNaN(Number(sec))) return '—'
-  return `${Number(sec).toFixed(4)}s`
+function getHyperparameter(experiment, name) {
+  return experiment?.hyperparameters?.[name] ?? experiment?.[name]
+}
+
+function getRandomForestMetric(experiment, horizon) {
+  return experiment?.performance_by_model_and_horizon?.RANDOM_FOREST?.[horizon]
+    ?? experiment?.performance?.[horizon]
 }
 
 function isCompatibleWithAnchor(exp, anchor) {
@@ -74,23 +78,40 @@ export default function ExperimentComparePanel({
     onChangeCompareIds?.([...selectedCompareIds, exp.experiment_id])
   }
 
-  const comparedList = comparisonData?.experiments || []
-  const bestByHorizon = comparisonData?.best_by_horizon || {}
-  const bestIdsByHorizon = comparisonData?.best_experiment_ids_by_horizon || {}
-  const tiedIdsByHorizon = comparisonData?.tied_experiment_ids_by_horizon || {}
+  const comparedList = useMemo(
+    () => comparisonData?.experiments || [],
+    [comparisonData]
+  )
+  const winnerSummary = useMemo(() => {
+    const summary = {}
+    for (const horizon of ['1', '3', '5']) {
+      const candidates = comparedList
+        .map((experiment) => ({
+          experiment,
+          rmse: Number(getRandomForestMetric(experiment, horizon)?.rmse),
+        }))
+        .filter((item) => Number.isFinite(item.rmse))
+      const minimum = candidates.length ? Math.min(...candidates.map((item) => item.rmse)) : null
+      summary[horizon] = {
+        ids: minimum == null ? [] : candidates
+          .filter((item) => item.rmse === minimum)
+          .map((item) => String(item.experiment.experiment_id)),
+        names: minimum == null ? [] : candidates
+          .filter((item) => item.rmse === minimum)
+          .map((item) => item.experiment.experiment_name),
+      }
+    }
+    return summary
+  }, [comparedList])
 
   // Helper to check if an experiment is a winner (or tied winner) for a horizon ("1", "3", "5")
   const isHorizonWinner = (horizonKey, expId) => {
     const idStr = String(expId)
-    const tiedList = (tiedIdsByHorizon?.[horizonKey] || []).map(String)
-    if (tiedList.length > 0) {
-      return tiedList.includes(idStr)
-    }
-    return String(bestIdsByHorizon?.[horizonKey] || '') === idStr
+    return winnerSummary[horizonKey]?.ids.includes(idStr) || false
   }
 
   const isHorizonTied = (horizonKey) => {
-    return (tiedIdsByHorizon?.[horizonKey]?.length || 0) > 1
+    return (winnerSummary[horizonKey]?.ids.length || 0) > 1
   }
 
   return (
@@ -245,14 +266,11 @@ export default function ExperimentComparePanel({
             {/* Best by Horizon Summary Cards */}
             <div className="sci-fe-config-grid">
               {['1', '3', '5'].map((h) => {
-                const tiedIds = (tiedIdsByHorizon?.[h] || []).map(String)
-                const tiedNames = comparedList
-                  .filter((item) => tiedIds.includes(String(item.experiment_id)))
-                  .map((item) => item.experiment_name)
+                const tiedNames = winnerSummary[h]?.names || []
                 const displayWinner =
                   tiedNames.length > 1
                     ? `${tiedNames.join(', ')} (Đồng hạng)`
-                    : bestByHorizon?.[h] || '—'
+                    : tiedNames[0] || 'Chưa có dữ liệu'
 
                 return (
                   <div key={h} className="sci-fe-config-item sci-fe-config-item--winner">
@@ -303,7 +321,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right', fontWeight: 700 }}>
-                        {exp.n_estimators}
+                        {getHyperparameter(exp, 'n_estimators') ?? '—'}
                       </td>
                     ))}
                   </tr>
@@ -314,7 +332,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right', fontWeight: 700 }}>
-                        {exp.max_depth != null ? exp.max_depth : 'Không giới hạn'}
+                        {getHyperparameter(exp, 'max_depth') != null ? getHyperparameter(exp, 'max_depth') : 'Không giới hạn'}
                       </td>
                     ))}
                   </tr>
@@ -325,7 +343,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {exp.min_samples_split}
+                        {getHyperparameter(exp, 'min_samples_split') ?? '—'}
                       </td>
                     ))}
                   </tr>
@@ -336,7 +354,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {exp.min_samples_leaf}
+                        {getHyperparameter(exp, 'min_samples_leaf') ?? '—'}
                       </td>
                     ))}
                   </tr>
@@ -347,7 +365,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {exp.max_features != null ? String(exp.max_features) : 'null'}
+                        {getHyperparameter(exp, 'max_features') != null ? String(getHyperparameter(exp, 'max_features')) : 'Tất cả'}
                       </td>
                     ))}
                   </tr>
@@ -358,7 +376,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {exp.bootstrap ? 'Bật' : 'Tắt'}
+                        {getHyperparameter(exp, 'bootstrap') ? 'Bật' : 'Tắt'}
                       </td>
                     ))}
                   </tr>
@@ -369,7 +387,7 @@ export default function ExperimentComparePanel({
                     </td>
                     {comparedList.map((exp) => (
                       <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {exp.random_state}
+                        {getHyperparameter(exp, 'random_state') ?? '—'}
                       </td>
                     ))}
                   </tr>
@@ -377,7 +395,7 @@ export default function ExperimentComparePanel({
                   {/* Horizon +1, +3, +5 MAE & RMSE Rows */}
                   {['1', '3', '5'].map((h) => {
                     const tied = isHorizonTied(h)
-                    const finiteMae = comparedList.map((exp) => Number(exp.performance?.[h]?.mae)).filter(Number.isFinite)
+                    const finiteMae = comparedList.map((exp) => Number(getRandomForestMetric(exp, h)?.mae)).filter(Number.isFinite)
                     const bestMae = finiteMae.length ? Math.min(...finiteMae) : null
                     return [
                       <tr key={`mae-${h}`}>
@@ -385,8 +403,8 @@ export default function ExperimentComparePanel({
                           <strong>MAE +{h}</strong> (phút)
                         </td>
                         {comparedList.map((exp) => (
-                          <td key={exp.experiment_id} style={{ textAlign: 'right' }} className={bestMae !== null && Number(exp.performance?.[h]?.mae) === bestMae ? 'sci-compare-cell-best' : ''}>
-                            <strong>{formatMetric(exp.performance?.[h]?.mae, 4)}</strong>
+                          <td key={exp.experiment_id} style={{ textAlign: 'right' }} className={bestMae !== null && Number(getRandomForestMetric(exp, h)?.mae) === bestMae ? 'sci-compare-cell-best' : ''}>
+                            <strong>{formatMetric(getRandomForestMetric(exp, h)?.mae, 4)}</strong>
                           </td>
                         ))}
                       </tr>,
@@ -409,7 +427,7 @@ export default function ExperimentComparePanel({
                                     {tied ? 'Đồng hạng' : 'Tốt nhất'}
                                   </span>
                                 )}
-                                <strong>{formatMetric(exp.performance?.[h]?.rmse, 4)}</strong>
+                                <strong>{formatMetric(getRandomForestMetric(exp, h)?.rmse, 4)}</strong>
                               </div>
                             </td>
                           )
@@ -418,28 +436,6 @@ export default function ExperimentComparePanel({
                     ]
                   })}
 
-                  {/* Timings Rows */}
-                  <tr>
-                    <td>
-                      <strong>Thời gian train</strong>
-                    </td>
-                    {comparedList.map((exp) => (
-                      <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {formatSec(exp.training_time_sec)}
-                      </td>
-                    ))}
-                  </tr>
-
-                  <tr>
-                    <td>
-                      <strong>Thời gian dự đoán</strong>
-                    </td>
-                    {comparedList.map((exp) => (
-                      <td key={exp.experiment_id} style={{ textAlign: 'right' }}>
-                        {formatSec(exp.prediction_time_sec)}
-                      </td>
-                    ))}
-                  </tr>
                 </tbody>
               </table>
             </div>

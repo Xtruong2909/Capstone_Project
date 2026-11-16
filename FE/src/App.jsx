@@ -28,8 +28,10 @@ import ScientistApprovedDatasetsPage from './features/scientist/pages/ScientistA
 import ScientistDatasetSessionsPage from './features/scientist/pages/ScientistDatasetSessionsPage'
 import ScientistDatasetPreviewPage from './features/scientist/pages/ScientistDatasetPreviewPage'
 import ScientistTrainingPage from './features/scientist/pages/ScientistTrainingPage'
+import ScientistAggregationChartsPage from './features/scientist/pages/ScientistAggregationChartsPage'
 import ScientistPredictionPage from './features/scientist/pages/ScientistPredictionPage'
 import ScientistExperimentsPage from './features/scientist/pages/ScientistExperimentsPage'
+import ScientistExperimentComparisonPage from './features/scientist/pages/ScientistExperimentComparisonPage'
 import ScientistExperimentSetupPage from './features/scientist/pages/ScientistExperimentSetupPage'
 import ScientistSharesPage from './features/scientist/pages/ScientistSharesPage'
 import BusinessSharedResultsPage from './features/business/pages/BusinessSharedResultsPage'
@@ -75,10 +77,12 @@ export default function App() {
           <Route path="datasets" element={<ScientistApprovedDatasetsPage />} />
           <Route path="datasets/groups/:groupId" element={<ScientistApprovedDatasetsPage />} />
           <Route path="datasets/groups/:groupId/train" element={<ScientistTrainingPage />} />
+          <Route path="datasets/groups/:groupId/train/aggregation-charts" element={<ScientistAggregationChartsPage />} />
           <Route path="datasets/groups/:groupId/predict" element={<ScientistPredictionPage />} />
           <Route path="experiments" element={<ScientistExperimentsPage />} />
           <Route path="experiments/groups/:groupId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/groups/:groupId/new" element={<ScientistExperimentSetupPage />} />
+          <Route path="experiments/groups/:groupId/compare" element={<ScientistExperimentComparisonPage />} />
           <Route path="experiments/groups/:groupId/:experimentId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/:datasetId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/:datasetId/:experimentId" element={<ScientistExperimentsPage />} />

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { CalendarDays, ChevronRight, FileSpreadsheet, FlaskConical, RefreshCw, Search, TrendingUp } from 'lucide-react'
 import { useDatasetSessions, useGroupDatasets } from '../../../hooks/useScientistData'
+import ScientistBackLink from '../components/ScientistBackLink'
 
 export default function ScientistDatasetSessionsPage() {
   const { datasetId, versionId } = useParams()
@@ -18,8 +19,8 @@ export default function ScientistDatasetSessionsPage() {
   const groupQuery = groupId ? `?groupId=${encodeURIComponent(groupId)}` : ''
 
   return <div className="sci-page">
-    <section className="admin-card"><div className="admin-card__header"><div>
-      <Link className="sci-back" to={groupId ? `/scientist/datasets/groups/${groupId}` : '/scientist/datasets'}>← {groupId ? 'Datasets trong batch' : 'Các batch'}</Link>
+    <section className="admin-card"><div className="admin-card__header"><div className="sci-dataset-session-heading">
+      <ScientistBackLink to={groupId ? `/scientist/datasets/groups/${groupId}` : '/scientist/datasets'}>{groupId ? 'Dataset trong batch' : 'Tất cả batch'}</ScientistBackLink>
       <h2 className="admin-card__title">{dataset?.dataset_name || 'Recording Sessions'}</h2>
       <p className="admin-card__subtitle">Chọn một session để xem trước dữ liệu của phiên ghi hình đó.</p>
     </div><span className="sci-pill sci-pill--version">{sessions.length} session</span></div>
@@ -45,3 +46,4 @@ export default function ScientistDatasetSessionsPage() {
     </div>}
   </div>
 }
+

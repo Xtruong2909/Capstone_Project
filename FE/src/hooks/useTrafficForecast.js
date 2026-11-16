@@ -799,7 +799,7 @@ export function useTrafficPrediction(datasetId, versionId) {
 /**
  * POST /api/ai/assistant hook for the floating Gemini AI Assistant chat box.
  */
-export function useAiAssistant(defaultVersionId, defaultGroupId) {
+export function useAiAssistant(defaultVersionId, defaultGroupId, defaultAggregationId) {
   const lastGroupIdRef = useRef(defaultGroupId)
   useEffect(() => {
     if (defaultGroupId) lastGroupIdRef.current = defaultGroupId
@@ -833,6 +833,7 @@ export function useAiAssistant(defaultVersionId, defaultGroupId) {
       modelId,
       datasetVersionId,
       groupId,
+      aggregationId,
       userDisplayLabel,
     } = {}) => {
       const userText =
@@ -879,6 +880,7 @@ export function useAiAssistant(defaultVersionId, defaultGroupId) {
           datasetVersionId: datasetVersionId ?? defaultVersionId,
           groupId: groupId ?? defaultGroupId ??
             ((datasetVersionId ?? defaultVersionId) ? undefined : lastGroupIdRef.current),
+          aggregationId: aggregationId ?? defaultAggregationId,
         })
         const aiMsg = {
           id: `ai-${Date.now()}`,
@@ -911,7 +913,7 @@ export function useAiAssistant(defaultVersionId, defaultGroupId) {
         setIsSending(false)
       }
     },
-    [defaultVersionId, defaultGroupId]
+    [defaultVersionId, defaultGroupId, defaultAggregationId]
   )
 
   const clearMessages = useCallback(() => {

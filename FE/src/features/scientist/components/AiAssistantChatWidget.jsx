@@ -184,6 +184,10 @@ export default function AiAssistantChatWidget() {
     () => extractGroupIdFromPath(location.pathname),
     [location.pathname]
   )
+  const activeAggregationId = useMemo(
+    () => new URLSearchParams(location.search).get('aggregationId'),
+    [location.search]
+  )
 
   const [isOpen, setIsOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -196,7 +200,11 @@ export default function AiAssistantChatWidget() {
 
   const threadEndRef = useRef(null)
 
-  const { messages, isSending, sendRequest, clearMessages } = useAiAssistant(activeVersionId, activeGroupId)
+  const { messages, isSending, sendRequest, clearMessages } = useAiAssistant(
+    activeVersionId,
+    activeGroupId,
+    activeAggregationId,
+  )
   const { experiments, reloadExperiments } = useModelTrainingExperiments(activeGroupId || activeVersionId)
 
   const completedExperiments = useMemo(

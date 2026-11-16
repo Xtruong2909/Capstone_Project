@@ -1,8 +1,9 @@
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Clock3, Database, FlaskConical, Layers3, LoaderCircle, RefreshCw, Scissors, Sparkles } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Check, Clock3, Database, FlaskConical, Layers3, LoaderCircle, RefreshCw, Scissors, Sparkles } from 'lucide-react'
 import { useApprovedDatasets, useApprovedGroups, useGroupDatasets, useGroupSessionMetadata } from '../../../hooks/useScientistData'
 import { useAggregationResults, useFeaturePreview, useScienceTraining } from '../../../hooks/useScienceWorkflow'
 import { AggregationTimeTable, ChronologicalSplitTable, FeaturePreviewTable } from '../components/TrainingTimeTables'
+import ScientistBackLink from '../components/ScientistBackLink'
 
 const RUNNING_STATUSES = ['PROCESSING', 'PENDING', 'QUEUED', 'RUNNING']
 
@@ -40,6 +41,8 @@ function TrainingStep({ number, icon: Icon, title, description, state, headerAct
 
 export default function ScientistTrainingPage() {
   const { groupId, datasetId, versionId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedSessionId = searchParams.get('sessionId') || ''
   const { groups, isLoading: groupsLoading, error: groupsError, reload: reloadGroups } = useApprovedGroups()
   const { datasets, isLoading: datasetsLoading, error: datasetsError, reload: reloadDatasets } = useApprovedDatasets()
   const dataset = datasets.find((item) => item.dataset_id === datasetId && item.version_id === versionId)
@@ -49,7 +52,20 @@ export default function ScientistTrainingPage() {
   const sessionsById = useGroupSessionMetadata(groupDatasets)
   const { workflow, busy, error, loadError, isLoadingWorkflow, reloadWorkflow, startAggregation, refreshAggregation, generateFeatures, refreshFeatures, createSplit } = useScienceTraining(group?.group_id)
   const { aggregation, features, split, experiment } = workflow
-  const aggregationTable = useAggregationResults(aggregation?.aggregation_id, aggregation?.status === 'COMPLETED')
+  const aggregationTable = useAggregationResults(
+    aggregation?.aggregation_id,
+    aggregation?.status === 'COMPLETED',
+    selectedSessionId,
+  )
+  const selectAggregationSession = (sessionId) => {
+    aggregationTable.setSessionId(sessionId)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (sessionId) next.set('sessionId', sessionId)
+      else next.delete('sessionId')
+      return next
+    }, { replace: true })
+  }
   const featureTable = useFeaturePreview(features?.feature_generation_id, features?.status === 'COMPLETED')
   const aggregationState = getStepState(aggregation, true)
   const featuresState = getStepState(features, aggregationState === 'complete')
@@ -59,7 +75,7 @@ export default function ScientistTrainingPage() {
   const loading = groupsLoading || (!groupId && datasetsLoading)
 
   return <div className="sci-page sci-training-page">
-    <Link className="sci-back" to="/scientist/datasets"><ArrowLeft size={16} /> Các batch</Link>
+    <ScientistBackLink to="/scientist/datasets">Tất cả batch</ScientistBackLink>
     <header className="sci-training-hero">
       <div className="sci-training-hero__icon"><FlaskConical size={27} /></div>
       <div className="sci-training-hero__text">
@@ -87,7 +103,7 @@ export default function ScientistTrainingPage() {
         {aggregationState !== 'processing' && <button type="button" className={`sci-training-button${aggregation ? ' sci-training-button--secondary' : ''}`} disabled={busy} onClick={startAggregation}><Database size={16} /> {aggregation ? 'Tổng hợp lại' : 'Bắt đầu tổng hợp'}</button>}
         {aggregation && aggregationState !== 'complete' && <button type="button" className="sci-training-button sci-training-button--secondary" disabled={busy} onClick={refreshAggregation}><RefreshCw size={15} /> Cập nhật</button>}
       </div>}>
-        {aggregationState === 'complete' && <AggregationTimeTable {...aggregationTable} sessions={aggregation.sessions || []} sessionsById={sessionsById} />}
+        {aggregationState === 'complete' && <AggregationTimeTable {...aggregationTable} setSessionId={selectAggregationSession} aggregationId={aggregation.aggregation_id} groupId={activeGroupId} sessions={aggregation.sessions || []} sessionsById={sessionsById} />}
       </TrainingStep>
 
       <TrainingStep number={2} icon={Layers3} title="Tạo lag features" description={featuresState === 'complete' ? null : 'Tạo các đặc trưng từ dữ liệu đã tổng hợp để đưa vào mô hình.'} state={featuresState} compact headerActions={<div className="sci-training-step__actions">

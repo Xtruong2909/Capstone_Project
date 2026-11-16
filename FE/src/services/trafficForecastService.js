@@ -246,6 +246,7 @@ export const trafficForecastService = {
     modelId,
     datasetVersionId,
       groupId,
+    aggregationId,
   } = {}) {
     const payload = { action }
     if (Array.isArray(conversation) && conversation.length > 0) {
@@ -265,6 +266,7 @@ export const trafficForecastService = {
       payload.dataset_version_id = String(datasetVersionId).trim()
     }
       if (groupId) payload.group_id = String(groupId).trim()
+    if (aggregationId) payload.aggregation_id = String(aggregationId).trim()
     if (message != null && String(message).trim() !== '') {
       payload.message = String(message).trim()
     }

@@ -1,25 +1,43 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { dataScienceService } from '../services/dataScienceService'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
 
+let experimentsCache = null
+const experimentDetailCache = new Map()
+
+function readStoredWorkflow(storageKey) {
+  if (!storageKey || typeof sessionStorage === 'undefined') return {}
+  try { return JSON.parse(sessionStorage.getItem(storageKey) || '{}') || {} }
+  catch { return {} }
+}
+
 export function useScienceTraining(groupId) {
   const storageKey = groupId ? `science-workflow:${groupId}` : null
+  const storedWorkflow = readStoredWorkflow(storageKey)
+  const hasStoredWorkflow = Boolean(storedWorkflow.aggregation)
   const [workflow, setWorkflow] = useState({})
   const [loadedGroupId, setLoadedGroupId] = useState(null)
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
-  const aggregationId = workflow.aggregation?.aggregation_id
+  const visibleWorkflow = loadedGroupId === groupId || !hasStoredWorkflow
+    ? workflow
+    : storedWorkflow
+  const aggregationId = visibleWorkflow.aggregation?.aggregation_id
   useEffect(() => {
     if (!groupId || !storageKey) return
     let cancelled = false
-    setWorkflow({})
-    setLoadedGroupId(null)
     setLoadError('')
-    let cached = {}
-    try { cached = JSON.parse(sessionStorage.getItem(storageKey) || '{}') || {} }
-    catch { /* Invalid browser cache must not block the saved server result. */ }
+    const cached = readStoredWorkflow(storageKey)
+    const hasCachedWorkflow = Boolean(cached.aggregation)
+    if (hasCachedWorkflow) {
+      setWorkflow(cached)
+      setLoadedGroupId(groupId)
+    } else {
+      setWorkflow({})
+      setLoadedGroupId(null)
+    }
     async function restoreWorkflow() {
       const aggregation = await dataScienceService.getLatestAggregation(groupId)
       const features = aggregation?.status === 'COMPLETED'
@@ -61,10 +79,10 @@ export function useScienceTraining(groupId) {
     catch (err) { setError(extractErrorMessage(err, 'Không kiểm tra được tổng hợp.')) }
   }, [aggregationId, save])
   useEffect(() => {
-    if (!aggregationId || !['PROCESSING', 'PENDING', 'QUEUED', 'RUNNING'].includes(workflow.aggregation.status)) return
+    if (!aggregationId || !['PROCESSING', 'PENDING', 'QUEUED', 'RUNNING'].includes(visibleWorkflow.aggregation?.status)) return
     const timer = setInterval(refreshAggregation, 3000)
     return () => clearInterval(timer)
-  }, [aggregationId, workflow.aggregation?.status, refreshAggregation])
+  }, [aggregationId, visibleWorkflow.aggregation?.status, refreshAggregation])
   const generateFeatures = () => run(async () => {
     const result = await dataScienceService.generateFeatures(workflow.aggregation.aggregation_id)
     save({ features: result, split: null, experiment: null })
@@ -75,8 +93,8 @@ export function useScienceTraining(groupId) {
     save({ split: result, experiment: null })
   })
   return {
-    workflow, busy, error, loadError,
-    isLoadingWorkflow: Boolean(groupId) && loadedGroupId !== groupId,
+    workflow: visibleWorkflow, busy, error, loadError,
+    isLoadingWorkflow: Boolean(groupId) && loadedGroupId !== groupId && !hasStoredWorkflow,
     reloadWorkflow: () => setWorkflowRefreshKey((value) => value + 1),
     startAggregation, refreshAggregation, generateFeatures, refreshFeatures, createSplit,
   }
@@ -128,6 +146,7 @@ export function useExperimentSetup(splitId, groupId) {
           ? configuration.max_features : Number(configuration.max_features)
       }
       const result = await dataScienceService.createExperiment(splitId, hyperparameters)
+      experimentsCache = null
       if (groupId) {
         const storageKey = `science-workflow:${groupId}`
         try {
@@ -154,8 +173,8 @@ export function useExperimentSetup(splitId, groupId) {
   return { split, configuration, updateConfiguration, loading, busy, error, createExperiment }
 }
 
-export function useAggregationResults(aggregationId, enabled) {
-  const [sessionId, setSessionId] = useState('')
+export function useAggregationResults(aggregationId, enabled, initialSessionId = '') {
+  const [sessionId, setSessionId] = useState(initialSessionId)
   const [refreshKey, setRefreshKey] = useState(0)
   const [result, setResult] = useState(null)
   const [loadedKey, setLoadedKey] = useState(null)
@@ -204,6 +223,43 @@ export function useAggregationResults(aggregationId, enabled) {
   }
 }
 
+export function useAggregationChartResults(aggregationId, sessionId) {
+  const [result, setResult] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (!aggregationId || !sessionId) return
+    let cancelled = false
+    setIsLoading(true)
+    setError('')
+    setResult(null)
+
+    async function loadCharts() {
+      const rows = []
+      let firstPage = null
+      let page = 1
+      while (!cancelled) {
+        const response = await dataScienceService.getAggregation(aggregationId, page, 100, sessionId)
+        if (cancelled) return
+        firstPage ??= response
+        rows.push(...(response.data || []))
+        if (page >= Math.max(1, response.total_pages || 1) || !response.data?.length) break
+        page += 1
+      }
+      if (!cancelled) setResult({ ...firstPage, data: rows })
+    }
+
+    loadCharts()
+      .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được dữ liệu biểu đồ.')) })
+      .finally(() => { if (!cancelled) setIsLoading(false) })
+    return () => { cancelled = true }
+  }, [aggregationId, sessionId, refreshKey])
+
+  return { result, isLoading, error, reload: () => setRefreshKey((value) => value + 1) }
+}
+
 export function useFeaturePreview(featureGenerationId, enabled) {
   const [page, setPage] = useState(1)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -211,25 +267,53 @@ export function useFeaturePreview(featureGenerationId, enabled) {
   const [loadedKey, setLoadedKey] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const pageCacheRef = useRef(new Map())
   const requestKey = enabled && featureGenerationId ? `${featureGenerationId}:${page}:${refreshKey}` : null
 
   useEffect(() => { setPage(1) }, [featureGenerationId])
   useEffect(() => {
     if (!requestKey) return
     let cancelled = false
+
+    const cachedResult = pageCacheRef.current.get(requestKey)
+    if (cachedResult) {
+      setResult(cachedResult)
+      setLoadedKey(requestKey)
+      setIsLoading(false)
+      setError('')
+      return () => { cancelled = true }
+    }
+
     setIsLoading(true)
     setError('')
     dataScienceService.getFeaturePreview(featureGenerationId, page, { daysPerPage: 2 })
-      .then((data) => { if (!cancelled) { setResult(data); setLoadedKey(requestKey) } })
+      .then((data) => {
+        if (cancelled) return
+        pageCacheRef.current.set(requestKey, data)
+        setResult(data)
+        setLoadedKey(requestKey)
+
+        const totalPages = Math.max(1, data?.total_pages || 1)
+        const nearbyPages = [page - 1, page + 1].filter((nearbyPage) => nearbyPage >= 1 && nearbyPage <= totalPages)
+        nearbyPages.forEach((nearbyPage) => {
+          const nearbyKey = `${featureGenerationId}:${nearbyPage}:${refreshKey}`
+          if (pageCacheRef.current.has(nearbyKey)) return
+          dataScienceService.getFeaturePreview(featureGenerationId, nearbyPage, { daysPerPage: 2 })
+            .then((nearbyData) => pageCacheRef.current.set(nearbyKey, nearbyData))
+            .catch(() => {})
+        })
+      })
       .catch((err) => { if (!cancelled) { setError(extractErrorMessage(err, 'Không tải được bảng lag features.')); setLoadedKey(requestKey) } })
       .finally(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
   }, [featureGenerationId, page, requestKey])
 
+  const cachedResult = requestKey ? pageCacheRef.current.get(requestKey) : null
+
   return {
-    result: loadedKey === requestKey ? result : null,
+    result: cachedResult || (loadedKey === requestKey ? result : null),
     page, setPage,
-    isLoading: Boolean(requestKey) && (isLoading || loadedKey !== requestKey),
+    isLoading: Boolean(requestKey) && !cachedResult && (isLoading || loadedKey !== requestKey),
     error: loadedKey === requestKey ? error : '',
     reload: () => setRefreshKey((value) => value + 1),
   }
@@ -295,10 +379,11 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
 }
 
 export function useScienceExperiments(experimentId) {
-  const [experiments, setExperiments] = useState([])
-  const [detail, setDetail] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const cachedDetail = experimentId ? experimentDetailCache.get(experimentId) : null
+  const [experiments, setExperiments] = useState(() => experimentsCache || [])
+  const [detail, setDetail] = useState(() => cachedDetail || null)
+  const [loading, setLoading] = useState(() => !experimentsCache)
+  const [detailLoading, setDetailLoading] = useState(() => Boolean(experimentId) && !cachedDetail)
   const [error, setError] = useState('')
   const reload = useCallback(async () => {
     setLoading(true); setError('')
@@ -311,20 +396,54 @@ export function useScienceExperiments(experimentId) {
         if (page >= result.total_pages) break
         page += 1
       }
+      experimentsCache = rows
       setExperiments(rows)
     } catch (err) { setError(extractErrorMessage(err, 'Không tải được thí nghiệm.')) }
     finally { setLoading(false) }
   }, [])
-  useEffect(() => { reload() }, [reload])
+  useEffect(() => { if (!experimentsCache) reload() }, [reload])
   useEffect(() => {
     if (!experimentId) { setDetail(null); return }
+    const cached = experimentDetailCache.get(experimentId)
+    if (cached) {
+      setDetail(cached)
+      setDetailLoading(false)
+      return
+    }
     let cancelled = false
     setDetailLoading(true)
     dataScienceService.getExperiment(experimentId)
-      .then((result) => { if (!cancelled) setDetail(result) })
+      .then((result) => { if (!cancelled) { experimentDetailCache.set(experimentId, result); setDetail(result) } })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được chi tiết thí nghiệm.')) })
       .finally(() => { if (!cancelled) setDetailLoading(false) })
     return () => { cancelled = true }
   }, [experimentId])
   return { experiments, detail, loading, detailLoading, error, reload }
+}
+
+export function useScienceExperimentComparison() {
+  const [comparisonData, setComparisonData] = useState(null)
+  const [isComparing, setIsComparing] = useState(false)
+  const [compareError, setCompareError] = useState('')
+
+  const compareExperiments = async (experimentIds) => {
+    if (!Array.isArray(experimentIds) || experimentIds.length < 2) {
+      setCompareError('Vui lòng chọn ít nhất 2 thí nghiệm hoàn thành để so sánh.')
+      return null
+    }
+    setIsComparing(true)
+    setCompareError('')
+    try {
+      const result = await dataScienceService.compareExperiments(experimentIds)
+      setComparisonData(result)
+      return result
+    } catch (err) {
+      setCompareError(extractErrorMessage(err, 'Không thể so sánh. Hãy chọn các thí nghiệm dùng cùng dữ liệu Test và Split ID.'))
+      return null
+    } finally {
+      setIsComparing(false)
+    }
+  }
+
+  return { comparisonData, isComparing, compareError, compareExperiments }
 }

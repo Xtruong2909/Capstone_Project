@@ -61,6 +61,12 @@ export const dataScienceService = {
     const { data } = await apiClient.get(`/model-training/experiments/${experimentId}`, config)
     return data
   },
+  async compareExperiments(experimentIds) {
+    const { data } = await apiClient.post('/model-training/experiments/compare', {
+      experiment_ids: experimentIds,
+    }, config)
+    return data
+  },
   async listPredictionExperiments() {
     const { data } = await apiClient.get('/prediction/experiments', config)
     return data.experiments

@@ -100,11 +100,12 @@ export default function LineChart({ title, unit, labels = [], values = [], color
   const { activePoint, hoverHandlers } = useChartHover(points, {
     left: PAD.left, right: WIDTH - PAD.right, top: PAD.top, bottom: HEIGHT - PAD.bottom,
   })
-  const tooltipWidth = 232
-  const tooltipX = activePoint
-    ? Math.max(PAD.left, Math.min(activePoint.x - tooltipWidth / 2, WIDTH - PAD.right - tooltipWidth))
-    : 0
-  const tooltipY = activePoint?.y < 85 ? HEIGHT - PAD.bottom - 84 : PAD.top
+  const tooltipPosition = activePoint ? {
+    left: `${(activePoint.x / WIDTH) * 100}%`,
+    top: `${(activePoint.y / HEIGHT) * 100}%`,
+    '--tooltip-shift-x': activePoint.x > WIDTH * 0.72 ? '-100%' : activePoint.x < WIDTH * 0.28 ? '0%' : '-50%',
+    '--tooltip-shift-y': activePoint.y < HEIGHT * 0.48 ? '18px' : 'calc(-100% - 18px)',
+  } : undefined
 
   return (
     <div className="sci-chart">
@@ -115,7 +116,7 @@ export default function LineChart({ title, unit, labels = [], values = [], color
         </div>
         {hasData && (
           <span className="sci-chart__badge" style={{ color, background: `${color}14` }}>
-            Avg: {avg.toFixed(1)}
+            Trung bình: {avg.toFixed(1)}
           </span>
         )}
       </div>
@@ -123,13 +124,14 @@ export default function LineChart({ title, unit, labels = [], values = [], color
       {!hasData ? (
         <div className="sci-chart__empty">No data points for selected range</div>
       ) : (
-        <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          role="img"
-          aria-label={`${title}. Use left and right arrow keys to inspect values.`}
-          tabIndex={0}
-          {...hoverHandlers}
-        >
+        <div className="sci-chart__plot">
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            role="img"
+            aria-label={`${title}. Dùng phím mũi tên trái và phải để xem từng giá trị.`}
+            tabIndex={0}
+            {...hoverHandlers}
+          >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.22" />
@@ -193,38 +195,33 @@ export default function LineChart({ title, unit, labels = [], values = [], color
                 <title>{`${formatTick(pt.label)}: ${pt.v.toLocaleString('en-GB', { maximumFractionDigits: 2 })}`}</title>
               </circle>
             ))}
-          {activePoint && (
-            <g pointerEvents="none">
+            {activePoint && (
+              <g pointerEvents="none">
               <line
                 x1={activePoint.x} x2={activePoint.x}
                 y1={PAD.top} y2={HEIGHT - PAD.bottom}
                 stroke={color} strokeWidth="1.5" strokeDasharray="4 3"
               />
               <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#fff" stroke={color} strokeWidth="2.5" />
-              <g transform={`translate(${tooltipX}, ${tooltipY})`}>
-                <rect x="0" y="3" width={tooltipWidth} height="84" rx="10" fill="#0f172a" opacity="0.08" />
-                <rect width={tooltipWidth} height="84" rx="10" fill="#fff" stroke="#dbe4f0" />
-                <text x="14" y="22" fontSize="12" fontWeight="500" fill="#64748b">
-                  {formatTooltipTime(activePoint.label)}
-                </text>
-                <text x="14" y="49" fontSize="22" fontWeight="700" fill={color}>
-                  {activePoint.v.toLocaleString('en-GB', { maximumFractionDigits: 2 })}
-                </text>
-                {unit && (
-                  <text x="14" y="69" fontSize="11" fill="#64748b">
-                    {unit}
-                  </text>
-                )}
               </g>
-            </g>
+            )}
+          </svg>
+          {activePoint && (
+            <div className="sci-chart__tooltip" style={tooltipPosition} aria-hidden="true">
+              <time>{formatTooltipTime(activePoint.label)}</time>
+              <strong style={{ color }}>
+                {activePoint.v.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}
+              </strong>
+              {unit && <span>{unit}</span>}
+            </div>
           )}
-        </svg>
+        </div>
       )}
 
       {hasData && (
         <div className="sci-chart__range">
           <span>Min: <strong>{min.toFixed(1)}</strong></span>
-          <span>Avg: <strong>{avg.toFixed(1)}</strong></span>
+          <span>Trung bình: <strong>{avg.toFixed(1)}</strong></span>
           <span>Max: <strong>{max.toFixed(1)}</strong></span>
         </div>
       )}

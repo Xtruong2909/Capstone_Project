@@ -56,9 +56,14 @@ export default function BusinessSharedResultsPage() {
   const { data, total_records: total, loading, error } = useSharedResults({ search, resourceType, page })
   const { detail, loading: detailLoading, error: detailError } = useSharedResultDetail(shareId)
 
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
+
   return <main className="business-page">
     <header className="business-header"><div><h1>Kết quả được chia sẻ</h1><p>Xin chào {user?.full_name || 'Business User'}</p></div>
-      <button type="button" onClick={() => { logout(); navigate('/login') }}>Đăng xuất</button></header>
+      <button type="button" onClick={handleLogout}>Đăng xuất</button></header>
     <form className="business-filters" onSubmit={(event) => { event.preventDefault(); setPage(1); setSearch(searchInput.trim()) }}>
       <input aria-label="Tìm kết quả" placeholder="Tìm theo tiêu đề" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} />
       <select aria-label="Loại kết quả" value={resourceType} onChange={(event) => { setPage(1); setResourceType(event.target.value) }}>

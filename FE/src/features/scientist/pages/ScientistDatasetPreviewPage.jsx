@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import { useDatasetPreview } from '../../../hooks/useScientistData'
@@ -12,6 +12,7 @@ export default function ScientistDatasetPreviewPage() {
   const basePath = `/scientist/datasets/${datasetId}/versions/${versionId}`
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const pendingScrollPosition = useRef(null)
   const { preview, isLoading, error, reload } = useDatasetPreview(datasetId, versionId, {
     sessionId, page, pageSize, representation: 'normalized',
   })
@@ -21,6 +22,17 @@ export default function ScientistDatasetPreviewPage() {
   const totalRows = pagination?.total_rows
   const visibleWarnings = (preview?.warnings || []).filter((warning) =>
     !warning.startsWith('Đã bỏ qua ô rỗng cuối dòng'))
+
+  useLayoutEffect(() => {
+    if (pendingScrollPosition.current == null) return
+    window.scrollTo({ top: pendingScrollPosition.current, left: window.scrollX, behavior: 'instant' })
+    pendingScrollPosition.current = null
+  }, [page])
+
+  const changePage = (nextPage) => {
+    pendingScrollPosition.current = window.scrollY
+    setPage(nextPage)
+  }
 
   return <div className="sci-page">
     <Link className="sci-back" to={`${basePath}${groupQuery}`}><ArrowLeft size={16} /> Quay lại danh sách sessions</Link>
@@ -57,8 +69,8 @@ export default function ScientistDatasetPreviewPage() {
               <select id="sci-page-size" className="sci-dataset-select" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }}>
                 {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
               </select><span>Trang {page}{totalRows != null ? ` / ${Math.max(1, Math.ceil(totalRows / pageSize))}` : ''}</span></div>
-              <div className="sci-pager__controls"><button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft size={14} /> Trước</button>
-                <button type="button" className="btn-secondary" disabled={!pagination?.has_more} onClick={() => setPage((value) => value + 1)}>Sau <ChevronRight size={14} /></button></div></div>
+              <div className="sci-pager__controls"><button type="button" className="btn-secondary" disabled={page <= 1} onClick={() => changePage(page - 1)}><ChevronLeft size={14} /> Trước</button>
+                <button type="button" className="btn-secondary" disabled={!pagination?.has_more} onClick={() => changePage(page + 1)}>Sau <ChevronRight size={14} /></button></div></div>
           </>}
         </>}
       </div>

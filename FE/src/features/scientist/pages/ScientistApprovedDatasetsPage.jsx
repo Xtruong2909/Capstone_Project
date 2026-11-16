@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ChevronRight, Database, FlaskConical, FolderOpen, Layers, RefreshCw, Search, ShieldCheck, TrendingUp } from 'lucide-react'
 import { useApprovedGroups, useGroupDatasets } from '../../../hooks/useScientistData'
+import ScientistBackLink from '../components/ScientistBackLink'
 
 export default function ScientistApprovedDatasetsPage() {
   const { groupId } = useParams()
@@ -20,8 +21,8 @@ export default function ScientistApprovedDatasetsPage() {
   return <div className="sci-page">
     <section className="admin-card">
       <div className="admin-card__header"><div>
-        {groupId && <Link className="sci-back" to="/scientist/datasets">← Tất cả batch</Link>}
-        <h2 className="admin-card__title">{groupId ? group?.group_name || 'Datasets trong batch' : 'Các batch đã được phê duyệt'}</h2>
+        {groupId && <ScientistBackLink to="/scientist/datasets">Tất cả batch</ScientistBackLink>}
+        <h2 className="admin-card__title">{groupId ? group?.group_name || 'Dataset trong batch' : 'Các batch đã được phê duyệt'}</h2>
         <p className="admin-card__subtitle">{groupId ? 'Chọn dataset để xem các Recording Session.' : 'Chọn một batch để xem các dataset đã được duyệt.'}</p>
       </div><span className="sci-pill sci-pill--version">{groupId ? datasets.length : groups.length} {groupId ? 'dataset' : 'batch'}</span></div>
       <div className="sci-toolbar"><label className="sci-search"><Search size={16} />
@@ -65,3 +66,4 @@ export default function ScientistApprovedDatasetsPage() {
     </div>}
   </div>
 }
+

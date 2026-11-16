@@ -1,4 +1,6 @@
-import { CarFront, ChevronLeft, ChevronRight, Clock3, RefreshCw, Table2 } from 'lucide-react'
+import { BarChart3, CarFront, ChevronLeft, ChevronRight, Clock3, RefreshCw, Table2 } from 'lucide-react'
+import { useLayoutEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { formatNumber, formatRecordingDateTime, formatRecordingTime } from '../utils/formatters'
 import { sortRecordingSessions } from '../utils/sortRecordingSessions'
 
@@ -11,7 +13,7 @@ function formatRecordingDate(value) {
   return year && month && day ? `${day}/${month}/${year}` : String(value)
 }
 
-export function AggregationTimeTable({ result, sessions, sessionsById, sessionId, setSessionId, isLoading, error, reload }) {
+export function AggregationTimeTable({ aggregationId, groupId, result, sessions, sessionsById, sessionId, setSessionId, isLoading, error, reload }) {
   const rows = result?.data || []
   const orderedSessions = sortRecordingSessions(sessions, sessionsById)
   const selectedIndex = orderedSessions.findIndex((session) => session.session_id === sessionId)
@@ -20,7 +22,10 @@ export function AggregationTimeTable({ result, sessions, sessionsById, sessionId
     <div className="sci-training-table-heading"><div className="sci-training-table-heading__title"><Table2 size={18} /><div>
       <h3>Bảng dữ liệu theo mốc 1 phút</h3>
       <p>Chọn session để xem số lượng phương tiện theo từng phút.</p>
-    </div></div><button type="button" className="sci-training-button sci-training-button--secondary" onClick={reload} disabled={isLoading || !sessionId}><RefreshCw size={14} /> Làm mới bảng</button></div>
+    </div></div><div className="sci-training-table-heading__actions">
+      {sessionId && aggregationId && <Link className="sci-training-button sci-training-button--chart" to={`/scientist/datasets/groups/${groupId}/train/aggregation-charts?aggregationId=${encodeURIComponent(aggregationId)}&sessionId=${encodeURIComponent(sessionId)}&sessionName=${encodeURIComponent(sessionsById[sessionId]?.original_filename || '')}`}><BarChart3 size={15} /> Xem biểu đồ</Link>}
+      <button type="button" className="sci-training-button sci-training-button--secondary" onClick={reload} disabled={isLoading || !sessionId}><RefreshCw size={14} /> Làm mới bảng</button>
+    </div></div>
     <label className="sci-training-session-picker">Chọn session
       <select value={sessionId} onChange={(event) => setSessionId(event.target.value)}>
         <option value="">Chọn một session để xem bảng</option>
@@ -57,6 +62,18 @@ export function FeaturePreviewTable({ result, sessionsById, page, setPage, isLoa
   const rows = result?.data || []
   const totalPages = Math.max(1, result?.total_pages || 1)
   const recordingDates = result?.recording_dates || []
+  const pendingScrollPosition = useRef(null)
+
+  useLayoutEffect(() => {
+    if (pendingScrollPosition.current == null) return
+    window.scrollTo({ top: pendingScrollPosition.current, left: window.scrollX, behavior: 'instant' })
+    pendingScrollPosition.current = null
+  }, [page])
+
+  const changePage = (nextPage) => {
+    pendingScrollPosition.current = window.scrollY
+    setPage(nextPage)
+  }
 
   return <div className="sci-training-table-block">
     <div className="sci-training-table-heading"><div className="sci-training-table-heading__title"><Table2 size={18} /><div>
@@ -81,8 +98,8 @@ export function FeaturePreviewTable({ result, sessionsById, page, setPage, isLoa
         {recordingDates.length ? `${recordingDates.map(formatRecordingDate).join(' · ')} · ` : ''}
         {formatNumber(rows.length)} mẫu trên trang · Trang {page}/{totalPages}
       </span><div>
-        <button type="button" className="sci-training-button sci-training-button--secondary" disabled={page <= 1 || isLoading} onClick={() => setPage(page - 1)}><ChevronLeft size={15} /> Trước</button>
-        <button type="button" className="sci-training-button sci-training-button--secondary" disabled={page >= totalPages || isLoading} onClick={() => setPage(page + 1)}>Sau <ChevronRight size={15} /></button>
+        <button type="button" className="sci-training-button sci-training-button--secondary" disabled={page <= 1 || isLoading} onClick={() => changePage(page - 1)}><ChevronLeft size={15} /> Trước</button>
+        <button type="button" className="sci-training-button sci-training-button--secondary" disabled={page >= totalPages || isLoading} onClick={() => changePage(page + 1)}>Sau <ChevronRight size={15} /></button>
       </div></div>
     </>}
   </div>
