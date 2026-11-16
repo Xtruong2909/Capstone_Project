@@ -242,6 +242,8 @@ class TemporalAggregationDataPoint(BaseModel):
     session_id: UUID
     timestamp: datetime
     vehicle_count: int
+    mean_speed: float | None = None
+    traffic_flow: float | None = None
 
 
 class DatasetVersionAggregationResults(BaseModel):
@@ -268,6 +270,8 @@ class CombinedTemporalAggregationDataPoint(BaseModel):
     session_id: UUID
     timestamp: datetime
     vehicle_count: int
+    mean_speed: float | None = None
+    traffic_flow: float | None = None
 
 
 class CombinedTemporalAggregationResults(BaseModel):

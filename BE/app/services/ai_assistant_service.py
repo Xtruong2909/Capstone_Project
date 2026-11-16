@@ -570,6 +570,23 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                 "datasets": len(jobs),
                 "sessions": sum(job.total_sessions for job in jobs),
                 "time_bins": sum(job.records_created for job in jobs),
+                "available_charts": [
+                    {
+                        "name": "Số lượng phương tiện",
+                        "unit": "phương tiện/phút",
+                        "description": "Số xe được ghi nhận theo từng phút.",
+                    },
+                    {
+                        "name": "Tốc độ trung bình",
+                        "unit": "km/giờ",
+                        "description": "Tốc độ trung bình của phương tiện theo thời gian.",
+                    },
+                    {
+                        "name": "Lưu lượng giao thông ước tính",
+                        "unit": "xe/phút",
+                        "description": "Lưu lượng xe sau khi tổng hợp dữ liệu pNEUMA.",
+                    },
+                ],
                 "recent_experiments": [
                     _experiment_summary(db, item)
                     for item in repo.list_recent_aggregation_experiments(db, request.aggregation_id)

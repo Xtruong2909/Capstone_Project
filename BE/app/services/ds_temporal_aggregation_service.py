@@ -53,10 +53,23 @@ from app.services.recording_time_service import (
 logger = logging.getLogger(__name__)
 WORKFLOW_KEY = "ds_temporal_v1"
 DEFAULT_BATCH_SIZE = 65_536
+METERS_PER_SECOND_TO_KMH = 3.6
 
 
 class SessionAggregationError(ValueError):
     """The normalized observations cannot be attributed or counted safely."""
+
+
+def _saved_mean_speed(row: Any) -> float | None:
+    value = getattr(row, "mean_speed", None)
+    return float(value) if value is not None else None
+
+
+def _saved_traffic_flow(row: Any, aggregation_interval: int) -> float:
+    value = getattr(row, "traffic_flow", None)
+    if value is not None:
+        return float(value)
+    return round(row.vehicle_count / (aggregation_interval / 60.0), 2)
 
 
 def _source_sessions(
@@ -328,25 +341,34 @@ def _session_row_counts(
     return counts
 
 
-def _normalized_columns(parquet_file: pq.ParquetFile) -> tuple[str, str]:
+def _normalized_columns(parquet_file: pq.ParquetFile) -> tuple[str, str, str | None]:
     names = set(parquet_file.schema_arrow.names)
     track_column = next((name for name in ("track_id", "vehicle_id") if name in names), None)
     time_column = next((name for name in ("timestamp", "time", "datetime") if name in names), None)
+    speed_column = next((name for name in ("speed", "avg_speed") if name in names), None)
     if track_column is None or time_column is None:
         raise SessionAggregationError("Normalized Parquet requires track_id and timestamp columns")
-    return track_column, time_column
+    return track_column, time_column, speed_column
 
 
 def _normalized_pairs(
     parquet_file: pq.ParquetFile, track_column: str, time_column: str,
-) -> Iterator[tuple[Any, Any]]:
+    speed_column: str | None,
+) -> Iterator[tuple[Any, Any, Any]]:
+    columns = [track_column, time_column, *([speed_column] if speed_column else [])]
     for batch in parquet_file.iter_batches(
-        batch_size=DEFAULT_BATCH_SIZE, columns=[track_column, time_column],
+        batch_size=DEFAULT_BATCH_SIZE, columns=columns,
     ):
         track_index = batch.schema.get_field_index(track_column)
         time_index = batch.schema.get_field_index(time_column)
+        speed_values = (
+            batch.column(batch.schema.get_field_index(speed_column)).to_pylist()
+            if speed_column else [None] * batch.num_rows
+        )
         yield from zip(
-            batch.column(track_index).to_pylist(), batch.column(time_index).to_pylist(),
+            batch.column(track_index).to_pylist(),
+            batch.column(time_index).to_pylist(),
+            speed_values,
         )
 
 
@@ -370,27 +392,45 @@ def _timestamp(value: Any, recording_start: datetime | None) -> datetime:
 
 
 def aggregate_normalized_rows(
-    rows: Iterable[tuple[Any, Any]],
+    rows: Iterable[tuple[Any, ...]],
     *,
     aggregation_interval: int,
     recording_start: datetime | None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Return observed bins only; track IDs are unique within each session/bin."""
-    bins: dict[datetime, set[str]] = {}
+    bins: dict[datetime, dict[str, Any]] = {}
     records_read = 0
-    for track_value, time_value in rows:
+    for values in rows:
+        track_value, time_value, *optional_speed = values
         records_read += 1
         if track_value is None or str(track_value).strip() == "":
             raise SessionAggregationError(f"Missing track_id at normalized row {records_read}")
         timestamp = _timestamp(time_value, recording_start)
         bin_epoch = math.floor(timestamp.timestamp() / aggregation_interval) * aggregation_interval
         bucket = datetime.fromtimestamp(bin_epoch, tz=UTC)
-        bins.setdefault(bucket, set()).add(str(track_value))
+        group = bins.setdefault(bucket, {"track_ids": set(), "speeds_kmh": []})
+        group["track_ids"].add(str(track_value))
+        if optional_speed and optional_speed[0] is not None:
+            try:
+                speed = float(optional_speed[0])
+            except (TypeError, ValueError):
+                speed = math.nan
+            if math.isfinite(speed) and speed >= 0:
+                group["speeds_kmh"].append(speed * METERS_PER_SECOND_TO_KMH)
     if not bins:
         raise SessionAggregationError("Recording Session contains no normalized observations")
     return [
-        {"time_bucket": timestamp, "vehicle_count": len(tracks)}
-        for timestamp, tracks in sorted(bins.items())
+        {
+            "time_bucket": timestamp,
+            "vehicle_count": len(group["track_ids"]),
+            "traffic_flow": round(
+                len(group["track_ids"]) / (aggregation_interval / 60.0), 2,
+            ),
+            "mean_speed": round(
+                sum(group["speeds_kmh"]) / len(group["speeds_kmh"]), 2,
+            ) if group["speeds_kmh"] else None,
+        }
+        for timestamp, group in sorted(bins.items())
     ], records_read
 
 
@@ -470,8 +510,10 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
             counts = _session_row_counts(
                 db, history, selected_sessions, parquet_file.metadata.num_rows,
             )
-            track_column, time_column = _normalized_columns(parquet_file)
-            normalized_rows = _normalized_pairs(parquet_file, track_column, time_column)
+            track_column, time_column, speed_column = _normalized_columns(parquet_file)
+            normalized_rows = _normalized_pairs(
+                parquet_file, track_column, time_column, speed_column,
+            )
             for session, row_count in zip(selected_sessions, counts):
                 result = results_by_id[session.id]
                 result.status = "RUNNING"
@@ -494,8 +536,8 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
                             aggregation_interval=job.aggregation_interval,
                             roi_identifier="ALL_TRAJECTORY_POINTS",
                             vehicle_count=bucket["vehicle_count"],
-                            traffic_flow=None,
-                            mean_speed=None,
+                            traffic_flow=bucket["traffic_flow"],
+                            mean_speed=bucket["mean_speed"],
                         )
                         for bucket in buckets
                     ]
@@ -650,6 +692,8 @@ def _group_results(
                 row.time_bucket, starts.get(UUID(row.recording_session_id)),
             ),
             vehicle_count=row.vehicle_count,
+            mean_speed=_saved_mean_speed(row),
+            traffic_flow=_saved_traffic_flow(row, root.aggregation_interval),
         ) for row, job in rows],
     )
 
@@ -696,6 +740,8 @@ def _group_combined_results(
             timestamp=(row.time_bucket if row.time_bucket.tzinfo else
                        row.time_bucket.replace(tzinfo=UTC)).astimezone(zone),
             vehicle_count=row.vehicle_count,
+            mean_speed=_saved_mean_speed(row),
+            traffic_flow=_saved_traffic_flow(row, root.aggregation_interval),
         ) for row, job in rows],
     )
 
@@ -743,6 +789,8 @@ def get_temporal_aggregation_results(
                     recording_starts.get(UUID(item.recording_session_id)),
                 ),
                 vehicle_count=item.vehicle_count,
+                mean_speed=_saved_mean_speed(item),
+                traffic_flow=_saved_traffic_flow(item, job.aggregation_interval),
             )
             for item in series
         ],
@@ -783,6 +831,8 @@ def get_combined_temporal_aggregation_results(
             session_id=UUID(row.recording_session_id),
             timestamp=timestamp.astimezone(zone),
             vehicle_count=row.vehicle_count,
+            mean_speed=_saved_mean_speed(row),
+            traffic_flow=_saved_traffic_flow(row, job.aggregation_interval),
         ))
     return CombinedTemporalAggregationResults(
         aggregation_id=job.id,
