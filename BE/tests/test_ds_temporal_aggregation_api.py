@@ -151,12 +151,46 @@ def test_combined_results_needs_only_aggregation_id(monkeypatch) -> None:
     assert captured == [aggregation_id]
 
 
+def test_latest_group_run_restores_saved_aggregation(monkeypatch) -> None:
+    group_id = uuid4()
+    aggregation_id = uuid4()
+    monkeypatch.setattr(
+        ds_temporal_aggregation, "get_latest_group_temporal_aggregation",
+        lambda db, user, selected_group_id: {
+            "aggregation_id": aggregation_id,
+            "group_id": selected_group_id,
+            "status": "COMPLETED",
+            "aggregation_interval": 60,
+            "total_sessions": 1,
+            "completed_sessions": 1,
+            "failed_sessions": 0,
+            "total_time_bins": 10,
+            "sessions": [],
+        },
+    )
+    response = _client().get(f"/api/v1/ds/aggregations/groups/{group_id}/latest")
+    assert response.status_code == 200
+    assert response.json()["aggregation_id"] == str(aggregation_id)
+    assert response.json()["status"] == "COMPLETED"
+
+
+def test_latest_group_run_returns_null_when_no_run_exists(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ds_temporal_aggregation, "get_latest_group_temporal_aggregation",
+        lambda db, user, group_id: None,
+    )
+    response = _client().get(f"/api/v1/ds/aggregations/groups/{uuid4()}/latest")
+    assert response.status_code == 200
+    assert response.json() is None
+
+
 def test_openapi_contains_ds_aggregation_and_lag_routes() -> None:
     paths = main_app.openapi()["paths"]
     assert "/api/v1/ds/aggregations" in paths
+    assert "/api/v1/ds/aggregations/groups/{group_id}/latest" in paths
     assert "/api/v1/ds/aggregations/{aggregation_id}/results" in paths
     assert "/api/v1/ds/aggregations/{aggregation_id}/combined-results" in paths
-    assert len([path for path in paths if path.startswith("/api/v1/ds/aggregations")]) == 3
+    assert len([path for path in paths if path.startswith("/api/v1/ds/aggregations")]) == 4
     assert "/api/aggregation/quality-check" not in paths
     request_ref = paths["/api/v1/ds/aggregations"]["post"]["requestBody"]["content"][
         "application/json"

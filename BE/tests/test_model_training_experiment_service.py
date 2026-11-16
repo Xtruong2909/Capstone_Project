@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from app.crud import crud_model_training_experiments as repository
 from app.models.model_training import (
     ExperimentTrainedModel,
     ModelTrainingExperiment,
@@ -23,6 +24,29 @@ from app.services import model_training_experiment_service as service
 
 MODEL_TYPES = ("RANDOM_FOREST", "PERSISTENCE", "HISTORICAL_AVERAGE")
 HORIZONS = (1, 3, 5)
+
+
+def test_experiment_group_is_resolved_from_training_source() -> None:
+    group_id = uuid4()
+    other_group_id = uuid4()
+    db = MagicMock()
+    db.execute.return_value.one_or_none.return_value = (
+        {"group_id": str(group_id)}, other_group_id,
+    )
+    experiment = SimpleNamespace(
+        lag_feature_split_id=uuid4(), dataset_id=None, configuration={},
+    )
+
+    assert repository.get_experiment_group_id(db, experiment) == group_id
+
+    experiment.lag_feature_split_id = None
+    experiment.dataset_id = uuid4()
+    db.scalar.return_value = other_group_id
+    assert repository.get_experiment_group_id(db, experiment) == other_group_id
+
+    experiment.dataset_id = None
+    experiment.configuration = {"dataset_version_id": str(uuid4())}
+    assert repository.get_experiment_group_id(db, experiment) == other_group_id
 
 
 def _training_run():
@@ -75,6 +99,8 @@ def test_experiments_are_numbered_per_split_and_only_rf_models_are_persisted(
     monkeypatch.setattr(service, "get_accessible_split", lambda *_: (split, object()))
     reserve = MagicMock(side_effect=[1, 2])
     monkeypatch.setattr(service.repository, "reserve_split_experiment_number", reserve)
+    group_id = uuid4()
+    monkeypatch.setattr(service.repository, "get_experiment_group_id", lambda *_: group_id)
     monkeypatch.setattr(service, "fit_saved_split", lambda *_args, **_kwargs: _training_run())
     events = []
     monkeypatch.setattr(service, "record_audit_event", lambda **event: events.append(event))
@@ -92,6 +118,7 @@ def test_experiments_are_numbered_per_split_and_only_rf_models_are_persisted(
     assert (first.name, second.name) == ("Ex-01", "Ex-02")
     assert (first.status, second.status) == ("COMPLETED", "COMPLETED")
     assert first.split_id == split_id
+    assert first.group_id == group_id
     assert first.train_samples == 4 and first.test_samples == 2
     assert set(first.model_ids) == {"1", "3", "5"}
     assert len(set(first.model_ids.values())) == 3
@@ -125,6 +152,7 @@ def test_failed_training_keeps_reserved_name_and_failed_record(
     monkeypatch.setattr(service, "record_audit_event", lambda **event: events.append(event))
     monkeypatch.setattr(service, "get_accessible_split", lambda *_: (split, object()))
     monkeypatch.setattr(service.repository, "reserve_split_experiment_number", lambda *_: 1)
+    monkeypatch.setattr(service.repository, "get_experiment_group_id", lambda *_: uuid4())
 
     def capture_add(record):
         if isinstance(record, ModelTrainingExperiment):

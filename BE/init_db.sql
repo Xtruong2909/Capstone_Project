@@ -164,7 +164,6 @@ CREATE TABLE dataset_column_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
-    recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL,
     mappings JSONB NOT NULL,
     updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -305,15 +304,6 @@ CREATE TABLE experiments (
 CREATE INDEX idx_experiments_model ON experiments(model_type);
 CREATE INDEX idx_experiments_status ON experiments(status);
 
-CREATE TABLE model_parameters (
-    id BIGSERIAL PRIMARY KEY,
-    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    parameter_name VARCHAR(64) NOT NULL CHECK (parameter_name ~ '^[a-zA-Z0-9_]+$'),
-    parameter_value VARCHAR(255) NOT NULL,
-    parameter_type VARCHAR(16) NOT NULL DEFAULT 'string'
-);
-CREATE INDEX idx_model_params_exp ON model_parameters(experiment_id);
-
 CREATE TABLE forecast_results (
     id BIGSERIAL PRIMARY KEY,
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
@@ -336,31 +326,6 @@ CREATE TABLE evaluation_metrics (
     rmse DECIMAL(10, 4) NOT NULL CONSTRAINT ck_metric_rmse CHECK (rmse >= 0 AND rmse < 'Infinity'),
     evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-
--- ====================================================================
--- PHÂN HỆ 5: BÁO CÁO & TRỢ LÝ AI (REPORTING & GENAI ASSISTANT)
--- ====================================================================
-
-CREATE TABLE traffic_reports (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL CHECK (length(trim(title)) >= 3),
-    report_type VARCHAR(32) NOT NULL, -- TRAFFIC_PATTERN, FORECAST_BENCHMARK, EXPERIMENT_SUMMARY
-    file_format VARCHAR(16) NOT NULL DEFAULT 'PDF', -- PDF, EXCEL
-    file_path VARCHAR(512) NOT NULL,
-    experiment_id UUID REFERENCES experiments(id) ON DELETE SET NULL,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE ai_assistant_logs (
-    id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    query_text TEXT NOT NULL,
-    response_text TEXT NOT NULL,
-    context_metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_ai_logs_user ON ai_assistant_logs(user_id);
 
 -- ====================================================================
 -- SEED MASTER DATA

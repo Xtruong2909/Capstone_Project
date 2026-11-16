@@ -213,6 +213,29 @@ def serialize_group_aggregation_run(
     )
 
 
+def get_latest_group_temporal_aggregation(
+    db: Session, user: User, group_id: UUID,
+) -> DatasetVersionAggregationStarted | None:
+    """Restore the most recent completed batch run, or the latest run if none completed."""
+    if user.role_id not in ("admin", "data_scientist"):
+        raise HTTPException(403, "Data Scientist role required")
+    if crud_dataset.get_dataset_group_by_id(db, group_id) is None:
+        raise HTTPException(404, "Dataset group not found")
+    datasets = crud_dataset.list_group_datasets(db, group_id, None)
+    roots = repo.list_group_temporal_roots(db, group_id, [dataset.id for dataset in datasets])
+    if not roots:
+        return None
+    selected_root = roots[0]
+    for root in roots:
+        ids = [UUID(value) for value in (root.job_metadata or {}).get("group_job_ids") or []]
+        jobs = repo.list_group_temporal_jobs(db, ids)
+        if ids and len(jobs) == len(ids) and _group_status(jobs) == "COMPLETED":
+            selected_root = root
+            break
+    jobs = _accessible_group_jobs(db, user, selected_root)
+    return serialize_group_aggregation_run(jobs, _group_session_results(db, jobs))
+
+
 def _group_status(jobs: list[TrafficAggregationJob]) -> str:
     if any(job.status in ("PROCESSING", "QUEUED", "RUNNING") for job in jobs):
         return "PROCESSING"

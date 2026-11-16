@@ -49,7 +49,7 @@ def get_latest_group_aggregation(
 
 
 def list_recent_aggregation_experiments(
-    db: Session, aggregation_id: UUID,
+    db: Session, aggregation_id: UUID, limit: int = 5,
 ) -> list[ModelTrainingExperiment]:
     return list(db.scalars(
         select(ModelTrainingExperiment)
@@ -59,7 +59,7 @@ def list_recent_aggregation_experiments(
             LagFeatureGeneration.aggregation_id == aggregation_id,
             ModelTrainingExperiment.status == "COMPLETED",
         )
-        .order_by(ModelTrainingExperiment.number.desc()).limit(5)
+        .order_by(ModelTrainingExperiment.number.desc()).limit(limit)
     ))
 
 
@@ -174,12 +174,14 @@ def get_latest_forecast_for_version(db: Session, version_id: UUID) -> ForecastRe
     ).first()
 
 
-def list_recent_experiments(db: Session, version_id: UUID) -> list[ModelTrainingExperiment]:
+def list_recent_experiments(
+    db: Session, version_id: UUID, limit: int = 5,
+) -> list[ModelTrainingExperiment]:
     return list(db.scalars(
         select(ModelTrainingExperiment).join(ModelTrainingSplit).where(
             ModelTrainingSplit.dataset_version_id == version_id,
             ModelTrainingExperiment.status == "COMPLETED",
-        ).order_by(ModelTrainingExperiment.number.desc()).limit(5)
+        ).order_by(ModelTrainingExperiment.number.desc()).limit(limit)
     ))
 
 

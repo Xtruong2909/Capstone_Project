@@ -4,6 +4,36 @@ FastAPI backend service for Urban Traffic Pattern Analysis and Short-Term Conges
 
 For complete project documentation, architecture diagrams, and quick-start instructions, please refer to the [Root README](../README.md).
 
+## Requirements
+
+- Python 3.11 or newer
+- [`uv`](https://docs.astral.sh/uv/) for dependency and environment management
+- Docker Desktop with Docker Compose
+- PostgreSQL 16 with PostGIS when the database is not run through Docker
+
+## Backend layout
+
+```text
+BE/
+├── app/
+│   ├── api/v1/endpoints/   # FastAPI HTTP routers
+│   ├── crud/               # SQLAlchemy database queries
+│   ├── schemas/            # Pydantic request/response models
+│   ├── services/           # Business logic and integrations
+│   └── main.py             # FastAPI application entry point
+├── docs/                   # Feature-specific documentation
+├── migrations/             # Ordered PostgreSQL SQL migrations
+├── scripts/                # Operational and migration helpers
+├── tests/                  # Backend test suite
+├── init_db.sql             # Schema for a new database only
+├── pyproject.toml
+└── uv.lock
+```
+
+The application package is `app`. The unused starter package under `src/be_app` has
+been removed. Runtime uploads and fitted model artifacts are stored under `uploads/`
+and `artifacts/` locally, or in their Docker volumes.
+
 ## Local Development
 
 ```powershell
@@ -11,7 +41,10 @@ For complete project documentation, architecture diagrams, and quick-start instr
 docker compose up -d
 
 # Run FastAPI Development Server
+Push-Location BE
+uv sync
 uv run uvicorn app.main:app --reload --port 8000
+Pop-Location
 ```
 
 API Documentation: `http://localhost:8000/docs`
@@ -28,6 +61,42 @@ This includes the per-dataset experiment-name migration required by the experime
 Before running it, apply the Lag Feature generation and Train/Test Split migrations,
 because the experiment-batch migration references those tables.
 
+### Latest schema cleanup
+
+Existing databases must apply `migrations/20261129_remove_unused_schema.sql`. It removes
+the empty, unreferenced `ai_assistant_logs`, `model_parameters`, and `traffic_reports`
+tables, and removes the unused `dataset_column_mappings.recording_session_id` column.
+The migration intentionally does not use `CASCADE`, so PostgreSQL stops if an unexpected
+dependency exists.
+
+From the repository root with the Docker database running:
+
+```powershell
+Get-Content -Raw 'BE\migrations\20261129_remove_unused_schema.sql' |
+  docker compose exec -T postgres psql -U admin -d traffic_urban -v ON_ERROR_STOP=1
+```
+
+New databases created from `init_db.sql` already use the cleaned schema. Do not run
+`init_db.sql` against an existing database because it recreates the schema.
+
+## Validation
+
+Run these commands from `BE`:
+
+```powershell
+uv run pytest -q
+uv run ruff check .
+```
+
+To inspect test discovery without executing tests:
+
+```powershell
+uv run pytest --collect-only -q
+```
+
+The current suite contains 721 collected backend tests. PostgreSQL integration tests
+that are explicitly guarded by environment variables remain opt-in.
+
 ## Administrator audit logs
 
 The append-only audit history is exposed at `GET /api/v1/admin/audit-logs` and requires
@@ -37,7 +106,7 @@ converts their IDs to UUID. For example, from the repository root:
 
 ```powershell
 Get-Content -Raw 'BE\migrations\20261107_complete_audit_logs.sql' |
-  docker compose exec -T postgres psql -U admin -d urban_traffic -v ON_ERROR_STOP=1
+  docker compose exec -T postgres psql -U admin -d traffic_urban -v ON_ERROR_STOP=1
 ```
 
 The endpoint returns `{ total, skip, limit, items }` and supports `user_id`, exact
@@ -339,7 +408,6 @@ Theo yêu cầu mới, đã bỏ hai cột `dataset_version_id` và `expires_at`
 - [app/api/v1/api.py](app/api/v1/api.py): đăng ký router mới.
 - [app/api/v1/endpoints/datasets.py](app/api/v1/endpoints/datasets.py): kiểm tra quyền các thao tác đọc.
 - [app/api/v1/endpoints/dataset_mapping.py](app/api/v1/endpoints/dataset_mapping.py): kiểm tra quyền đọc columns/mappings.
-- [app/api/v1/endpoints/data_quality.py](app/api/v1/endpoints/data_quality.py): kiểm tra quyền đọc kết quả quality check.
 - [app/api/v1/endpoints/admin.py](app/api/v1/endpoints/admin.py), [app/crud/crud_admin.py](app/crud/crud_admin.py), [app/schemas/admin.py](app/schemas/admin.py): bỏ router, CRUD và schema chỉ dùng cho ba API cấp quyền cũ.
 - [init_db.sql](init_db.sql): schema cấp quyền toàn dataset cho database mới.
 
@@ -385,8 +453,8 @@ giữ nguyên 2 bản ghi quyền tại thời điểm kiểm tra. Không chạy
 [init_db.sql](init_db.sql) trên database hiện có vì script có lệnh DROP TABLE.
 
 Ba API cũ GET/POST `/admin/access-grants` và DELETE
-`/admin/access-grants/{grant_id}` đã bị xóa, trả 404. Frontend chưa thay đổi:
-các màn hình còn gọi API cũ cần chuyển sang API mới bên dưới.
+`/admin/access-grants/{grant_id}` đã bị xóa và trả 404. Các client phải dùng
+API quản lý quyền theo Dataset ở bên dưới.
 
 ### 5. API và ví dụ
 
@@ -550,13 +618,12 @@ Dependency `require_dataset_scientist` kết hợp role admin/scientist và data
 
 ### 8. Kiểm thử và giới hạn xác minh
 
-- Lần chạy toàn bộ gần nhất: **287 tests passed** sau khi bỏ hai cột. Sau khi xóa ba API cũ, chạy lại bộ test phân quyền: **40 tests passed**.
-- Lint tất cả file Python tạo/chỉnh sửa: **pass**. `git diff --check`: **pass**.
-- Bộ test phân quyền: cấp quyền hai role; nhiều user/dataset; duplicate; role guards; thu hồi; 403; danh sách theo JWT; missing/invalid token; UUID/body validation; xác nhận bỏ hai cột và ba API cũ; cạnh tranh unique mô phỏng; kiểm tra 9 router đọc thật; cấm business preprocessing; sai parent version; query SQLAlchemy và unique constraint trên SQLite tạm.
-- 247 test cũ pass trước khi bổ sung test mới.
-- Concurrency được kiểm tra qua mô phỏng IntegrityError và unique constraint thực trong SQLite; chưa chạy hai transaction đồng thời trên PostgreSQL.
-- SQLite test không kiểm chứng PostGIS. Trên PostgreSQL local đã kiểm tra migration, truy vấn quyền và response; kiểm thử tạo quyền trước khi bỏ cột dùng transaction rollback, không lưu quyền thử nghiệm.
-- Môi trường Windows mặc định gặp lỗi có sẵn `csv.field_size_limit` với giá trị 2 GiB lớn hơn C long. Chạy test với biến môi trường process-only, không sửa cấu hình file/thuật toán:
+- Pytest hiện thu thập **721 tests** từ 46 file test Python.
+- Migration `20261129_remove_unused_schema.sql` đã được kiểm tra trên PostgreSQL local.
+- Các test dùng SQLite không xác minh hành vi riêng của PostgreSQL/PostGIS.
+- Những test PostgreSQL hoặc model artifact được bảo vệ bằng biến môi trường vẫn là opt-in.
+- Trên Windows, nếu `csv.field_size_limit` không nhận giá trị 2 GiB, đặt giới hạn
+  theo process trước khi chạy toàn bộ test:
 
 ```powershell
 $env:MAX_DATASET_UPLOAD_BYTES = '2147483647'
@@ -564,15 +631,15 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-Trong phiên thực thi dùng Python của `.venv` hiện có (`.venv/Scripts/python.exe -m pytest`) thay vì cài dependency mới.
+Không ghi số test `passed` cố định trong tài liệu vì con số thay đổi theo feature và các
+integration test được bật. CI hoặc lần chạy cục bộ là nguồn kết quả chính xác.
 
-Lint toàn repo còn các lỗi có sẵn ở [crud_dataset.py](app/crud/crud_dataset.py), [crud_user.py](app/crud/crud_user.py), [user.py](app/models/user.py) (import order), và [dataset_normalization_service.py](app/services/dataset_normalization_service.py) (S110/S112). Không sửa logic normalization ngoài phạm vi.
+### 9. Phạm vi truy cập
 
-### 9. Những phần chưa có trong backend hiện tại
-
-Chưa thấy HTTP API riêng cho Dataset Detail, Download, Analysis, Traffic Aggregation, Traffic Visualization, Heatmap, Forecasting hay Model Training. Có schema SQL liên quan traffic/forecast và model experiment, nhưng không có router nghiệp vụ tương ứng để tích hợp. Không tạo API giả hoặc viết lại những tính năng này.
-
-Vì vậy test Business User không được training hiện xác minh dependency dành cho training, không phải một API training đang tồn tại. Khi triển khai các router mới, phải sử dụng dependency phù hợp và phân giải mọi ID file/version/experiment về dataset gốc trước khi trả dữ liệu. Quyền dataset-wide áp dụng cho toàn bộ phiên bản hiện tại và tương lai của dataset đó; không tự bổ sung bộ lọc approval ngoài nghiệp vụ đã có.
+Các API Dataset, Temporal Aggregation, Lag Features, Train/Test, Model Training,
+Evaluation, Prediction và Result Sharing đều có router nghiệp vụ. Mọi endpoint phải
+giữ kiểm tra role và quyền Dataset hiện có; ID version, session, split, experiment và
+prediction phải được đối chiếu về đúng Dataset hoặc group trước khi trả dữ liệu.
 
 
 ### Data Scientist xem trước dữ liệu đã duyệt

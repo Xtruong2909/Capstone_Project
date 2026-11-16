@@ -24,6 +24,7 @@ from app.schemas.lag_feature import (
 )
 from app.services.ds_temporal_aggregation_service import get_accessible_temporal_jobs
 from app.services.lag_window_service import VehicleObservation, build_training_windows
+from app.services.recording_time_service import recording_start_from_filename, recording_timestamp
 
 
 def accessible_generation(db: Session, user: User, generation_id: UUID) -> LagFeatureGeneration:
@@ -110,6 +111,14 @@ def get_generation_status(db: Session, user: User, generation_id: UUID) -> LagGe
     return _status(accessible_generation(db, user, generation_id))
 
 
+def get_latest_generation_status(
+    db: Session, user: User, aggregation_id: UUID,
+) -> LagGenerationStatus | None:
+    get_accessible_temporal_jobs(db, user, aggregation_id)
+    generation = repo.get_latest_generation(db, aggregation_id)
+    return _status(generation) if generation is not None else None
+
+
 def get_generation_sessions(db: Session, user: User, generation_id: UUID) -> LagSessionResponse:
     generation = accessible_generation(db, user, generation_id)
     jobs = get_accessible_temporal_jobs(db, user, generation.aggregation_id)
@@ -126,14 +135,37 @@ def get_generation_sessions(db: Session, user: User, generation_id: UUID) -> Lag
 
 def get_generation_preview(
     db: Session, user: User, generation_id: UUID, page: int, page_size: int,
+    days_per_page: int | None = None,
 ) -> LagPreviewResponse:
     accessible_generation(db, user, generation_id)
     count = repo.count_samples(db, generation_id)
-    rows = repo.page_samples(db, generation_id, page, page_size)
+    recording_dates = []
+    total_days = None
+    if days_per_page is None:
+        rows = repo.page_samples(db, generation_id, page, page_size)
+        total_pages = (count + page_size - 1) // page_size
+    else:
+        all_dates = repo.list_sample_recording_dates(db, generation_id)
+        total_days = len(all_dates)
+        start = (page - 1) * days_per_page
+        recording_dates = all_dates[start : start + days_per_page]
+        rows = repo.samples_for_recording_dates(db, generation_id, recording_dates)
+        total_pages = (total_days + days_per_page - 1) // days_per_page
+    recording_starts = {
+        session.id: recording_start_from_filename(session.original_filename)
+        for dataset_id in {row.dataset_id for row in rows}
+        for session in aggregation_repo.get_sessions_by_ids(
+            db, dataset_id, [row.session_id for row in rows if row.dataset_id == dataset_id],
+        )
+    }
     return LagPreviewResponse(
         feature_generation_id=generation_id, total_records=count,
-        page=page, page_size=page_size, total_pages=(count + page_size - 1) // page_size,
-        data=[LagSampleResponse.model_validate(row) for row in rows],
+        page=page, page_size=days_per_page or page_size, total_pages=total_pages,
+        pagination_unit="days" if days_per_page else "records",
+        recording_dates=recording_dates, total_days=total_days,
+        data=[LagSampleResponse.model_validate(row).model_copy(update={
+            "timestamp": recording_timestamp(row.timestamp, recording_starts.get(row.session_id)),
+        }) for row in rows],
     )
 
 

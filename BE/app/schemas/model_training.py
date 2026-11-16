@@ -239,6 +239,7 @@ class TrainingExperimentResponse(BaseModel):
     experiment_name: str
     name: str | None = None
     dataset_version_id: UUID | None
+    group_id: UUID | None = None
     split_id: UUID
     train_samples: int | None = None
     test_samples: int | None = None

@@ -1,6 +1,7 @@
 """Build bounded, authorized facts and enforce deterministic evaluation safeguards."""
 
 import math
+import re
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -23,6 +24,8 @@ from app.schemas.ai_assistant import (
 )
 from app.services.ai_intent_service import (
     asks_for_dataset_analysis,
+    asks_for_session_list,
+    experiment_numbers_from_question,
     forecast_id_from_question,
     infer_action,
     prediction_id_from_question,
@@ -33,12 +36,104 @@ from app.services.ai_scope_service import (
     classify_question,
     retrieve_knowledge,
 )
-from app.services.dataset_access_service import check_dataset_version_access
+from app.services.dataset_access_service import (
+    check_dataset_version_access,
+    list_accessible_groups,
+    list_approved_groups,
+)
+from app.services.dataset_preview_service import DatasetPreviewNotFoundError
+from app.services.dataset_review_service import list_datasets_in_group, list_recording_sessions
 from app.services.ds_temporal_aggregation_service import get_accessible_temporal_jobs
 from app.services.gemini_service import generate_analysis
 from app.services.train_test_splits_service import get_accessible_split
 
 SMALL_TEST_THRESHOLD = 10  # Advice only; never blocks training or changes eligibility.
+
+
+def _group_context(db: Session, group_id: UUID, user: User) -> dict:
+    """Expose only approved datasets and linked sessions visible to this user."""
+    try:
+        group = list_datasets_in_group(db, group_id, user)
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    datasets = group.datasets[:30]
+    sessions = []
+    for item in datasets:
+        remaining = 50 - len(sessions)
+        if remaining <= 0:
+            break
+        page = list_recording_sessions(
+            db, item.dataset_id, item.version_id, page=1, page_size=remaining,
+        )
+        sessions.extend(page.sessions)
+    return {
+        "group_id": str(group_id), "group_name": group.group_name,
+        "total_datasets": group.total,
+        "datasets": [
+            {
+                "dataset_id": str(item.dataset_id), "name": item.name,
+                "recording_date": item.recording_date.isoformat(),
+                "drone_id": item.drone_id, "version_id": str(item.version_id),
+                "version": item.version, "total_sessions": item.total_sessions,
+                "approval_status": item.approval_status,
+            }
+            for item in datasets
+        ],
+        "sessions": [
+            {
+                "session_id": str(item.session_id), "dataset_id": str(item.dataset_id),
+                "filename": item.original_filename,
+                "scheduled_start": item.scheduled_start.isoformat(),
+                "scheduled_end": item.scheduled_end.isoformat(),
+            }
+            for item in sessions
+        ],
+        "context_limits": {"datasets": 30, "sessions": 50},
+    }
+
+
+def _experiment_summary(db: Session, experiment: object) -> dict:
+    metrics: dict[str, dict[str, dict[str, float]]] = {}
+    for model, horizon, count, mae, mse in repo.get_evaluation_metrics(db, experiment.id):
+        if (count and mae is not None and mse is not None and
+                math.isfinite(float(mae)) and math.isfinite(float(mse)) and
+                mae >= 0 and mse >= 0):
+            metrics.setdefault(str(horizon), {})[model.lower()] = {
+                "mae": float(mae), "rmse": math.sqrt(float(mse)),
+            }
+    return {
+        "experiment_id": str(experiment.id), "name": experiment.name,
+        "status": experiment.status,
+        "split_id": str(experiment.lag_feature_split_id or experiment.split_id),
+        "hyperparameters": (experiment.configuration or {}).get("hyperparameters", {}),
+        "metrics": metrics,
+    }
+
+
+def _session_list_answer(context: dict) -> str | None:
+    group = context.get("group")
+    sessions = group.get("sessions", []) if group else context.get("sessions")
+    if sessions is None:
+        return None
+    if not sessions:
+        return "Chưa có danh sách session đã lưu cho dữ liệu này."
+    if group:
+        names = {item["dataset_id"]: item["name"] for item in group["datasets"]}
+        total = sum(item["total_sessions"] for item in group["datasets"])
+        title = f"{group['group_name'] or 'Batch này'} có {total} session:"
+    else:
+        names = {}
+        title = f"Các session của dataset này ({len(sessions)} hiển thị):"
+    lines = [title]
+    for index, item in enumerate(sessions, start=1):
+        dataset_name = names.get(item.get("dataset_id"))
+        prefix = f"{dataset_name} — " if dataset_name else ""
+        lines.append(f"{index}. {prefix}{item['filename']}")
+    if group and total > len(sessions):
+        lines.append(f"Đang hiển thị {len(sessions)}/{total} session đầu tiên.")
+    elif not group and len(sessions) == 50:
+        lines.append("Đang hiển thị tối đa 50 session đầu tiên.")
+    return "\n".join(lines)
 
 
 def _resolve_chat_action(db: Session, request: AssistantRequest, user: User) -> AssistantRequest:
@@ -78,12 +173,26 @@ def _resolve_chat_action(db: Session, request: AssistantRequest, user: User) -> 
         return (request.model_copy(update={"action": action, "prediction_id": prediction_id})
                 if prediction_id is not None else request)
 
+    requested_numbers = experiment_numbers_from_question(request.message)
+    lookup_limit = 100 if requested_numbers else 5
     if request.aggregation_id is not None:
-        experiments = repo.list_recent_aggregation_experiments(db, request.aggregation_id)
+        experiments = repo.list_recent_aggregation_experiments(
+            db, request.aggregation_id, limit=lookup_limit,
+        )
     elif request.dataset_version_id is not None:
-        experiments = repo.list_recent_experiments(db, request.dataset_version_id)
+        experiments = repo.list_recent_experiments(
+            db, request.dataset_version_id, limit=lookup_limit,
+        )
     else:
         return request
+    if requested_numbers:
+        named_experiments = {
+            int(match.group(1)): item for item in experiments
+            if (match := re.fullmatch(r"ex[\s-]*0*(\d+)", item.name.casefold()))
+        }
+        if any(number not in named_experiments for number in requested_numbers):
+            return request
+        experiments = [named_experiments[number] for number in requested_numbers]
     if len(experiments) < required:
         return request
     return request.model_copy(update={
@@ -372,7 +481,13 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
     if user.role_id not in ("admin", "data_scientist"):
         raise HTTPException(403, "Chỉ Data Scientist hoặc Admin được dùng trợ lý AI")
     if request.message is not None:
-        scope = classify_question(request.message)
+        scope = classify_question(
+            request.message,
+            prior_user_questions=[
+                turn.content for turn in request.conversation if turn.role == "user"
+            ],
+            has_project_context=bool(request.group_id or request.dataset_version_id),
+        )
         if scope == "out_of_scope":
             return _scope_response(request.action, OUT_OF_SCOPE_MESSAGE)
         if scope == "unclear":
@@ -381,11 +496,17 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
     if request.dataset_version_id is not None:
         check_dataset_version_access(user, request.dataset_version_id, db)
     if request.group_id is not None:
+        group_context = _group_context(db, request.group_id, user)
         if request.aggregation_id is None:
             latest_job = repo.get_latest_group_aggregation(db, request.group_id)
-            if latest_job is None:
-                raise HTTPException(404, "Nhóm chưa có lượt tổng hợp thời gian đã hoàn thành")
-            request = request.model_copy(update={"aggregation_id": latest_job.id})
+            if latest_job is not None:
+                try:
+                    get_accessible_temporal_jobs(db, user, latest_job.id)
+                except HTTPException as exc:
+                    if exc.status_code not in (403, 404):
+                        raise
+                else:
+                    request = request.model_copy(update={"aggregation_id": latest_job.id})
         else:
             selected_job = repo.get_aggregation_job(db, request.aggregation_id)
             if (selected_job is None or
@@ -408,12 +529,28 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
         fact["dataset_version_id"] != str(request.dataset_version_id) for fact in facts
     ):
         raise HTTPException(422, "Thí nghiệm không thuộc dataset_version_id được chọn")
+    if request.group_id is not None:
+        visible_versions = {item["version_id"] for item in group_context.get("datasets", [])}
+        if any(
+            fact.get("group_id") != str(request.group_id)
+            if fact.get("group_id") is not None
+            else fact.get("dataset_version_id") not in visible_versions
+            for fact in facts
+        ):
+            raise HTTPException(422, "Thí nghiệm không thuộc batch được chọn")
 
     forecast = (
         _forecast_run_fact(db, request.forecast_id, user) if request.forecast_id else
         _forecast_fact(db, request.prediction_id, user) if request.prediction_id else None
     )
     model = _model_fact(db, request.model_id, user) if request.model_id else None
+    if request.group_id is not None and any(
+        item.get("group_id") != str(request.group_id)
+        if item.get("group_id") is not None
+        else item.get("dataset_version_id") not in visible_versions
+        for item in (forecast, model) if item is not None
+    ):
+        raise HTTPException(422, "Mô hình hoặc dự báo không thuộc batch được chọn")
     if request.dataset_version_id is not None and any(
         item is not None and item["dataset_version_id"] != str(request.dataset_version_id)
         for item in (forecast, model)
@@ -434,13 +571,25 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                 "sessions": sum(job.total_sessions for job in jobs),
                 "time_bins": sum(job.records_created for job in jobs),
                 "recent_experiments": [
-                    {"experiment_id": str(item.id), "name": item.name, "status": item.status}
+                    _experiment_summary(db, item)
                     for item in repo.list_recent_aggregation_experiments(db, request.aggregation_id)
                 ],
             }
         elif request.dataset_version_id is None:
-            context = {"note": "Chưa chọn dữ liệu dự án. Chỉ trả lời kiến thức chung; "
-                               "không khẳng định số liệu của dự án."}
+            context = {"note": "Chưa chọn dữ liệu dự án. Có thể giới thiệu các batch được cấp quyền; "
+                               "số liệu chi tiết cần chọn một batch hoặc dataset."}
+            if db is not None:
+                groups = (
+                    list_accessible_groups(db, user, None, 0, 30)
+                    if user.role_id == "admin"
+                    else list_approved_groups(db, user, None, 0, 30)
+                )
+                context["available_groups"] = [
+                    {"group_id": str(item.group_id), "name": item.group_name,
+                     "total_datasets": item.total_datasets,
+                     "approved_datasets": item.approved_datasets}
+                    for item in groups
+                ]
         else:
             version = repo.get_dataset_version(db, request.dataset_version_id)
             if version is None:
@@ -464,6 +613,15 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                                          "experiment_id": str(item.experiment_id)}
                                         for item in models],
                        "note": "Các thí nghiệm và dự báo chỉ được phân tích chi tiết khi có dữ liệu đã lưu."}
+            if db is not None and version.approval_status == "APPROVED":
+                context["sessions"] = [
+                    {"session_id": str(item.session_id), "filename": item.original_filename,
+                     "scheduled_start": item.scheduled_start.isoformat(),
+                     "scheduled_end": item.scheduled_end.isoformat()}
+                    for item in list_recording_sessions(
+                        db, version.dataset_id, request.dataset_version_id, page=1, page_size=50,
+                    ).sessions
+                ]
             if request.message and asks_for_dataset_analysis(request.message):
                 context["quality_check"] = _quality_context(
                     repo.get_latest_quality_check(db, request.dataset_version_id)
@@ -479,6 +637,14 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
     else:
         context = {"experiments": [{k: v for k, v in fact.items() if not k.startswith("_")}
                                    for fact in facts]}
+    if request.group_id is not None:
+        context["group"] = group_context
+    if request.conversation:
+        context["conversation"] = [turn.model_dump() for turn in request.conversation]
+    if request.action == AssistantAction.CHAT and request.message and asks_for_session_list(request.message):
+        answer = _session_list_answer(context)
+        if answer is not None:
+            return AssistantResponse(action=AssistantAction.CHAT, result=ChatResponseResult(message=answer))
     context["knowledge_base"] = knowledge
     if forecast is not None:
         context["forecast"] = forecast

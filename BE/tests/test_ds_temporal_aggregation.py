@@ -16,6 +16,27 @@ from app.schemas.traffic_aggregation import (
 from app.services import ds_temporal_aggregation_service as service
 
 
+def test_latest_group_run_prefers_saved_completed_result(monkeypatch) -> None:
+    group_id = uuid4()
+    dataset_id = uuid4()
+    processing_id, completed_id = uuid4(), uuid4()
+    processing = SimpleNamespace(id=processing_id, status="PROCESSING", job_metadata={"group_job_ids": [str(processing_id)]})
+    completed = SimpleNamespace(id=completed_id, status="COMPLETED", job_metadata={"group_job_ids": [str(completed_id)]})
+    monkeypatch.setattr(service.crud_dataset, "get_dataset_group_by_id", lambda db, id: object())
+    monkeypatch.setattr(service.crud_dataset, "list_group_datasets", lambda db, id, status: [SimpleNamespace(id=dataset_id)])
+    monkeypatch.setattr(service.repo, "list_group_temporal_roots", lambda db, id, ids: [processing, completed])
+    monkeypatch.setattr(service.repo, "list_group_temporal_jobs", lambda db, ids: [processing if ids[0] == processing_id else completed])
+    monkeypatch.setattr(service, "_accessible_group_jobs", lambda db, user, root: [root])
+    monkeypatch.setattr(service, "_group_session_results", lambda db, jobs: [])
+    monkeypatch.setattr(service, "serialize_group_aggregation_run", lambda jobs, results: jobs[0].id)
+
+    result = service.get_latest_group_temporal_aggregation(
+        object(), SimpleNamespace(role_id="data_scientist"), group_id,
+    )
+
+    assert result == completed.id
+
+
 def test_count_distinct_track_per_observed_minute_without_filling_gaps() -> None:
     rows = [(1, 0), (1, 20), (2, 30), (1, 180)]
     start = datetime(2018, 10, 24, 8, 30, tzinfo=timezone(timedelta(hours=3)))

@@ -58,6 +58,9 @@ class LagPreviewResponse(BaseModel):
     page_size: int
     total_pages: int
     data: list[LagSampleResponse]
+    pagination_unit: Literal["records", "days"] = "records"
+    recording_dates: list[date] = Field(default_factory=list)
+    total_days: int | None = None
 
 
 class LagSummaryResponse(BaseModel):

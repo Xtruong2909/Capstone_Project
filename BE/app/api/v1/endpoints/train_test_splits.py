@@ -32,6 +32,19 @@ def create_split(
 
 
 @router.get(
+    "/feature-generations/{feature_generation_id}/latest",
+    response_model=LagTrainTestSplitResponse | None,
+    summary="Lấy lần chia Train/Test đã lưu của Lag Features",
+)
+def latest_split(
+    feature_generation_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> LagTrainTestSplitResponse | None:
+    return service.get_latest_train_test_split(db, user, feature_generation_id)
+
+
+@router.get(
     "/{split_id}",
     response_model=LagTrainTestSplitResponse,
     summary="Xem cấu hình và kết quả Train/Test Split",

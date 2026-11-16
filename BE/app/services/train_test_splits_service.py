@@ -319,6 +319,16 @@ def get_train_test_split(
     return _response(split)
 
 
+def get_latest_train_test_split(
+    db: Session, user: User, feature_generation_id: UUID,
+) -> LagTrainTestSplitResponse | None:
+    generation = accessible_generation(db, user, feature_generation_id)
+    if generation.status != "COMPLETED":
+        return None
+    split = repo.get_latest_split(db, feature_generation_id)
+    return _response(split) if split is not None else None
+
+
 def preview_train_test_split(
     db: Session,
     user: User,

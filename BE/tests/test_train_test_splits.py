@@ -51,6 +51,25 @@ def test_day_based_keeps_recording_days_whole_and_reports_sample_ratio() -> None
     }
 
 
+def test_latest_split_restores_saved_result_without_creating_another(monkeypatch) -> None:
+    generation_id = uuid4()
+    saved_split = SimpleNamespace(id=uuid4())
+    monkeypatch.setattr(
+        service, "accessible_generation",
+        lambda *_: SimpleNamespace(status="COMPLETED"),
+    )
+    monkeypatch.setattr(
+        service.repo, "get_latest_split",
+        lambda _db, selected_id: saved_split if selected_id == generation_id else None,
+    )
+    monkeypatch.setattr(service, "_response", lambda split: split.id)
+
+    assert service.get_latest_train_test_split(None, None, generation_id) == saved_split.id
+
+    monkeypatch.setattr(service.repo, "get_latest_split", lambda *_: None)
+    assert service.get_latest_train_test_split(None, None, generation_id) is None
+
+
 def test_session_based_splits_whole_sessions_in_time_order() -> None:
     plan = service.build_split_plan(_records([2] * 20), "SESSION_BASED", 0.7)
     train_sessions = {row.session_id for row, _ in plan.train_rows}

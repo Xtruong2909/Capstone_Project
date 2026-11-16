@@ -28,6 +28,18 @@ def generate(
     return service.generate_lag_features(db, user, payload)
 
 
+@router.get(
+    "/aggregations/{aggregation_id}/latest",
+    response_model=LagGenerationStatus | None,
+    summary="Lấy Lag Features đã lưu của lần tổng hợp",
+)
+def latest_generation(
+    aggregation_id: UUID,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+) -> LagGenerationStatus | None:
+    return service.get_latest_generation_status(db, user, aggregation_id)
+
+
 @router.get("/{feature_generation_id}", response_model=LagGenerationStatus, summary="Xem trạng thái Feature Generation")
 def status(
     feature_generation_id: UUID = Path(description="ID trả về từ POST /api/lag-features/generate"),
@@ -48,9 +60,12 @@ def sessions(
 def preview(
     feature_generation_id: UUID = Path(description="ID trả về từ POST /api/lag-features/generate"),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    days_per_page: int | None = Query(None, ge=1, le=7),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ) -> LagPreviewResponse:
-    return service.get_generation_preview(db, user, feature_generation_id, page, page_size)
+    return service.get_generation_preview(
+        db, user, feature_generation_id, page, page_size, days_per_page,
+    )
 
 
 @router.get("/{feature_generation_id}/summary", response_model=LagSummaryResponse, summary="Thống kê mẫu hợp lệ theo horizon")

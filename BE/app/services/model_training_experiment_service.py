@@ -69,6 +69,7 @@ def _next_name(number: int) -> str:
 
 def _new_experiment_response(
     experiment: ModelTrainingExperiment,
+    group_id: UUID | None = None,
 ) -> TrainingExperimentResponse:
     configuration = experiment.configuration
     split_id = experiment.lag_feature_split_id or experiment.split_id
@@ -85,6 +86,7 @@ def _new_experiment_response(
         experiment_name=experiment.name,
         name=experiment.name,
         dataset_version_id=configuration.get("dataset_version_id"),
+        group_id=group_id,
         split_id=split_id,
         train_samples=configuration.get("train_samples"),
         test_samples=configuration.get("test_samples"),
@@ -217,7 +219,7 @@ def create_experiment(
             db.rollback()
             raise HTTPException(503, "Could not persist failed experiment status") from save_exc
         _audit_finished_experiment(failed, user)
-        return _new_experiment_response(failed)
+        return _new_experiment_response(failed, repository.get_experiment_group_id(db, failed))
     run = None
     try:
         run = fit_saved_split(
@@ -349,9 +351,9 @@ def create_experiment(
             db.rollback()
             raise HTTPException(503, "Could not persist failed experiment status") from save_exc
         _audit_finished_experiment(failed, user)
-        return _new_experiment_response(failed)
+        return _new_experiment_response(failed, repository.get_experiment_group_id(db, failed))
     _audit_finished_experiment(experiment, user)
-    return _new_experiment_response(experiment)
+    return _new_experiment_response(experiment, repository.get_experiment_group_id(db, experiment))
 
 
 def list_experiments(
@@ -400,8 +402,10 @@ def get_experiment(
         raise HTTPException(404, "Experiment not found")
     if experiment.lag_feature_split_id is not None:
         get_accessible_split(db, user, experiment.lag_feature_split_id)
-        return _new_experiment_response(experiment)
-    return legacy_service.get_detail(db, experiment_id, user)
+        return _new_experiment_response(experiment, repository.get_experiment_group_id(db, experiment))
+    response = legacy_service.get_detail(db, experiment_id, user)
+    response.group_id = repository.get_experiment_group_id(db, experiment)
+    return response
 
 
 def get_experiment_predictions(

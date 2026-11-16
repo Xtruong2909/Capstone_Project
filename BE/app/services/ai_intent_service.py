@@ -19,19 +19,33 @@ def normalize_question(question: str) -> str:
 def infer_action(question: str) -> AssistantAction:
     """Use explicit task words; ambiguous questions stay in general chat."""
     normalized = normalize_question(question)
-    if ("so sanh" in normalized and
-            any(term in normalized for term in ("thi nghiem", "experiment"))):
+    experiment_numbers = experiment_numbers_from_question(question)
+    has_experiment = bool(experiment_numbers) or any(
+        term in normalized for term in ("thi nghiem", "experiment")
+    )
+    if (any(term in normalized for term in (
+        "so sanh", "khac nhau", "tot nhat", "tot hon", "hieu qua nhat",
+    )) and has_experiment):
         return AssistantAction.EXPERIMENT_COMPARISON
     if (any(term in normalized for term in ("goi y", "de xuat", "toi uu")) and
             any(term in normalized for term in ("cau hinh", "random forest", "mo hinh"))):
         return AssistantAction.MODEL_RECOMMENDATION
-    if (any(term in normalized for term in ("phan tich", "danh gia", "nhan xet")) and
-            any(term in normalized for term in ("thi nghiem", "experiment"))):
+    if (any(term in normalized for term in (
+        "phan tich", "danh gia", "nhan xet", "ket qua", "the nao",
+    )) and has_experiment):
         return AssistantAction.EXPERIMENT_ANALYSIS
     if (any(term in normalized for term in ("giai thich", "phan tich", "nhan xet")) and
             any(term in normalized for term in ("du bao", "prediction"))):
         return AssistantAction.FORECAST_EXPLANATION
     return AssistantAction.CHAT
+
+
+def experiment_numbers_from_question(question: str) -> list[int]:
+    """Extract distinct Ex-01 style names in the order the user mentioned them."""
+    normalized = normalize_question(question)
+    return list(dict.fromkeys(
+        int(number) for number in re.findall(r"\bex\s*0*(\d+)\b", normalized)
+    ))
 
 
 def asks_for_dataset_analysis(question: str) -> bool:
@@ -41,6 +55,17 @@ def asks_for_dataset_analysis(question: str) -> bool:
         and any(term in normalized for term in (
             "phan tich", "danh gia", "tong quan", "chat luong", "kiem tra",
         ))
+    )
+
+
+def asks_for_session_list(question: str) -> bool:
+    """Identify requests for session identities rather than a session count."""
+    normalized = normalize_question(question)
+    return "session" in normalized.split() and any(
+        phrase in normalized for phrase in (
+            "session nao", "danh sach session", "liet ke session",
+            "list session", "cac session", "nhung session", "cai nao",
+        )
     )
 
 

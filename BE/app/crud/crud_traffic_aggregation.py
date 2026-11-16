@@ -50,6 +50,21 @@ def get_aggregation_job(db: Session, job_id: UUID) -> TrafficAggregationJob | No
     ).one_or_none()
 
 
+def list_group_temporal_roots(db: Session, group_id: UUID, dataset_ids: list[UUID]) -> list[TrafficAggregationJob]:
+    """Find saved root runs associated with the group's datasets."""
+    if not dataset_ids:
+        return []
+    jobs = db.query(TrafficAggregationJob).filter(
+        TrafficAggregationJob.dataset_id.in_(dataset_ids),
+    ).order_by(TrafficAggregationJob.created_at.desc()).all()
+    return [
+        job for job in jobs
+        if (metadata := job.job_metadata or {}).get("workflow") == "ds_temporal_v1"
+        and metadata.get("group_id") == str(group_id)
+        and metadata.get("group_root_id") == str(job.id)
+    ]
+
+
 def get_dataset_version(db: Session, version_id: UUID) -> tuple[Dataset, DatasetVersion] | None:
     return (
         db.query(Dataset, DatasetVersion)

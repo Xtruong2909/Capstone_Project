@@ -1,16 +1,28 @@
 """Database access for saved vehicle-count features and models."""
 
+from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from app.models.dataset import RecordingSession
 from app.models.lag_feature import LagFeatureForest, LagFeatureGeneration, LagFeatureSample
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 
 
 def get_generation(db: Session, generation_id: UUID) -> LagFeatureGeneration | None:
     return db.query(LagFeatureGeneration).filter(LagFeatureGeneration.id == generation_id).one_or_none()
+
+
+def get_latest_generation(db: Session, aggregation_id: UUID) -> LagFeatureGeneration | None:
+    return db.query(LagFeatureGeneration).filter(
+        LagFeatureGeneration.aggregation_id == aggregation_id,
+    ).order_by(
+        case((LagFeatureGeneration.status == "COMPLETED", 0), else_=1),
+        LagFeatureGeneration.created_at.desc(),
+        LagFeatureGeneration.id.desc(),
+    ).first()
 
 
 def find_generation(db: Session, aggregation_id: UUID, configuration_hash: str) -> LagFeatureGeneration | None:
@@ -64,8 +76,37 @@ def page_samples(db: Session, generation_id: UUID, page: int, page_size: int) ->
     return db.query(LagFeatureSample).filter(
         LagFeatureSample.generation_id == generation_id,
     ).order_by(
-        LagFeatureSample.dataset_id, LagFeatureSample.session_id, LagFeatureSample.timestamp,
+        LagFeatureSample.timestamp, LagFeatureSample.dataset_id,
+        LagFeatureSample.session_id, LagFeatureSample.id,
     ).offset((page - 1) * page_size).limit(page_size).all()
+
+
+def list_sample_recording_dates(db: Session, generation_id: UUID) -> list[date]:
+    rows = db.query(RecordingSession.recording_date).join(
+        LagFeatureSample, LagFeatureSample.session_id == RecordingSession.id,
+    ).filter(LagFeatureSample.generation_id == generation_id).distinct().order_by(
+        RecordingSession.recording_date,
+    ).all()
+    return [row[0] for row in rows]
+
+
+def samples_for_recording_dates(
+    db: Session, generation_id: UUID, recording_dates: list[date],
+) -> list[LagFeatureSample]:
+    if not recording_dates:
+        return []
+    return db.query(LagFeatureSample).join(
+        RecordingSession, RecordingSession.id == LagFeatureSample.session_id,
+    ).filter(
+        LagFeatureSample.generation_id == generation_id,
+        RecordingSession.recording_date.in_(recording_dates),
+    ).order_by(
+        RecordingSession.recording_date,
+        RecordingSession.scheduled_start,
+        LagFeatureSample.timestamp,
+        LagFeatureSample.session_id,
+        LagFeatureSample.id,
+    ).all()
 
 
 def session_counts(db: Session, generation_id: UUID) -> dict[UUID, int]:

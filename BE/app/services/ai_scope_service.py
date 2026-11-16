@@ -12,8 +12,8 @@ OUT_OF_SCOPE_MESSAGE = (
     "và dự báo giao thông trong hệ thống."
 )
 CLARIFICATION_MESSAGE = (
-    "Bạn vui lòng nêu rõ nội dung muốn hỏi về dataset pNEUMA, lag features, "
-    "train/test, thí nghiệm, MAE/RMSE hoặc dự báo giao thông."
+    "Bạn vui lòng nêu rõ nội dung hoặc tên dataset, thí nghiệm, chỉ số hay "
+    "kết quả dự báo mà bạn đang hỏi."
 )
 
 _PROJECT_TERMS = (
@@ -32,6 +32,18 @@ _PROJECT_TERMS = (
     "forecast_id",
     "session_id",
     "group_id",
+    "batch",
+    "phiên ghi",
+    "session",
+    "chuẩn hóa",
+    "tổng hợp",
+    "số xe",
+    "phương tiện",
+    "chia tập",
+    "đặc trưng",
+    "mô hình",
+    "siêu tham số",
+    "độ lỗi",
     "thí nghiệm",
     "mae",
     "rmse",
@@ -59,6 +71,11 @@ _AMBIGUOUS_PHRASES = (
     "what about this",
     "how about it",
     "this one",
+)
+_FOLLOW_UP_PREFIXES = (
+    "cai nao", "cai nay", "cai do", "loai nao", "ban nao", "the nao",
+    "tai sao", "vi sao", "tot nhat", "nen chon", "noi ro", "giai thich them",
+    "which one", "what about this", "how about it", "this one",
 )
 _DOCUMENT_ROOT = Path(__file__).resolve().parents[2] / "docs"
 _KNOWLEDGE_FILES = (
@@ -93,18 +110,47 @@ def _contains_phrase(text: str, phrase: str) -> bool:
 
 def _is_ambiguous(text: str) -> bool:
     terms = text.split()
-    return len(terms) <= 8 and any(
-        _contains_phrase(text, phrase) for phrase in _AMBIGUOUS_PHRASES
+    return is_follow_up_question(text) or (
+        len(terms) <= 8 and any(
+            _contains_phrase(text, phrase) for phrase in _AMBIGUOUS_PHRASES
+        )
+    )
+
+
+def is_follow_up_question(question: str) -> bool:
+    """Allow short references to the current topic, without opening unrelated requests."""
+    normalized = _normalize(question)
+    return len(normalized.split()) <= 12 and any(
+        normalized == phrase or normalized.startswith(f"{phrase} ")
+        for phrase in _FOLLOW_UP_PREFIXES
     )
 
 
 def is_in_project_scope(question: str) -> bool:
     normalized = _normalize(question)
-    return any(_contains_phrase(normalized, _normalize(term)) for term in _PROJECT_TERMS)
+    return bool(re.search(r"\bex\s*0*\d+\b", normalized)) or any(
+        _contains_phrase(normalized, _normalize(term)) for term in _PROJECT_TERMS
+    )
 
 
-def classify_question(question: str) -> str:
+def _has_project_history(prior_user_questions: list[str]) -> bool:
+    for previous in reversed(prior_user_questions):
+        if is_in_project_scope(previous):
+            return True
+        if not is_follow_up_question(previous):
+            return False
+    return False
+
+
+def classify_question(
+    question: str, prior_user_questions: list[str] | None = None,
+    has_project_context: bool = False,
+) -> str:
     if is_in_project_scope(question):
+        return "in_scope"
+    if is_follow_up_question(question) and (
+        has_project_context or _has_project_history(prior_user_questions or [])
+    ):
         return "in_scope"
     if _is_ambiguous(_normalize(question)):
         return "unclear"

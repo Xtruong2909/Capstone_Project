@@ -17,6 +17,7 @@ from app.schemas.traffic_aggregation import (
 from app.services.ds_temporal_aggregation_service import (
     create_group_temporal_aggregation,
     get_combined_temporal_aggregation_results,
+    get_latest_group_temporal_aggregation,
     get_temporal_aggregation_results,
     run_group_temporal_aggregation,
     serialize_group_aggregation_run,
@@ -55,6 +56,19 @@ def create_ds_aggregation(
         aggregation_id=jobs[0].id,
     )
     return serialize_group_aggregation_run(jobs, results)
+
+
+@router.get(
+    "/groups/{group_id}/latest",
+    response_model=DatasetVersionAggregationStarted | None,
+    summary="Lấy lần tổng hợp theo phút đã lưu của batch",
+)
+def get_latest_ds_aggregation(
+    group_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DatasetVersionAggregationStarted | None:
+    return get_latest_group_temporal_aggregation(db, current_user, group_id)
 
 
 @router.get(

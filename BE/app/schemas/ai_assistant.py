@@ -1,7 +1,7 @@
 """Validated, bounded contract for the single AI Assistant endpoint."""
 
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -15,6 +15,11 @@ class AssistantAction(StrEnum):
     EXPERIMENT_COMPARISON = "EXPERIMENT_COMPARISON"
     FORECAST_EXPLANATION = "FORECAST_EXPLANATION"
     CHAT = "CHAT"
+
+
+class ConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
 
 
 class AssistantRequest(BaseModel):
@@ -35,6 +40,7 @@ class AssistantRequest(BaseModel):
         default=None, description="ID nhóm Dataset; dùng Aggregation đã hoàn thành mới nhất của nhóm",
     )
     message: str | None = Field(default=None, max_length=2000)
+    conversation: list[ConversationTurn] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode="after")
     def validate_action(self) -> Self:
