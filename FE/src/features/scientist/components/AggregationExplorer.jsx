@@ -12,17 +12,11 @@ import {
 } from 'lucide-react'
 import { useAggregationExplorer } from '../../../hooks/useTrafficForecast'
 import LineChart from './LineChart'
-import { formatNumber, formatRecordingTime } from '../utils/formatters'
+import { formatNumber, formatRecordingTime, formatTrafficFlow } from '../utils/formatters'
 import './AggregationExplorer.css'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 const DEFAULT_ROI = 'MAIN_ROI'
-
-function formatTrafficFlow(val) {
-  if (val == null || Number.isNaN(Number(val))) return '—'
-  const num = Number(val)
-  return Number.isInteger(num) ? formatNumber(num) : String(Number(num.toFixed(2)))
-}
 
 /**
  * Charts (GET .../chart-data) + aggregated tables (GET .../preview).

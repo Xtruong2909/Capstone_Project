@@ -14,15 +14,10 @@ import {
   formatRecordingDateTime as formatDateTime,
   formatRecordingTime as formatShortTime,
   formatRecordingTimeAtSource,
+  formatTrafficFlow,
 } from '../utils/formatters'
 
 const HISTORY_PAGE_SIZE = 20
-
-function formatFlow(val) {
-  if (val == null || Number.isNaN(Number(val))) return '—'
-  const num = Number(val)
-  return Number.isInteger(num) ? String(num) : num.toFixed(2)
-}
 
 /**
  * UI component for POST /api/feature-engineering/prediction
@@ -156,7 +151,7 @@ export default function PredictionFeaturePanel({
                       return (
                         <div key={key} className="sci-fe-cell sci-fe-cell--x">
                           <span className="sci-fe-cell__name">{key}</span>
-                          <strong className="sci-fe-cell__val">{formatFlow(val)}</strong>
+                          <strong className="sci-fe-cell__val">{formatTrafficFlow(val)}</strong>
                           <small className="sci-fe-cell__meta">{offsetLabel}</small>
                         </div>
                       )
@@ -240,7 +235,7 @@ export default function PredictionFeaturePanel({
                               {formatShortTime(window.originTime)}{isLatest && ' · Mới nhất'}
                             </td>
                             {window.x.map((value, lagIndex) => (
-                              <td key={lagIndex} className="sci-td-x">{formatFlow(value)}</td>
+                              <td key={lagIndex} className="sci-td-x">{formatTrafficFlow(value)}</td>
                             ))}
                             {horizons.map((horizon, targetIndex) => (
                               <td key={horizon} className="sci-td-y">

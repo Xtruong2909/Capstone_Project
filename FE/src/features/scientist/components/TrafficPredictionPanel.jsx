@@ -17,6 +17,7 @@ import {
 import {
   formatRecordingDateTime as formatDateTime,
   formatRecordingTime as formatShortTime,
+  formatTrafficFlow as formatFlow,
 } from '../utils/formatters'
 
 const LINE_WIDTH = 620
@@ -26,12 +27,6 @@ const LINE_PAD = { top: 28, right: 26, bottom: 42, left: 50 }
 const BAR_WIDTH = 520
 const BAR_HEIGHT = 265
 const BAR_PAD = { top: 28, right: 26, bottom: 42, left: 50 }
-
-function formatFlow(val) {
-  if (val == null || Number.isNaN(Number(val))) return '—'
-  const num = Number(val)
-  return Number.isInteger(num) ? String(num) : num.toFixed(2)
-}
 
 function formatSignedChange(val) {
   if (val == null || Number.isNaN(Number(val))) return '—'
@@ -150,7 +145,7 @@ function HistoryAndForecastLineChart({ history = [], forecast = [] }) {
 
     const yTicks = [0, 0.5, 1].map((r) => {
       const val = lo + (hi - lo) * r
-      return { y: toY(val), label: val.toFixed(1) }
+      return { y: toY(val), label: formatFlow(val) }
     })
 
     return {

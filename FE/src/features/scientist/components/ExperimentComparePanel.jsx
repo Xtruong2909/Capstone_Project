@@ -10,7 +10,7 @@ import {
   Rocket,
 } from 'lucide-react'
 
-function formatMetric(val, digits = 4) {
+function formatMetric(val, digits = 2) {
   if (val == null || Number.isNaN(Number(val))) return '—'
   return Number(val).toFixed(digits)
 }
@@ -404,7 +404,7 @@ export default function ExperimentComparePanel({
                         </td>
                         {comparedList.map((exp) => (
                           <td key={exp.experiment_id} style={{ textAlign: 'right' }} className={bestMae !== null && Number(getRandomForestMetric(exp, h)?.mae) === bestMae ? 'sci-compare-cell-best' : ''}>
-                            <strong>{formatMetric(getRandomForestMetric(exp, h)?.mae, 4)}</strong>
+                            <strong>{formatMetric(getRandomForestMetric(exp, h)?.mae)}</strong>
                           </td>
                         ))}
                       </tr>,
@@ -427,7 +427,7 @@ export default function ExperimentComparePanel({
                                     {tied ? 'Đồng hạng' : 'Tốt nhất'}
                                   </span>
                                 )}
-                                <strong>{formatMetric(getRandomForestMetric(exp, h)?.rmse, 4)}</strong>
+                                <strong>{formatMetric(getRandomForestMetric(exp, h)?.rmse)}</strong>
                               </div>
                             </td>
                           )

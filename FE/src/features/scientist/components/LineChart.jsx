@@ -1,6 +1,6 @@
 import { useId, useMemo } from 'react'
 import { useChartHover } from '../../../hooks/useChartHover'
-import { formatRecordingDateTime, formatRecordingTime } from '../utils/formatters'
+import { formatRecordingDateTime, formatRecordingTime, formatTrafficFlow } from '../utils/formatters'
 
 const WIDTH = 560
 const HEIGHT = 195
@@ -12,6 +12,7 @@ const PAD = { top: 16, right: 18, bottom: 28, left: 46 }
  */
 export default function LineChart({ title, unit, labels = [], values = [], color = '#1668e3' }) {
   const gradId = useId()
+  const isSpeed = /speed|tốc độ/i.test(title)
 
   const { linePath, areaPath, points, ticks, xLabels, min, max, avg, hasData } = useMemo(() => {
     const nums = values.filter((v) => typeof v === 'number' && Number.isFinite(v))
@@ -76,7 +77,7 @@ export default function LineChart({ title, unit, labels = [], values = [], color
 
     const yTicks = [0, 0.5, 1].map((r) => {
       const val = lo + (hi - lo) * r
-      return { y: toY(val), label: val.toFixed(1) }
+      return { y: toY(val), label: isSpeed ? val.toFixed(1) : formatTrafficFlow(val) }
     })
 
     const pickIdx = [0, Math.floor((labels.length - 1) / 2), labels.length - 1].filter(
@@ -95,7 +96,7 @@ export default function LineChart({ title, unit, labels = [], values = [], color
       avg: mean,
       hasData: true,
     }
-  }, [labels, values])
+  }, [labels, values, isSpeed])
 
   const { activePoint, hoverHandlers } = useChartHover(points, {
     left: PAD.left, right: WIDTH - PAD.right, top: PAD.top, bottom: HEIGHT - PAD.bottom,
@@ -116,7 +117,7 @@ export default function LineChart({ title, unit, labels = [], values = [], color
         </div>
         {hasData && (
           <span className="sci-chart__badge" style={{ color, background: `${color}14` }}>
-            Trung bình: {avg.toFixed(1)}
+            Trung bình: {isSpeed ? avg.toFixed(1) : formatTrafficFlow(avg)}
           </span>
         )}
       </div>
@@ -192,7 +193,7 @@ export default function LineChart({ title, unit, labels = [], values = [], color
                 stroke={color}
                 strokeWidth="2"
               >
-                <title>{`${formatTick(pt.label)}: ${pt.v.toLocaleString('en-GB', { maximumFractionDigits: 2 })}`}</title>
+                <title>{`${formatTick(pt.label)}: ${isSpeed ? pt.v.toLocaleString('en-GB', { maximumFractionDigits: 2 }) : formatTrafficFlow(pt.v)}`}</title>
               </circle>
             ))}
             {activePoint && (
@@ -210,7 +211,7 @@ export default function LineChart({ title, unit, labels = [], values = [], color
             <div className="sci-chart__tooltip" style={tooltipPosition} aria-hidden="true">
               <time>{formatTooltipTime(activePoint.label)}</time>
               <strong style={{ color }}>
-                {activePoint.v.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}
+                {isSpeed ? activePoint.v.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) : formatTrafficFlow(activePoint.v)}
               </strong>
               {unit && <span>{unit}</span>}
             </div>
@@ -220,9 +221,9 @@ export default function LineChart({ title, unit, labels = [], values = [], color
 
       {hasData && (
         <div className="sci-chart__range">
-          <span>Min: <strong>{min.toFixed(1)}</strong></span>
-          <span>Trung bình: <strong>{avg.toFixed(1)}</strong></span>
-          <span>Max: <strong>{max.toFixed(1)}</strong></span>
+          <span>Min: <strong>{isSpeed ? min.toFixed(1) : formatTrafficFlow(min)}</strong></span>
+          <span>Trung bình: <strong>{isSpeed ? avg.toFixed(1) : formatTrafficFlow(avg)}</strong></span>
+          <span>Max: <strong>{isSpeed ? max.toFixed(1) : formatTrafficFlow(max)}</strong></span>
         </div>
       )}
     </div>

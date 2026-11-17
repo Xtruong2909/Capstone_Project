@@ -61,6 +61,16 @@ export const dataScienceService = {
     const { data } = await apiClient.get(`/model-training/experiments/${experimentId}`, config)
     return data
   },
+  async getForecastOriginAnalysis(experimentId, { sessionId, originTime } = {}) {
+    const { data } = await apiClient.get(`/model-training/experiments/${experimentId}/forecast-origin-analysis`, {
+      ...config,
+      params: {
+        ...(sessionId ? { session_id: sessionId } : {}),
+        ...(originTime ? { origin_time: originTime } : {}),
+      },
+    })
+    return data
+  },
   async compareExperiments(experimentIds) {
     const { data } = await apiClient.post('/model-training/experiments/compare', {
       experiment_ids: experimentIds,
@@ -71,8 +81,8 @@ export const dataScienceService = {
     const { data } = await apiClient.get('/prediction/experiments', config)
     return data.experiments
   },
-  async listPredictionSessions(experimentId, page = 1) {
-    const { data } = await apiClient.get('/prediction/sessions', { ...config, params: { experiment_id: experimentId, eligible_only: true, page, page_size: 100 } })
+  async listPredictionSessions({ experimentId, versionId, page = 1 }) {
+    const { data } = await apiClient.get('/prediction/sessions', { ...config, params: { experiment_id: experimentId || undefined, dataset_version_id: versionId || undefined, eligible_only: true, page, page_size: 100 } })
     return data
   },
   async createForecast(experimentId, sessionIds) {
@@ -83,8 +93,22 @@ export const dataScienceService = {
     const { data } = await apiClient.get('/prediction/forecasts', { ...config, params: { page, page_size: 100 } })
     return data
   },
-  async getForecastResults(forecastId) {
-    const { data } = await apiClient.get(`/prediction/forecasts/${forecastId}/results`, config)
+  async getForecastDetail(forecastId) {
+    const { data } = await apiClient.get(`/prediction/forecasts/${forecastId}`, config)
+    return data
+  },
+  async getForecastResults(forecastId, page = 1, pageSize = 100) {
+    const { data } = await apiClient.get(`/prediction/forecasts/${forecastId}/results`, {
+      ...config,
+      params: { page, page_size: pageSize },
+    })
+    return data
+  },
+  async getForecastChart(forecastId, sessionId) {
+    const { data } = await apiClient.get(`/prediction/forecasts/${forecastId}/chart`, {
+      ...config,
+      params: { session_id: sessionId },
+    })
     return data
   },
 }

@@ -30,6 +30,7 @@ import ScientistDatasetPreviewPage from './features/scientist/pages/ScientistDat
 import ScientistTrainingPage from './features/scientist/pages/ScientistTrainingPage'
 import ScientistAggregationChartsPage from './features/scientist/pages/ScientistAggregationChartsPage'
 import ScientistPredictionPage from './features/scientist/pages/ScientistPredictionPage'
+import ScientistForecastDetailPage from './features/scientist/pages/ScientistForecastDetailPage'
 import ScientistExperimentsPage from './features/scientist/pages/ScientistExperimentsPage'
 import ScientistExperimentComparisonPage from './features/scientist/pages/ScientistExperimentComparisonPage'
 import ScientistExperimentSetupPage from './features/scientist/pages/ScientistExperimentSetupPage'
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="datasets/groups/:groupId/train" element={<ScientistTrainingPage />} />
           <Route path="datasets/groups/:groupId/train/aggregation-charts" element={<ScientistAggregationChartsPage />} />
           <Route path="datasets/groups/:groupId/predict" element={<ScientistPredictionPage />} />
+          <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
           <Route path="experiments" element={<ScientistExperimentsPage />} />
           <Route path="experiments/groups/:groupId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/groups/:groupId/new" element={<ScientistExperimentSetupPage />} />

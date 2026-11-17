@@ -14,6 +14,13 @@ export function formatNumber(value) {
   return value == null ? '-' : Number(value).toLocaleString('en-US')
 }
 
+// Round vehicle flow only when rendering. Forecasts and evaluation metrics keep
+// their original floating-point values throughout API responses and calculations.
+export function formatTrafficFlow(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return Math.round(Number(value)).toLocaleString('vi-VN')
+}
+
 // The API sends recording buckets with their source offset (for example, 09:30+03:00).
 // Keep that wall-clock time instead of converting it to the browser's timezone.
 function recordingDateParts(value) {

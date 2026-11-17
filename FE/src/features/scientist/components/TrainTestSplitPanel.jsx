@@ -12,15 +12,9 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { formatNumber, formatRecordingTime as formatShortTime } from '../utils/formatters'
+import { formatNumber, formatRecordingTime as formatShortTime, formatTrafficFlow } from '../utils/formatters'
 
 const PAGE_SIZE = 15
-
-function formatFlow(val) {
-  if (val == null || Number.isNaN(Number(val))) return '—'
-  const num = Number(val)
-  return Number.isInteger(num) ? String(num) : num.toFixed(2)
-}
 
 /**
  * Step 2: UI component for POST /api/train-test-split/training (70/30 Chronological Split)
@@ -341,12 +335,12 @@ export default function TrainTestSplitPanel({
                       <td style={{ fontWeight: 700 }}>{formatShortTime(row.time_bucket)}</td>
                       {featureOrder.map((f, i) => (
                         <td key={f} className="sci-td-x">
-                          {formatFlow(row.x[i])}
+                                {formatTrafficFlow(row.x[i])}
                         </td>
                       ))}
                       {targetOrder.map((tKey, i) => (
                         <td key={tKey} className="sci-td-y">
-                          <strong>{formatFlow(row.y[i])}</strong>
+                              <strong>{formatTrafficFlow(row.y[i])}</strong>
                           {row.target_times?.[tKey] && (
                             <span className="sci-td-time">
                               {formatShortTime(row.target_times[tKey])}

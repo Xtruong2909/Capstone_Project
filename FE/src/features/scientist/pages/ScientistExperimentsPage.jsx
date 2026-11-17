@@ -3,9 +3,11 @@ import { Link, useParams } from 'react-router-dom'
 import { ChevronRight, Eye, FlaskConical, FolderOpen, GitCompareArrows } from 'lucide-react'
 import { useApprovedGroups, useGroupDatasets, useGroupSessionMetadata } from '../../../hooks/useScientistData'
 import { useScienceExperiments } from '../../../hooks/useScienceWorkflow'
-import { formatAthensRecordingDateTime } from '../utils/formatters'
+import { formatAthensRecordingDateTime, formatTrafficFlow } from '../utils/formatters'
 import { sortRecordingSessions } from '../utils/sortRecordingSessions'
 import ScientistBackLink from '../components/ScientistBackLink'
+import { ActualPredictedChart } from '../components/ExperimentResultCharts'
+import ForecastOriginAnalysis from '../components/ForecastOriginAnalysis'
 
 const UNASSIGNED_GROUP = 'unassigned'
 const formatMetric = (value) => value == null ? '—' : Number(value).toFixed(2)
@@ -62,17 +64,6 @@ function MetricsTable({ metrics }) {
   })}</tbody></table></div>
 }
 
-function ForecastTable({ forecasts }) {
-  if (!forecasts?.length) return null
-  return <section className="sci-experiment-result-block"><h3>Dự báo cuối tập Test</h3><div className="sci-table-wrap"><table className="sci-table"><thead><tr>
-    <th>Mốc</th><th>Thời điểm (Athens)</th><th>Thực tế</th><th>Dự báo</th><th>Sai số</th>
-  </tr></thead><tbody>{forecasts.map((row) => <tr className={`sci-forecast-row sci-forecast-row--h${row.horizon_minutes}`} key={row.horizon_minutes}>
-    <td><span className={`sci-horizon-badge sci-horizon-badge--h${row.horizon_minutes}`}>+{row.horizon_minutes} phút</span></td><td>{formatAthensRecordingDateTime(row.target_timestamp)}</td>
-    <td>{formatMetric(row.actual_traffic_flow)}</td><td>{formatMetric(row.predicted_traffic_flow)}</td>
-    <td>{formatMetric(row.absolute_error)}</td>
-  </tr>)}</tbody></table></div></section>
-}
-
 function ModelSummaryTable({ summaries }) {
   if (!summaries?.length) return null
   return <section className="sci-experiment-results-section sci-experiment-results-section--primary">
@@ -117,6 +108,24 @@ function PredictionDetailsTable({ rows, sessionsById }) {
       || predictionHorizon(left) - predictionHorizon(right)
       || predictionModelOrder(left) - predictionModelOrder(right)),
   [sessionRows, model, horizon])
+  const metricsByModelAndHorizon = useMemo(() => {
+    const totals = new Map()
+    for (const row of visibleRows) {
+      if (row.actual_traffic_flow == null || row.predicted_traffic_flow == null) continue
+      const error = Number(row.actual_traffic_flow) - Number(row.predicted_traffic_flow)
+      if (!Number.isFinite(error)) continue
+      const key = `${row.model}:${row.horizon_minutes}`
+      const total = totals.get(key) || { count: 0, absoluteSum: 0, squaredSum: 0 }
+      total.count += 1
+      total.absoluteSum += Math.abs(error)
+      total.squaredSum += error ** 2
+      totals.set(key, total)
+    }
+    return new Map([...totals].map(([key, total]) => [key, {
+      mae: total.absoluteSum / total.count,
+      rmse: Math.sqrt(total.squaredSum / total.count),
+    }]))
+  }, [visibleRows])
 
   return <section className="sci-experiment-results-section">
     <div className="sci-experiment-results-section__heading">
@@ -139,18 +148,22 @@ function PredictionDetailsTable({ rows, sessionsById }) {
       </div>}
     </div>
     {sessionRows.length && !visibleRows.length && <p>Session này không có dự đoán phù hợp với bộ lọc.</p>}
+    {visibleRows.length > 0 && <p className="sci-experiment-predictions-note">MAE và RMSE được tính theo từng mô hình và mốc dự báo trong session đang chọn.</p>}
     {visibleRows.length ? <div className="sci-table-wrap sci-experiment-predictions-table"><table className="sci-table"><thead><tr>
       <th>Mô hình</th><th>Mốc</th><th>Thời điểm dự báo (Athens)</th><th>Thời điểm cần dự báo (Athens)</th>
-      <th>Thực tế</th><th>Dự báo</th><th>Sai số tuyệt đối</th>
-    </tr></thead><tbody>{visibleRows.map((row, index) => <tr className={`sci-prediction-row sci-prediction-row--h${row.horizon_minutes}`} key={`${row.model}:${row.horizon_minutes}:${row.forecast_origin_time}:${row.target_timestamp}:${index}`}>
+      <th>Thực tế</th><th>Dự báo</th><th>MAE</th><th>RMSE</th>
+    </tr></thead><tbody>{visibleRows.map((row, index) => {
+      const metrics = metricsByModelAndHorizon.get(`${row.model}:${row.horizon_minutes}`)
+      return <tr className={`sci-prediction-row sci-prediction-row--h${row.horizon_minutes}`} key={`${row.model}:${row.horizon_minutes}:${row.forecast_origin_time}:${row.target_timestamp}:${index}`}>
       <td><span className={`sci-model-badge sci-model-badge--${String(row.model).toLowerCase()}`}>{row.model}</span></td>
       <td><span className={`sci-horizon-badge sci-horizon-badge--h${row.horizon_minutes}`}>+{row.horizon_minutes} phút</span></td>
       <td>{formatAthensRecordingDateTime(row.forecast_origin_time)}</td>
       <td>{formatAthensRecordingDateTime(row.target_timestamp)}</td>
-      <td>{formatMetric(row.actual_traffic_flow)}</td>
-      <td>{formatMetric(row.predicted_traffic_flow)}</td>
-      <td>{formatMetric(row.absolute_error)}</td>
-    </tr>)}</tbody></table></div> : !sessionRows.length && <p>Chưa có dự đoán trên tập Test.</p>}
+      <td>{formatTrafficFlow(row.actual_traffic_flow)}</td>
+      <td>{formatTrafficFlow(row.predicted_traffic_flow)}</td>
+      <td className="sci-prediction-metric-cell sci-prediction-metric-cell--mae">{formatMetric(metrics?.mae)}</td>
+      <td className="sci-prediction-metric-cell sci-prediction-metric-cell--rmse">{formatMetric(metrics?.rmse)}</td>
+    </tr>})}</tbody></table></div> : !sessionRows.length && <p>Chưa có dự đoán trên tập Test.</p>}
   </section>
 }
 
@@ -250,12 +263,14 @@ export default function ScientistExperimentsPage() {
           <div className="sci-experiment-metric-guide">
             <span><b>MAE</b> Sai số tuyệt đối trung bình</span>
             <span><b>RMSE</b> Căn bậc hai của sai số bình phương trung bình</span>
-            <small>Hai chỉ số càng thấp thì dự báo càng sát thực tế. Sai số tuyệt đối trong bảng chi tiết là sai số của từng dự đoán.</small>
+            <small>Hai chỉ số càng thấp thì dự báo càng sát thực tế. MAE và RMSE trong bảng chi tiết được tính theo từng mô hình và mốc của session.</small>
           </div>
           <MetricsTable metrics={activeDetail.performance_by_model_and_horizon} />
         </section>
+        <ActualPredictedChart predictions={activeDetail.result_tables?.prediction_details?.length
+          ? activeDetail.result_tables.prediction_details : activeDetail.prediction_rows || []} sessionsById={sessionsById} />
+        {activeDetail.status === 'COMPLETED' && <ForecastOriginAnalysis key={activeDetail.experiment_id} experimentId={activeDetail.experiment_id} />}
         <ModelSummaryTable summaries={activeDetail.result_tables?.model_summary} />
-        <ForecastTable forecasts={activeDetail.result_tables?.horizon_forecasts} />
         <details><summary>Siêu tham số đã dùng</summary><pre>{JSON.stringify(activeDetail.hyperparameters, null, 2)}</pre></details>
       </>}
     </div></section>}

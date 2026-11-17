@@ -319,17 +319,106 @@ export function useFeaturePreview(featureGenerationId, enabled) {
   }
 }
 
+async function loadAllPredictionSessions(params) {
+  const sessions = []
+  let page = 1
+  while (true) {
+    const result = await dataScienceService.listPredictionSessions({ ...params, page })
+    sessions.push(...result.sessions)
+    if (sessions.length >= result.total_records || result.sessions.length === 0) return sessions
+    page += 1
+  }
+}
+
+async function loadAllForecastResults(forecastId) {
+  const rows = []
+  let page = 1
+  while (true) {
+    const result = await dataScienceService.getForecastResults(forecastId, page)
+    rows.push(...result.results)
+    if (rows.length >= result.total_records || result.results.length === 0) return rows
+    page += 1
+  }
+}
+
+async function loadForecastDetail(forecastId) {
+  const [detail, rows] = await Promise.all([
+    dataScienceService.getForecastDetail(forecastId),
+    loadAllForecastResults(forecastId),
+  ])
+  const rowsBySession = new Map()
+  for (const row of rows) {
+    const sessionRows = rowsBySession.get(row.session_id) || []
+    sessionRows.push(row)
+    rowsBySession.set(row.session_id, sessionRows)
+  }
+  const filenamesBySession = Object.fromEntries(
+    (detail.session_snapshots || []).map((snapshot) => [snapshot.session_id, snapshot.original_filename]),
+  )
+  return {
+    forecast_id: detail.forecast_id,
+    experiment_id: detail.experiment_id,
+    experiment_name: detail.experiment_name,
+    status: detail.status,
+    created_at: detail.created_at,
+    results_by_session: detail.session_ids.map((sessionId) => ({
+      session_id: sessionId,
+      original_filename: filenamesBySession[sessionId] || null,
+      predictions: (rowsBySession.get(sessionId) || []).sort((a, b) => a.horizon - b.horizon),
+    })),
+    session_errors: [],
+  }
+}
+
+export function useScienceForecastDetail(forecastId) {
+  const [result, setResult] = useState({ forecastId: '', forecast: null, error: '' })
+  useEffect(() => {
+    if (!forecastId) return
+
+    let cancelled = false
+    loadForecastDetail(forecastId)
+      .then((forecast) => {
+        if (!cancelled) setResult({ forecastId, forecast, error: '' })
+      })
+      .catch((err) => {
+        if (!cancelled) setResult({
+          forecastId, forecast: null,
+          error: extractErrorMessage(err, 'Không tải được kết quả dự báo đã lưu.'),
+        })
+      })
+    return () => { cancelled = true }
+  }, [forecastId])
+
+  if (!forecastId) return { forecast: null, loading: false, error: '' }
+  if (result.forecastId !== forecastId) {
+    return { forecast: null, loading: true, error: '' }
+  }
+  return { forecast: result.forecast, loading: false, error: result.error }
+}
+
 export function useSciencePrediction(versionId, preferredExperimentId) {
   const [experiments, setExperiments] = useState([])
-  const [experimentId, setExperimentId] = useState(preferredExperimentId || '')
+  const [selectedExperimentId, setSelectedExperimentId] = useState(preferredExperimentId || '')
   const [sessions, setSessions] = useState([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [compatibleSessionIds, setCompatibleSessionIds] = useState(null)
+  const [compatibilityLoading, setCompatibilityLoading] = useState(false)
   const [sessionIds, setSessionIds] = useState([])
   const [forecast, setForecast] = useState(null)
   const [history, setHistory] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const selectExperiment = (id) => { setExperimentId(id); setForecast(null) }
+  const availableExperiments = experiments.filter((item) =>
+    !versionId || !Array.isArray(item.dataset_version_ids) || item.dataset_version_ids.includes(versionId))
+  const experimentId = availableExperiments.some((item) => item.experiment_id === selectedExperimentId)
+    ? selectedExperimentId : ''
+  const selectExperiment = (id) => {
+    setSelectedExperimentId(id)
+    setCompatibleSessionIds(null)
+    setCompatibilityLoading(Boolean(id))
+    setForecast(null)
+    setError('')
+  }
   const load = useCallback(async () => {
     setBusy(true); setError('')
     try {
@@ -343,26 +432,26 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
   }, [])
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    if (!experimentId) { setSessions([]); setSessionsLoading(false); return }
+    if (!versionId) { setSessions([]); setSessionsLoading(false); return }
     let cancelled = false
     setSessionIds([])
     setSessions([])
     setSessionsLoading(true)
-    const loadSessions = async () => {
-      const sessions = []
-      let page = 1
-      while (true) {
-        const result = await dataScienceService.listPredictionSessions(experimentId, page)
-        sessions.push(...result.sessions)
-        if (sessions.length >= result.total_records || result.sessions.length === 0) break
-        page += 1
-      }
-      return sessions
-    }
-    loadSessions()
-      .then((rows) => { if (!cancelled) setSessions(rows.filter((session) => session.dataset_version_id === versionId)) })
+    loadAllPredictionSessions({ versionId })
+      .then((rows) => { if (!cancelled) setSessions(rows) })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được phiên dự báo.')) })
       .finally(() => { if (!cancelled) setSessionsLoading(false) })
+    return () => { cancelled = true }
+  }, [versionId])
+  useEffect(() => {
+    if (!experimentId || !versionId) { setCompatibleSessionIds(null); setCompatibilityLoading(false); return }
+    let cancelled = false
+    setCompatibleSessionIds(null)
+    setCompatibilityLoading(true)
+    loadAllPredictionSessions({ experimentId, versionId })
+      .then((rows) => { if (!cancelled) setCompatibleSessionIds(rows.map((row) => row.session_id)) })
+      .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không kiểm tra được session của thí nghiệm.')) })
+      .finally(() => { if (!cancelled) setCompatibilityLoading(false) })
     return () => { cancelled = true }
   }, [experimentId, versionId])
   const predict = async () => {
@@ -375,7 +464,7 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
     } catch (err) { setError(extractErrorMessage(err, 'Dự báo không thành công.')) }
     finally { setBusy(false) }
   }
-  return { experiments, experimentId, setExperimentId: selectExperiment, sessions, sessionsLoading, sessionIds, setSessionIds, forecast, history, busy, error, predict }
+  return { experiments: availableExperiments, experimentId, setExperimentId: selectExperiment, sessions, sessionsLoading, compatibleSessionIds, compatibilityLoading, sessionIds, setSessionIds, forecast, history, busy, error, predict }
 }
 
 export function useScienceExperiments(experimentId) {
