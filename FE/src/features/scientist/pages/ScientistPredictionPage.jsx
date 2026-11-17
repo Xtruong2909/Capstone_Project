@@ -1,6 +1,6 @@
 import { Activity, Database, Eye, FlaskConical, History, LoaderCircle, Sparkles } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, Outlet, useLocation, useParams } from 'react-router-dom'
 import { useApprovedDatasets, useApprovedGroups, useGroupDatasets, useGroupSessionMetadata } from '../../../hooks/useScientistData'
 import { useSciencePrediction } from '../../../hooks/useScienceWorkflow'
 import { useForecastCharts } from '../../../hooks/useForecastCharts'
@@ -14,7 +14,7 @@ const shortId = (value) => value ? String(value).slice(0, 8) : '—'
 const formatDateTime = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—'
 
 export default function ScientistPredictionPage() {
-  const { groupId, datasetId, versionId } = useParams()
+  const { groupId, datasetId, versionId, forecastId } = useParams()
   const location = useLocation()
   const preferredExperimentId = new URLSearchParams(location.search).get('experimentId')
   const [selectedVersionId, setSelectedVersionId] = useState('')
@@ -47,7 +47,8 @@ export default function ScientistPredictionPage() {
   const canPredict = Boolean(experimentId && selectedSession && sessionIds.length === 1 && compatibleSessionIds
     && !incompatibleSessionCount && !sessionsLoading && !compatibilityLoading && !busy)
 
-  return <div className="sci-page sci-prediction-page">
+  return <>
+    <div className={`sci-page sci-prediction-page${forecastId ? ' sci-prediction-page--preserved' : ''}`}>
     <ScientistBackLink to="/scientist/datasets">Tất cả batch</ScientistBackLink>
 
     <header className="sci-prediction-hero">
@@ -130,11 +131,13 @@ export default function ScientistPredictionPage() {
     {forecast && <ForecastResultsPanel forecast={forecast} charts={charts} chartErrors={chartErrors} chartsLoading={chartsLoading} />}
 
     <section className="sci-prediction-card sci-prediction-history">
-      <div className="sci-prediction-section-heading"><div className="sci-prediction-section-heading__icon sci-prediction-section-heading__icon--purple"><History size={20} /></div><div><h2>Lịch sử dự báo</h2><p>Các lần dự báo đã chạy gần đây.</p></div><span className="sci-prediction-history__count">{history.length} lần</span></div>
-      {history.length === 0 ? <div className="sci-prediction-empty sci-prediction-empty--history"><History size={28} /><strong>Chưa có dự báo</strong><span>Kết quả sau khi chạy sẽ xuất hiện tại đây.</span></div>
+      <div className="sci-prediction-section-heading"><div className="sci-prediction-section-heading__icon sci-prediction-section-heading__icon--purple"><History size={20} /></div><div><h2>Lịch sử dự báo</h2><p>{selectedSessionId ? 'Các lần dự báo đã chạy cho session này.' : 'Chọn một session để xem lịch sử dự báo.'}</p></div>{selectedSessionId && <span className="sci-prediction-history__count">{history.length} lần</span>}</div>
+      {!selectedSessionId ? null : history.length === 0 ? <div className="sci-prediction-empty sci-prediction-empty--history"><History size={28} /><strong>Chưa có dự báo</strong><span>Session này chưa có lần dự báo nào.</span></div>
         : <div className="sci-table-wrap"><table className="sci-table"><thead><tr><th>Thí nghiệm</th><th>Trạng thái</th><th>Session đã dự báo</th><th>Thời gian tạo</th><th>Kết quả</th></tr></thead><tbody>
-          {history.map((item) => <tr key={item.forecast_id} className={forecast?.forecast_id === item.forecast_id ? 'sci-prediction-history-row--active' : ''}><td><strong>{item.experiment_name}</strong></td><td><span className={`sci-prediction-status sci-prediction-status--${String(item.status).toLowerCase()}`}>{item.status}</span></td><td><div className="sci-prediction-history-sessions">{item.sessions?.length ? item.sessions.map((session) => <span key={session.session_id}>{session.original_filename || `Session ${shortId(session.session_id)}`}</span>) : '—'}</div></td><td>{formatDateTime(item.created_at)}</td><td><Link className="sci-prediction-history-view" to={`/scientist/forecasts/${item.forecast_id}`} state={{ returnTo: `${location.pathname}${location.search}` }}><Eye size={15} />Xem kết quả</Link></td></tr>)}
+          {history.map((item) => <tr key={item.forecast_id} className={forecast?.forecast_id === item.forecast_id ? 'sci-prediction-history-row--active' : ''}><td><strong>{item.experiment_name}</strong></td><td><span className={`sci-prediction-status sci-prediction-status--${String(item.status).toLowerCase()}`}>{item.status}</span></td><td><div className="sci-prediction-history-sessions">{item.sessions?.length ? item.sessions.map((session) => <span key={session.session_id}>{session.original_filename || `Session ${shortId(session.session_id)}`}</span>) : '—'}</div></td><td>{formatDateTime(item.created_at)}</td><td><Link className="sci-prediction-history-view" to={`${location.pathname}/forecasts/${item.forecast_id}`} state={{ returnTo: `${location.pathname}${location.search}` }}><Eye size={15} />Xem kết quả</Link></td></tr>)}
         </tbody></table></div>}
     </section>
-  </div>
+    </div>
+    <Outlet />
+  </>
 }

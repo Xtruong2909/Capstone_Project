@@ -4,6 +4,26 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/ap
   .replace(/\/v1\/?$/, '')
 
 export const sharingService = {
+  async listAvailableResources(params) {
+    const { data } = await apiClient.get('/shares/available-resources', { baseURL: API_BASE, params })
+    return data
+  },
+  async listManagedResources(params = {}) {
+    const { data } = await apiClient.get('/shares/manage', { baseURL: API_BASE, params })
+    return data
+  },
+  async createBatch(resources) {
+    const { data } = await apiClient.post('/shares/batch', { resources }, { baseURL: API_BASE })
+    return data
+  },
+  async revoke(shareId) {
+    const { data } = await apiClient.patch(`/shares/${shareId}/revoke`, {}, { baseURL: API_BASE })
+    return data
+  },
+  async getManaged(shareId) {
+    const { data } = await apiClient.get(`/shares/${shareId}`, { baseURL: API_BASE })
+    return data
+  },
   async listMine(params = {}) {
     const { data } = await apiClient.get('/shares/mine', { baseURL: API_BASE, params })
     return data

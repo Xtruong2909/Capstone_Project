@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   X,
   User,
@@ -17,7 +18,7 @@ import { authService } from '../../../services/authService'
 import { useLanguage } from '../../../hooks/useLanguage'
 import { formatDate, extractErrorMessage } from '../utils/formatters'
 
-export default function ScientistProfileModal({ isOpen, onClose }) {
+export default function ScientistProfileModal({ isOpen, onClose, roleLabel = 'Data Scientist' }) {
   const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState('info') // 'info' | 'password'
 
@@ -307,16 +308,16 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                         flexShrink: 0,
                       }}
                     >
-                      {userProfile.full_name ? userProfile.full_name.charAt(0).toUpperCase() : 'S'}
+                      {userProfile.full_name ? userProfile.full_name.charAt(0).toUpperCase() : roleLabel.charAt(0)}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                          {userProfile.full_name || t('Data Scientist')}
+                          {userProfile.full_name || t(roleLabel)}
                         </h4>
-                        <span className="badge badge--scientist" style={{ fontSize: '0.68rem', padding: '0.12rem 0.5rem' }}>
-                          {userProfile.role_id === 'data_scientist' ? t('Data Scientist') : t(userProfile.role_id)}
+                        <span className={userProfile.role_id === 'business_user' ? 'biz-role-badge' : 'badge badge--scientist'} style={{ fontSize: '0.68rem', padding: '0.12rem 0.5rem' }}>
+                          {userProfile.role_id === 'business_user' ? roleLabel : userProfile.role_id === 'data_scientist' ? t('Data Scientist') : t(userProfile.role_id)}
                         </span>
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.15rem' }}>
@@ -420,7 +421,9 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                       lineHeight: 1.45,
                     }}
                   >
-                    💡 <strong>{t('Note:')}</strong> {t('Account details and Data Scientist permissions are centrally managed by the System Administrator. If you need to update your email or role permissions, please contact an Admin.')}
+                    💡 <strong>{t('Note:')}</strong> {userProfile.role_id === 'business_user'
+                      ? 'Thông tin tài khoản và quyền truy cập được quản trị viên quản lý. Hãy liên hệ quản trị viên nếu cần thay đổi email hoặc vai trò.'
+                      : t('Account details and Data Scientist permissions are centrally managed by the System Administrator. If you need to update your email or role permissions, please contact an Admin.')}
                   </div>
                 </div>
               )}
@@ -578,7 +581,11 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <Link to="/forgot-password" onClick={onClose} style={{ color: '#1668e3', fontSize: '0.82rem', fontWeight: 700 }}>
+                  Quên mật khẩu?
+                </Link>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmittingPassword}>
                   {t('Cancel')}
                 </button>
@@ -599,6 +606,7 @@ export default function ScientistProfileModal({ isOpen, onClose }) {
                     </>
                   )}
                 </button>
+                </div>
               </div>
             </form>
           )}

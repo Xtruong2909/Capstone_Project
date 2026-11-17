@@ -422,15 +422,24 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
   const load = useCallback(async () => {
     setBusy(true); setError('')
     try {
-      const [experimentRows, historyPage] = await Promise.all([
-        dataScienceService.listPredictionExperiments(), dataScienceService.listForecasts(),
-      ])
+      const experimentRows = await dataScienceService.listPredictionExperiments()
       setExperiments(experimentRows.filter((item) => item.prediction_eligible))
-      setHistory(historyPage.forecasts)
     } catch (err) { setError(extractErrorMessage(err, 'Không tải được dữ liệu dự báo.')) }
     finally { setBusy(false) }
   }, [])
   useEffect(() => { load() }, [load])
+
+  // Load history filtered by the currently selected session
+  const selectedSessionId = sessionIds[0] || ''
+  useEffect(() => {
+    if (!selectedSessionId) { setHistory([]); return }
+    let cancelled = false
+    dataScienceService.listForecasts({ sessionId: selectedSessionId })
+      .then((page) => { if (!cancelled) setHistory(page.forecasts) })
+      .catch(() => { if (!cancelled) setHistory([]) })
+    return () => { cancelled = true }
+  }, [selectedSessionId])
+
   useEffect(() => {
     if (!versionId) { setSessions([]); setSessionsLoading(false); return }
     let cancelled = false
@@ -459,8 +468,11 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
     try {
       const result = await dataScienceService.createForecast(experimentId, sessionIds)
       setForecast(result)
-      const historyPage = await dataScienceService.listForecasts()
-      setHistory(historyPage.forecasts)
+      const currentSessionId = sessionIds[0] || ''
+      if (currentSessionId) {
+        const historyPage = await dataScienceService.listForecasts({ sessionId: currentSessionId })
+        setHistory(historyPage.forecasts)
+      }
     } catch (err) { setError(extractErrorMessage(err, 'Dự báo không thành công.')) }
     finally { setBusy(false) }
   }

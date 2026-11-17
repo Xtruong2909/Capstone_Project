@@ -3132,6 +3132,7 @@
 
 /* Traffic prediction */
 .sci-prediction-page { width: 100%; max-width: 1440px; margin-inline: auto; gap: 1rem; }
+.sci-prediction-page--preserved { display: none; }
 .sci-prediction-page * { box-sizing: border-box; }
 .sci-prediction-hero { display: flex; align-items: center; gap: 1rem; min-height: 126px; padding: 1.35rem 1.6rem; border: 1px solid #c9dcfa; border-radius: 18px; background: linear-gradient(110deg, #e9f3ff 0%, #fff 72%); box-shadow: 0 8px 24px rgba(25, 72, 125, 0.06); }
 .sci-prediction-hero__icon { display: grid; place-items: center; flex: none; width: 58px; height: 58px; border-radius: 16px; background: #d8e9ff; color: #1c61cd; }
@@ -3195,6 +3196,17 @@
 .sci-prediction-aggregation__pager > div { display: flex; gap: 0.5rem; }
 .sci-prediction-aggregation__pager button { min-height: 34px; padding: 0.4rem 0.75rem; border: 1px solid #bdd4f2; border-radius: 8px; background: #fff; color: #245da9; font: inherit; font-weight: 750; cursor: pointer; }
 .sci-prediction-aggregation__pager button:disabled { opacity: 0.5; cursor: not-allowed; }
+.sci-prediction-aggregation__lags { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e3ebf4; }
+.sci-prediction-aggregation__lags-heading h5 { margin: 0; color: #244561; font-size: 0.85rem; }
+.sci-prediction-aggregation__lags-heading p { margin: 0.3rem 0 0.75rem; color: #71859c; font-size: 0.74rem; }
+.sci-prediction-aggregation__lag-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.6rem; }
+.sci-prediction-aggregation__lag { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; padding: 0.75rem; border: 1px solid #dce8f6; border-radius: 10px; background: #f5f9ff; }
+.sci-prediction-aggregation__lag span { color: #2868c5; font-size: 0.72rem; font-weight: 750; }
+.sci-prediction-aggregation__lag strong { color: #244561; font-size: 1.05rem; }
+.sci-prediction-aggregation__lag strong small { color: #71859c; font-size: 0.68rem; font-weight: 500; }
+.sci-prediction-aggregation__lag time { color: #60758e; font-size: 0.73rem; }
+@media (max-width: 800px) { .sci-prediction-aggregation__lag-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .sci-prediction-aggregation__lag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sci-prediction-empty { display: flex; align-items: center; justify-content: center; gap: 0.45rem; min-height: 74px; padding: 1rem; border: 1px dashed #cbdbea; border-radius: 10px; color: #71859c; font-size: 0.76rem; text-align: center; }
 .sci-prediction-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.15rem; padding-top: 1rem; border-top: 1px solid #e4ebf3; }
 .sci-prediction-actions > span { color: #73869d; font-size: 0.75rem; }

@@ -89,8 +89,11 @@ export const dataScienceService = {
     const { data } = await apiClient.post('/prediction/forecasts', { experiment_id: experimentId, session_ids: sessionIds }, config)
     return data
   },
-  async listForecasts(page = 1) {
-    const { data } = await apiClient.get('/prediction/forecasts', { ...config, params: { page, page_size: 100 } })
+  async listForecasts({ page = 1, sessionId } = {}) {
+    const { data } = await apiClient.get('/prediction/forecasts', {
+      ...config,
+      params: { page, page_size: 100, ...(sessionId ? { session_id: sessionId } : {}) },
+    })
     return data
   },
   async getForecastDetail(forecastId) {

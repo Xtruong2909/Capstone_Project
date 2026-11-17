@@ -1,220 +1,203 @@
-import { useState } from 'react'
-import {
-  CheckCircle2,
-  ClipboardList,
-  Eye,
-  FileText,
-  Inbox,
-  Save,
-  Send,
-  Share2,
-} from 'lucide-react'
-import { SHARE_SECTIONS, useShareManagement } from '../../../hooks/useShareManagement'
+import { useEffect, useState } from 'react'
+import { Check, ChevronLeft, ChevronRight, Eye, Inbox, Plus, Search, Share2, X } from 'lucide-react'
+import { useAvailableShareResources, useManagedResourceShares } from '../../../hooks/useResourceSharing'
+import { sharingService } from '../../../services/sharingService'
+import SharedResultDataSection from '../../business/components/SharedResultDataSection'
+import { extractErrorMessage } from '../utils/formatters'
+import '../../business/pages/BusinessSharedResultsPage.css'
+import './ScientistSharesPage.css'
 
-const RESOURCE_LABELS = {
-  DATASET: 'Tập dữ liệu',
-  TRAIN_TEST: 'Chia Train/Test',
-  EXPERIMENT: 'Thí nghiệm',
-  PREDICTION: 'Dự báo',
-}
-
+const TYPES = [
+  ['DATASET', 'Dataset'], ['TRAIN_TEST', 'Train/Test'],
+  ['EXPERIMENT', 'Thí nghiệm'], ['PREDICTION', 'Kết quả dự báo'],
+]
+const TYPE_LABELS = Object.fromEntries(TYPES)
 const SECTION_LABELS = {
-  metadata: 'Thông tin tập dữ liệu',
-  statistics: 'Thống kê',
-  sessions: 'Các session',
-  traffic_flow_chart: 'Biểu đồ lưu lượng',
-  split_summary: 'Tổng quan chia tập',
-  train_test_counts: 'Số lượng Train/Test',
-  session_distribution: 'Phân bố session',
-  split_configuration: 'Cấu hình chia tập',
-  experiment_summary: 'Tổng quan thí nghiệm',
-  hyperparameters: 'Siêu tham số',
-  evaluation_metrics: 'Chỉ số đánh giá',
-  baseline_comparison: 'So sánh mô hình cơ sở',
-  prediction_rows: 'Các dòng dự đoán',
-  horizon_comparison: 'So sánh mốc dự báo',
-  forecast_summary: 'Tổng quan dự báo',
-  model_information: 'Thông tin mô hình',
-  lag_features: 'Đặc trưng trễ',
-  forecast_results: 'Kết quả dự báo',
-  forecast_chart: 'Biểu đồ dự báo',
+  metadata: 'Thông tin Dataset', statistics: 'Thống kê', sessions: 'Phiên ghi hình',
+  traffic_flow_chart: 'Lưu lượng theo thời gian', split_summary: 'Tổng quan Train/Test',
+  train_test_counts: 'Số lượng mẫu', session_distribution: 'Phân bổ phiên ghi hình',
+  split_configuration: 'Cấu hình chia tập', experiment_summary: 'Tổng quan thí nghiệm',
+  hyperparameters: 'Siêu tham số', evaluation_metrics: 'Chỉ số đánh giá',
+  baseline_comparison: 'So sánh mô hình', prediction_rows: 'Dự báo trên tập Test',
+  horizon_comparison: 'So sánh mốc dự báo', forecast_summary: 'Tổng quan dự báo',
+  model_information: 'Mô hình sử dụng', lag_features: 'Đặc trưng trễ',
+  forecast_results: 'Kết quả dự báo', forecast_chart: 'Biểu đồ dự báo',
+}
+const keyOf = (item) => `${item.resource_type}:${item.resource_id}`
+const dateOf = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—'
+
+function ShareResourceModal({ onClose, onChanged }) {
+  const [resourceType, setResourceType] = useState('DATASET')
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [revision, setRevision] = useState(0)
+  const [selected, setSelected] = useState({})
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [feedback, setFeedback] = useState('')
+  const { data, total_records: total, loading, error: listError } = useAvailableShareResources({
+    resourceType, search, page, enabled: true, revision,
+  })
+  const selectedItems = Object.values(selected)
+  const selectable = data.filter((item) => !item.is_shared)
+  const allPageSelected = selectable.length > 0 && selectable.every((item) => selected[keyOf(item)])
+
+  const toggleItem = (item) => setSelected((current) => {
+    const next = { ...current }
+    if (next[keyOf(item)]) delete next[keyOf(item)]
+    else next[keyOf(item)] = item
+    return next
+  })
+  const togglePage = () => setSelected((current) => {
+    const next = { ...current }
+    for (const item of selectable) {
+      if (allPageSelected) delete next[keyOf(item)]
+      else next[keyOf(item)] = item
+    }
+    return next
+  })
+
+  const submit = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await sharingService.createBatch(
+        selectedItems.map(({ resource_type, resource_id }) => ({ resource_type, resource_id })),
+      )
+      const failedKeys = new Set(result.results.filter((item) => !item.success).map(keyOf))
+      setSelected(Object.fromEntries(selectedItems.filter((item) => failedKeys.has(keyOf(item))).map((item) => [keyOf(item), item])))
+      setRevision((value) => value + 1)
+      if (result.created_count) onChanged()
+      if (result.failed_count) {
+        setFeedback(`Đã chia sẻ ${result.created_count} tài nguyên. ${result.failed_count} mục chưa thể chia sẻ.`)
+        setError(result.results.filter((item) => !item.success).map((item) => `${item.resource_type}: ${item.message}`).join(' · '))
+        setConfirming(false)
+      } else onClose()
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Không thể chia sẻ tài nguyên. Vui lòng thử lại.'))
+      setConfirming(false)
+    } finally { setBusy(false) }
+  }
+
+  return <div className="share-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose() }}>
+    <section className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+      <header className="share-modal__head">
+        <div><h2 id="share-modal-title">Chia sẻ tài nguyên mới</h2><p>Chọn tài nguyên Data Scientist muốn chia sẻ cho Người dùng nghiệp vụ.</p></div>
+        <button type="button" className="share-icon-button" aria-label="Đóng" disabled={busy} onClick={onClose}><X size={20} /></button>
+      </header>
+      <nav className="share-tabs" aria-label="Loại tài nguyên">
+        {TYPES.map(([type, label]) => <button key={type} type="button" className={resourceType === type ? 'active' : ''}
+          onClick={() => { setResourceType(type); setPage(1); setSearch(''); setSearchInput(''); setConfirming(false) }}>{label}</button>)}
+      </nav>
+      {confirming ? <div className="share-confirm">
+        <h3>Xác nhận chia sẻ {selectedItems.length} tài nguyên?</h3>
+        <p>Người dùng nghiệp vụ sẽ xem được các kết quả đã chọn. Bạn có thể thu hồi từng chia sẻ sau này.</p>
+        <ul>{selectedItems.map((item) => <li key={keyOf(item)}>{TYPE_LABELS[item.resource_type]} · {item.name}</li>)}</ul>
+      </div> : <>
+        <form className="share-modal__toolbar" onSubmit={(event) => { event.preventDefault(); setPage(1); setSearch(searchInput.trim()) }}>
+          <label><Search size={17} /><input aria-label="Tìm tài nguyên" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Tìm theo tên tài nguyên…" /></label>
+          <button type="submit" className="share-button share-button--light">Tìm</button>
+          <button type="button" className="share-button share-button--light" disabled={!selectable.length} onClick={togglePage}>{allPageSelected ? 'Bỏ chọn trang' : 'Chọn cả trang'}</button>
+        </form>
+        <div className="share-modal__results">
+          {loading ? <p className="share-state">Đang tải tài nguyên…</p>
+            : listError ? <p className="share-state share-error" role="alert">{listError}</p>
+              : !data.length ? <p className="share-state">Không tìm thấy tài nguyên phù hợp.</p>
+                : data.map((item) => <label key={keyOf(item)} className={`share-resource-option${item.is_shared ? ' is-shared' : ''}`}>
+                  <input type="checkbox" disabled={item.is_shared} checked={Boolean(selected[keyOf(item)]) || item.is_shared} onChange={() => toggleItem(item)} />
+                  <span><strong>{item.name}</strong><small>{TYPE_LABELS[item.resource_type]} · {dateOf(item.created_at)}</small></span>
+                  {item.is_shared && <em>Đã chia sẻ</em>}
+                </label>)}
+        </div>
+        <div className="share-modal__pager"><span>{total} tài nguyên · Trang {page}</span><div>
+          <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} aria-label="Trang trước"><ChevronLeft size={18} /></button>
+          <button type="button" disabled={page * 12 >= total} onClick={() => setPage(page + 1)} aria-label="Trang sau"><ChevronRight size={18} /></button>
+        </div></div>
+      </>}
+      {feedback && <p className="share-feedback">{feedback}</p>}
+      {error && <p className="share-error" role="alert">{error}</p>}
+      <footer className="share-modal__foot"><div className="share-modal__selection"><strong>Đã chọn: {selectedItems.length}</strong>{selectedItems.length > 0 && <button type="button" disabled={busy} onClick={() => { setSelected({}); setConfirming(false) }}>Bỏ chọn</button>}</div><div>
+        <button type="button" className="share-button share-button--light" disabled={busy} onClick={() => confirming ? setConfirming(false) : onClose()}>{confirming ? 'Quay lại' : 'Hủy'}</button>
+        <button type="button" className="share-button share-button--primary" disabled={!selectedItems.length || busy} onClick={() => confirming ? submit() : setConfirming(true)}>{busy ? 'Đang chia sẻ…' : confirming ? 'Xác nhận chia sẻ' : 'Tiếp tục'}</button>
+      </div></footer>
+    </section>
+  </div>
 }
 
-const STATUS_LABELS = {
-  DRAFT: 'Bản nháp',
-  PUBLISHED: 'Đã công bố',
-  REVOKED: 'Đã thu hồi',
+function ShareDetailModal({ shareId, onClose }) {
+  const [detail, setDetail] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    sharingService.getManaged(shareId).then((value) => { if (!cancelled) setDetail(value) })
+      .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được chi tiết chia sẻ.')) })
+    return () => { cancelled = true }
+  }, [shareId])
+  return <div className="share-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <section className="share-modal share-modal--detail" role="dialog" aria-modal="true" aria-label="Chi tiết chia sẻ">
+      <header className="share-modal__head"><div><h2>Chi tiết chia sẻ</h2><p>{detail?.title || 'Đang tải…'}</p></div><button type="button" className="share-icon-button" aria-label="Đóng" onClick={onClose}><X size={20} /></button></header>
+      {error && <p className="share-error" role="alert">{error}</p>}
+      {detail?.resources.map((resource) => <div className="share-detail-resource" key={resource.item_id}>
+        <h3>{TYPE_LABELS[resource.resource_type]} · {resource.resource_id}</h3>
+        {resource.visible_sections.map((section) => <details key={section}><summary>{SECTION_LABELS[section] || section.replaceAll('_', ' ')}</summary><div className="share-detail-section"><SharedResultDataSection section={section} value={resource.data?.[section]} /></div></details>)}
+      </div>)}
+    </section>
+  </div>
 }
 
 export default function ScientistSharesPage() {
-  const {
-    shares, sharesLoading, sharesError, resources, resourcesLoading, resourcesError,
-    busy, actionError, create, changeStatus,
-  } = useShareManagement()
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [resourceKey, setResourceKey] = useState('')
-  const [splitId, setSplitId] = useState('')
-  const [sections, setSections] = useState([])
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [resourceType, setResourceType] = useState('')
+  const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [showCreate, setShowCreate] = useState(false)
+  const [detailId, setDetailId] = useState('')
+  const [revokeId, setRevokeId] = useState('')
+  const [busyId, setBusyId] = useState('')
+  const [actionError, setActionError] = useState('')
+  const managed = useManagedResourceShares({ search, resourceType, status, page })
 
-  const selected = resourceKey === 'TRAIN_TEST:manual'
-    ? { type: 'TRAIN_TEST', id: splitId.trim(), label: 'Train/Test Split' }
-    : resources.find((resource) => `${resource.type}:${resource.id}` === resourceKey)
-  const validResource = selected && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selected.id)
-  const canCreate = Boolean(title.trim() && validResource && sections.length && !busy)
-
-  const handleCreate = async (event, status) => {
-    event.preventDefault()
-    if (!canCreate) return
-    const saved = await create({
-      title: title.trim(),
-      description: description.trim() || null,
-      status,
-      items: [{ resource_type: selected.type, resource_id: selected.id, visible_sections: sections }],
-    })
-    if (saved) {
-      setTitle('')
-      setDescription('')
-      setResourceKey('')
-      setSplitId('')
-      setSections([])
-    }
+  const revoke = async (shareId) => {
+    setBusyId(shareId)
+    setActionError('')
+    try { await sharingService.revoke(shareId); setRevokeId(''); managed.reload() }
+    catch (err) { setActionError(extractErrorMessage(err, 'Không thể thu hồi chia sẻ.')) }
+    finally { setBusyId('') }
   }
 
-  return <div className="sci-page sci-shares-page">
-    <header className="sci-shares-hero">
-      <span className="sci-shares-hero__icon"><Share2 size={25} /></span>
-      <div className="sci-shares-hero__text">
-        <span className="sci-shares-eyebrow">KẾT QUẢ DATA SCIENCE</span>
-        <h1>Chia sẻ kết quả</h1>
-        <p>Chọn dữ liệu cần chia sẻ và quyết định nội dung Business User được xem.</p>
-      </div>
-      <span className="sci-shares-hero__count"><strong>{shares.length}</strong> chia sẻ của tôi</span>
-    </header>
+  return <div className="sci-page share-management">
+    <header className="share-management__hero"><div className="share-management__hero-icon"><Share2 size={26} /></div><div>
+      <span>QUẢN LÝ TÀI NGUYÊN</span><h1>Quản lý chia sẻ</h1>
+      <p>Chọn chính xác dữ liệu và kết quả cho Người dùng nghiệp vụ xem.</p>
+    </div><button type="button" className="share-button share-button--primary" onClick={() => setShowCreate(true)}><Plus size={18} /> Chia sẻ mới</button></header>
 
-    <div className="sci-shares-layout">
-      <section className="sci-shares-card sci-shares-create" aria-labelledby="sci-shares-create-title">
-        <div className="sci-shares-card__heading">
-          <span className="sci-shares-card__icon"><FileText size={19} /></span>
-          <div>
-            <h2 id="sci-shares-create-title">Tạo chia sẻ mới</h2>
-            <p>Điền thông tin và chọn những phần được phép hiển thị.</p>
-          </div>
-        </div>
-
-        {resourcesLoading && <p className="sci-shares-notice">Đang tải tài nguyên…</p>}
-        {resourcesError && <p role="alert" className="sci-shares-notice sci-shares-notice--error">{resourcesError}</p>}
-
-        <form className="sci-shares-form" onSubmit={(event) => handleCreate(event, 'PUBLISHED')}>
-          <div className="sci-shares-form__grid">
-            <label className="sci-shares-field" htmlFor="share-title">
-              <span>Tiêu đề <em>*</em></span>
-              <input id="share-title" required maxLength={255} value={title}
-                onChange={(event) => setTitle(event.target.value)} placeholder="Ví dụ: Kết quả phân tích Batch 01" />
-            </label>
-            <label className="sci-shares-field" htmlFor="share-resource">
-              <span>Tài nguyên <em>*</em></span>
-              <select id="share-resource" required value={resourceKey}
-                onChange={(event) => { setResourceKey(event.target.value); setSections([]) }}>
-                <option value="">Chọn tài nguyên để chia sẻ</option>
-                {Object.entries(RESOURCE_LABELS).map(([type, label]) => <optgroup key={type} label={label}>
-                  {type === 'TRAIN_TEST' && <option value="TRAIN_TEST:manual">Nhập Split ID thủ công</option>}
-                  {resources.filter((resource) => resource.type === type).map((resource) =>
-                    <option key={`${resource.type}:${resource.id}`} value={`${resource.type}:${resource.id}`}>
-                      {resource.label}
-                    </option>)}
-                </optgroup>)}
-              </select>
-            </label>
-            {resourceKey === 'TRAIN_TEST:manual' && <label className="sci-shares-field sci-shares-field--wide" htmlFor="share-split-id">
-              <span>Split ID <em>*</em></span>
-              <input id="share-split-id" value={splitId} onChange={(event) => setSplitId(event.target.value)}
-                placeholder="UUID của bản chia Train/Test đã hoàn thành" />
-            </label>}
-            <label className="sci-shares-field sci-shares-field--wide" htmlFor="share-description">
-              <span>Mô tả <small>Không bắt buộc</small></span>
-              <textarea id="share-description" rows={3} value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Ghi ngắn gọn bối cảnh hoặc điểm nổi bật của kết quả…" />
-            </label>
-          </div>
-
-          <fieldset className="sci-shares-sections">
-            <legend><ClipboardList size={17} /> Nội dung được phép xem <em>*</em></legend>
-            {selected ? <div className="sci-shares-sections__grid">
-              {(SHARE_SECTIONS[selected.type] || []).map((section) =>
-                <label key={section} className={`sci-shares-section ${sections.includes(section) ? 'sci-shares-section--checked' : ''}`}>
-                  <input type="checkbox" checked={sections.includes(section)}
-                    onChange={(event) => setSections((current) => event.target.checked
-                      ? [...current, section] : current.filter((value) => value !== section))} />
-                  <span>{SECTION_LABELS[section] || section.replaceAll('_', ' ')}</span>
-                </label>)}
-            </div> : <p className="sci-shares-sections__empty">Chọn tài nguyên ở trên để chọn nội dung chia sẻ.</p>}
-          </fieldset>
-
-          {actionError && <p role="alert" className="sci-shares-notice sci-shares-notice--error">{actionError}</p>}
-          <div className="sci-shares-form__actions">
-            <span>Bạn có thể lưu nháp trước khi công bố.</span>
-            <div>
-              <button type="button" className="sci-shares-button sci-shares-button--secondary" disabled={!canCreate}
-                onClick={(event) => handleCreate(event, 'DRAFT')}><Save size={16} /> Lưu nháp</button>
-              <button type="submit" className="sci-shares-button sci-shares-button--primary" disabled={!canCreate}>
-                <Send size={16} /> {busy ? 'Đang xử lý…' : 'Công bố chia sẻ'}
-              </button>
-            </div>
-          </div>
-        </form>
-      </section>
-
-      <aside className="sci-shares-card sci-shares-preview" aria-label="Tóm tắt chia sẻ">
-        <div className="sci-shares-card__heading">
-          <span className="sci-shares-card__icon sci-shares-card__icon--soft"><Eye size={19} /></span>
-          <div><h2>Tóm tắt chia sẻ</h2><p>Kiểm tra nội dung trước khi công bố.</p></div>
-        </div>
-        <div className="sci-shares-preview__body">
-          <div className="sci-shares-preview__item">
-            <span>Tiêu đề</span><strong>{title.trim() || 'Chưa nhập tiêu đề'}</strong>
-          </div>
-          <div className="sci-shares-preview__item">
-            <span>Tài nguyên</span><strong>{selected ? `${RESOURCE_LABELS[selected.type]} · ${selected.label}` : 'Chưa chọn tài nguyên'}</strong>
-          </div>
-          <div className="sci-shares-preview__item">
-            <span>Quyền xem</span><strong>{sections.length ? `${sections.length} nội dung đã chọn` : 'Chưa chọn nội dung'}</strong>
-          </div>
-        </div>
-        <p className="sci-shares-preview__note"><CheckCircle2 size={16} /> Business User chỉ xem được những phần bạn chọn.</p>
-      </aside>
+    <div className="share-stats">
+      <div><span>Đang chia sẻ</span><strong>{managed.active_count}</strong></div>
+      <div><span>Chưa chia sẻ</span><strong>{managed.unshared_count}</strong></div>
+      <div><span>Đã thu hồi</span><strong>{managed.revoked_count}</strong></div>
     </div>
 
-    <section className="sci-shares-card sci-shares-list" aria-labelledby="sci-shares-list-title">
-      <div className="sci-shares-card__heading">
-        <span className="sci-shares-card__icon"><Share2 size={19} /></span>
-        <div><h2 id="sci-shares-list-title">Chia sẻ của tôi</h2><p>Quản lý bản nháp và kết quả đã công bố.</p></div>
-        {!sharesLoading && !sharesError && <span className="sci-shares-list__count">{shares.length} chia sẻ</span>}
-      </div>
-      {sharesLoading ? <div className="sci-shares-state">Đang tải danh sách chia sẻ…</div>
-        : sharesError ? <div className="sci-shares-notice sci-shares-notice--error" role="alert">{sharesError}</div>
-          : shares.length === 0 ? <div className="sci-shares-empty">
-            <span><Inbox size={27} /></span>
-            <h3>Chưa có chia sẻ nào</h3>
-            <p>Chọn tài nguyên và nội dung ở trên để tạo chia sẻ đầu tiên.</p>
-          </div> : <div className="sci-shares-items">
-            {shares.map((share) => <article key={share.share_id} className="sci-shares-item">
-              <span className="sci-shares-item__icon"><FileText size={20} /></span>
-              <div className="sci-shares-item__content">
-                <h3>{share.title}</h3>
-                <p>{(share.resource_types || []).map((type) => RESOURCE_LABELS[type] || type).join(' · ')}
-                  <span aria-hidden="true"> · </span>{new Date(share.created_at).toLocaleString('vi-VN')}</p>
-              </div>
-              <span className={`sci-shares-status sci-shares-status--${share.status.toLowerCase()}`}>
-                {STATUS_LABELS[share.status] || share.status}
-              </span>
-              {share.status === 'DRAFT' && <button type="button" className="sci-shares-button sci-shares-button--secondary"
-                disabled={busy} onClick={() => changeStatus(share.share_id, 'PUBLISHED')}>Công bố</button>}
-              {share.status === 'PUBLISHED' && <button type="button" className="sci-shares-button sci-shares-button--secondary"
-                disabled={busy} onClick={() => changeStatus(share.share_id, 'REVOKED')}>Thu hồi</button>}
-            </article>)}
-          </div>}
+    <section className="share-management__card"><div className="share-management__card-head"><div><h2>Tài nguyên đã quản lý</h2><p>Danh sách được sắp xếp theo thời gian chia sẻ mới nhất.</p></div></div>
+      <form className="share-management__filters" onSubmit={(event) => { event.preventDefault(); setPage(1); setSearch(searchInput.trim()) }}>
+        <label className="share-search"><Search size={17} /><input aria-label="Tìm chia sẻ" placeholder="Tìm tài nguyên…" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} /></label>
+        <select aria-label="Lọc loại tài nguyên" value={resourceType} onChange={(event) => { setResourceType(event.target.value); setPage(1) }}><option value="">Tất cả loại</option>{TYPES.map(([type, label]) => <option key={type} value={type}>{label}</option>)}</select>
+        <select aria-label="Lọc trạng thái" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1) }}><option value="">Tất cả trạng thái</option><option value="PUBLISHED">Đang chia sẻ</option><option value="REVOKED">Đã thu hồi</option><option value="DRAFT">Bản nháp cũ</option></select>
+        <button type="submit" className="share-button share-button--light">Tìm</button>
+      </form>
+      {actionError && <p className="share-error" role="alert">{actionError}</p>}
+      {managed.loading ? <p className="share-state">Đang tải chia sẻ…</p>
+        : managed.error ? <p className="share-state share-error" role="alert">{managed.error}</p>
+          : !managed.data.length ? <div className="share-empty"><Inbox size={30} /><h3>Chưa có tài nguyên phù hợp</h3><p>Chọn “Chia sẻ mới” để bắt đầu hoặc đổi bộ lọc.</p></div>
+            : <div className="share-table-wrap"><table className="share-table"><thead><tr><th>Tài nguyên</th><th>Loại</th><th>Ngày chia sẻ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
+              {managed.data.map((row) => <tr key={`${row.share_id}:${row.resource_id}`}><td><strong>{row.name}</strong></td><td>{TYPE_LABELS[row.resource_type] || row.resource_type}</td><td>{dateOf(row.shared_at)}</td><td><span className={`share-status share-status--${row.status.toLowerCase()}`}>{row.status === 'PUBLISHED' ? 'Đang chia sẻ' : row.status === 'REVOKED' ? 'Đã thu hồi' : 'Bản nháp'}</span></td><td><div className="share-table-actions"><button type="button" onClick={() => setDetailId(row.share_id)}><Eye size={15} /> Xem</button>{row.status === 'PUBLISHED' && <button type="button" disabled={busyId === row.share_id} onClick={() => setRevokeId(row)}>{row.item_count > 1 ? `Thu hồi gói (${row.item_count})` : 'Thu hồi'}</button>}</div></td></tr>)}
+            </tbody></table></div>}
+      <div className="share-management__pager"><span>{managed.total_records} tài nguyên · Trang {page}</span><div><button type="button" disabled={page === 1} onClick={() => setPage(page - 1)}><ChevronLeft size={17} /> Trước</button><button type="button" disabled={page * 20 >= managed.total_records} onClick={() => setPage(page + 1)}>Sau <ChevronRight size={17} /></button></div></div>
     </section>
+    {showCreate && <ShareResourceModal onClose={() => setShowCreate(false)} onChanged={managed.reload} />}
+    {detailId && <ShareDetailModal shareId={detailId} onClose={() => setDetailId('')} />}
+    {revokeId && <div className="share-modal-backdrop" role="presentation"><section className="share-modal share-modal--confirm" role="dialog" aria-modal="true" aria-label="Xác nhận thu hồi"><h2>Thu hồi chia sẻ?</h2><p>{revokeId.item_count > 1 ? `Chia sẻ cũ này gồm ${revokeId.item_count} tài nguyên. Thu hồi sẽ ngừng quyền xem toàn bộ gói.` : 'Người dùng nghiệp vụ sẽ mất quyền xem tài nguyên này ngay sau khi thu hồi.'}</p><div><button type="button" className="share-button share-button--light" onClick={() => setRevokeId('')}>Hủy</button><button type="button" className="share-button share-button--danger" disabled={Boolean(busyId)} onClick={() => revoke(revokeId.share_id)}><Check size={16} /> Xác nhận thu hồi</button></div></section></div>}
   </div>
 }

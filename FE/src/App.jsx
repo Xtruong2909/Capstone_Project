@@ -79,7 +79,9 @@ export default function App() {
           <Route path="datasets/groups/:groupId" element={<ScientistApprovedDatasetsPage />} />
           <Route path="datasets/groups/:groupId/train" element={<ScientistTrainingPage />} />
           <Route path="datasets/groups/:groupId/train/aggregation-charts" element={<ScientistAggregationChartsPage />} />
-          <Route path="datasets/groups/:groupId/predict" element={<ScientistPredictionPage />} />
+          <Route path="datasets/groups/:groupId/predict" element={<ScientistPredictionPage />}>
+            <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
+          </Route>
           <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
           <Route path="experiments" element={<ScientistExperimentsPage />} />
           <Route path="experiments/groups/:groupId" element={<ScientistExperimentsPage />} />
@@ -93,7 +95,9 @@ export default function App() {
           <Route path="datasets/:datasetId/versions/:versionId" element={<ScientistDatasetSessionsPage />} />
           <Route path="datasets/:datasetId/versions/:versionId/sessions/:sessionId/preview" element={<ScientistDatasetPreviewPage />} />
           <Route path="datasets/:datasetId/versions/:versionId/train" element={<ScientistTrainingPage />} />
-          <Route path="datasets/:datasetId/versions/:versionId/predict" element={<ScientistPredictionPage />} />
+          <Route path="datasets/:datasetId/versions/:versionId/predict" element={<ScientistPredictionPage />}>
+            <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
+          </Route>
         </Route>
       </Route>
 

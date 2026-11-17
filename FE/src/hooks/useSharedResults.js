@@ -16,6 +16,16 @@ export function useSharedResults({ search = '', resourceType = '', page = 1 } = 
     } finally { setLoading(false) }
   }, [search, resourceType, page])
   useEffect(() => { reload() }, [reload])
+  useEffect(() => {
+    let cancelled = false
+    const refresh = () => sharingService.listPublished({
+      search: search || undefined, resource_type: resourceType || undefined,
+      page, page_size: 20,
+    }).then((data) => { if (!cancelled) setResult(data) }).catch(() => {})
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [search, resourceType, page])
   return { ...result, loading, error, reload }
 }
 
@@ -57,6 +67,16 @@ export function useSharedResultDetail(shareId) {
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được chi tiết.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
+  }, [shareId])
+  useEffect(() => {
+    if (!shareId) return undefined
+    let cancelled = false
+    const refresh = () => sharingService.getPublished(shareId)
+      .then((data) => { if (!cancelled) { setDetail(data); setError('') } })
+      .catch(() => { if (!cancelled) { setDetail(null); setError('Chia sẻ này không còn khả dụng.') } })
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('focus', refresh)
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', refresh) }
   }, [shareId])
   return { detail, loading, error }
 }

@@ -1,4 +1,13 @@
-import { formatRecordingDateTime, formatRecordingTime, formatTrafficFlow } from '../utils/formatters'
+import { formatRecordingDateTime, formatRecordingTime, formatRecordingTimeAtSource, formatTrafficFlow } from '../utils/formatters'
+
+const LAG_ORDER = [5, 4, 3, 2, 1]
+
+function lagTime(origin, lagNumber) {
+  const timestamp = new Date(origin).getTime()
+  if (!Number.isFinite(timestamp)) return '—'
+  const observation = new Date(timestamp - (lagNumber - 1) * 60_000).toISOString()
+  return formatRecordingTimeAtSource(observation, origin)
+}
 
 export default function PredictionSessionAggregation({ filename, session, preview }) {
   const { result, page, setPage, isLoading, error } = preview
@@ -7,6 +16,8 @@ export default function PredictionSessionAggregation({ filename, session, previe
   const recordingDate = startTime ? formatRecordingDateTime(startTime).split(',')[0] : '—'
   const timeRange = startTime && endTime
     ? `${formatRecordingTime(startTime)} – ${formatRecordingTime(endTime)}` : '—'
+  const lagFeatures = session.lag_features
+  const lagOrigin = session.forecast_origin_time
 
   return <section className="sci-prediction-aggregation" aria-label="Tổng hợp phương tiện theo thời gian">
     <div className="sci-prediction-aggregation__heading">
@@ -35,6 +46,19 @@ export default function PredictionSessionAggregation({ filename, session, previe
               <div>
                 <button type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Trước</button>
                 <button type="button" disabled={page >= result.total_pages} onClick={() => setPage((current) => current + 1)}>Sau</button>
+              </div>
+            </div>}
+            {lagOrigin && lagFeatures && <div className="sci-prediction-aggregation__lags">
+              <div className="sci-prediction-aggregation__lags-heading">
+                <h5>5 giá trị Lag Feature dùng để dự báo</h5>
+                <p>Giá trị lưu lượng gần nhất của session, từ cũ đến mới. Lag 1 là mốc thời gian gốc {formatRecordingTime(lagOrigin)}.</p>
+              </div>
+              <div className="sci-prediction-aggregation__lag-grid">
+                {LAG_ORDER.map((lagNumber) => <div className="sci-prediction-aggregation__lag" key={lagNumber}>
+                  <span>Lag {lagNumber}</span>
+                  <strong>{formatTrafficFlow(lagFeatures[`lag_${lagNumber}`])} <small>xe/phút</small></strong>
+                  <time>{lagTime(lagOrigin, lagNumber)}</time>
+                </div>)}
               </div>
             </div>}
           </> : <div className="sci-prediction-empty">Session này chưa có mốc thời gian tổng hợp.</div>}
