@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   BarChart3, Building2, ChevronLeft, ChevronRight,
   Eye, FileSpreadsheet, FlaskConical, LogOut, Search, Share2, TrendingUp, UserCheck,
@@ -210,7 +210,6 @@ export default function BusinessSharedResultsPage() {
             <button type="button" className="btn-secondary biz-account-button" onClick={() => setIsProfileModalOpen(true)} title={t('Manage account profile and change password')}>
               <UserCheck size={15} /> <span>{t('Account & Security')}</span>
             </button>
-            <Link className="biz-recovery-link" to="/forgot-password">Quên mật khẩu?</Link>
           </div>
         </header>
 

@@ -30,8 +30,6 @@
 .biz-profile-trigger:hover, .biz-profile-trigger:focus-visible { border-color: #7dd3fc; background: #f0f9ff; }
 .biz-account-button { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
 .biz-account-button svg { color: #1668e3; }
-.biz-recovery-link { color: #1668e3; font-size: 0.82rem; font-weight: 600; white-space: nowrap; text-decoration: none; }
-.biz-recovery-link:hover { text-decoration: underline; }
 
 .biz-hero { display: flex; align-items: center; gap: 1rem; min-height: 125px; padding: 1.35rem 1.6rem; border: 1px solid #bae6fd; border-radius: 18px; background: linear-gradient(110deg, #e9f7ff 0%, #fff 76%); box-shadow: 0 8px 24px rgba(12, 74, 110, 0.06); }
 .biz-hero__icon { display: grid; place-items: center; flex: none; width: 58px; height: 58px; border-radius: 16px; color: #0284c7; background: #d8f0ff; }
@@ -102,7 +100,6 @@
 
 @media (max-width: 640px) {
   .biz-account-button { font-size: 0.74rem; }
-  .biz-recovery-link { font-size: 0.74rem; }
   .biz-hero { align-items: flex-start; flex-wrap: wrap; padding: 1rem; }
   .biz-hero__count { margin-left: 0; }
   .biz-toolbar { align-items: stretch; }
