@@ -120,3 +120,63 @@ class SharedItemPage(BaseModel):
     page_size: int
     total_records: int
     data: list[dict[str, Any]]
+
+
+class AvailableResource(BaseModel):
+    resource_type: str
+    resource_id: UUID
+    name: str
+    created_at: datetime | None = None
+    is_shared: bool = False
+
+
+class AvailableResourcePage(BaseModel):
+    data: list[AvailableResource]
+    total_records: int
+    page: int
+    page_size: int
+
+
+class ResourceShareSelection(BaseModel):
+    resource_type: str
+    resource_id: UUID
+
+
+class BatchShareRequest(BaseModel):
+    resources: list[ResourceShareSelection] = Field(..., min_length=1, max_length=100)
+
+
+class BatchShareResult(BaseModel):
+    resource_type: str
+    resource_id: UUID
+    success: bool
+    share_id: UUID | None = None
+    message: str | None = None
+
+
+class BatchShareResponse(BaseModel):
+    results: list[BatchShareResult]
+    created_count: int
+    failed_count: int
+
+
+class ManagedResourceShare(BaseModel):
+    share_id: UUID
+    resource_type: str
+    resource_id: UUID
+    name: str
+    shared_by: UUID
+    shared_at: datetime | None
+    status: str
+    revoked_at: datetime | None
+    item_count: int
+
+
+class ManagedResourceSharePage(BaseModel):
+    data: list[ManagedResourceShare]
+    total_records: int
+    page: int
+    page_size: int
+    active_count: int
+    revoked_count: int
+    unshared_count: int

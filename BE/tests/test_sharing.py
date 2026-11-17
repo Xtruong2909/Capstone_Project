@@ -277,6 +277,43 @@ def test_shared_prediction_rows_are_paged(api) -> None:
     assert query.call_args.args[2:] == (2, 10)
 
 
+def test_shared_rows_include_session_filename() -> None:
+    selected = item(sections=["prediction_rows"])
+    session_id = uuid4()
+    row = SimpleNamespace(
+        session_id=session_id, model_type="RANDOM_FOREST", horizon=1,
+        input_timestamp=NOW, forecast_timestamp=NOW, actual_timestamp=NOW,
+        actual_vehicle_count=2, predicted_vehicle_count=3,
+        absolute_error=1, squared_error=1,
+    )
+    with (
+        patch.object(crud_sharing, "page_experiment_predictions", return_value=(1, [row])),
+        patch.object(crud_sharing, "get_session_names",
+                     return_value={str(session_id): "20181101_d1_0800_0830.csv"}),
+    ):
+        result = sharing_service.page_item_section(
+            MagicMock(), None, selected, "prediction_rows", 1, 20,
+        )
+    assert result["data"][0]["session_name"] == "20181101_d1_0800_0830.csv"
+    assert result["data"][0]["session_id"] == str(session_id)
+
+
+def test_shared_split_session_distribution_includes_names() -> None:
+    session_id = uuid4()
+    selected = item("TRAIN_TEST", ["session_distribution"])
+    split = SimpleNamespace(
+        train_sessions=[{"session_id": str(session_id), "sample_count": 8}],
+        test_sessions=[],
+    )
+    with (
+        patch.object(crud_sharing, "get_split", return_value=split),
+        patch.object(crud_sharing, "get_session_names",
+                     return_value={str(session_id): "20181101_d1_0800_0830.csv"}),
+    ):
+        result = sharing_service._split_sections(MagicMock(), selected)
+    assert result["session_distribution"]["train_sessions"][0]["session_name"] == "20181101_d1_0800_0830.csv"
+
+
 def test_resource_not_found_and_duplicate_item() -> None:
     actor = user()
     resource_id = uuid4()

@@ -24,6 +24,7 @@ class ForecastRequest(BaseModel):
 class PredictionExperiment(BaseModel):
     experiment_id: UUID
     experiment_name: str
+    dataset_version_ids: list[UUID]
     status: str
     hyperparameters: dict
     model_ids: dict[str, UUID]
@@ -37,6 +38,7 @@ class PredictionExperimentsResponse(BaseModel):
 
 class PredictionSession(BaseModel):
     session_id: UUID
+    aggregation_id: UUID
     dataset_id: UUID
     dataset_version_id: UUID
     start_time: datetime | None
@@ -46,6 +48,8 @@ class PredictionSession(BaseModel):
     available_consecutive_minutes: int
     prediction_eligible: bool
     ineligible_reason: str | None
+    forecast_origin_time: datetime | None = None
+    lag_features: dict[str, int] | None = None
 
 
 class PredictionSessionsResponse(BaseModel):
@@ -66,6 +70,7 @@ class ForecastPrediction(BaseModel):
 
 class ForecastSessionResult(BaseModel):
     session_id: UUID
+    original_filename: str | None = None
     dataset_id: UUID
     dataset_version_id: UUID
     forecast_origin_time: datetime
@@ -86,16 +91,21 @@ class ForecastResponse(BaseModel):
     created_at: datetime
 
 
+class ForecastHistorySession(BaseModel):
+    session_id: UUID
+    original_filename: str | None
+
+
 class ForecastHistoryItem(BaseModel):
     forecast_id: UUID
     experiment_id: UUID
     experiment_name: str
     session_count: int
+    sessions: list[ForecastHistorySession] = Field(default_factory=list)
     forecast_horizons: list[int]
     status: str
     prediction_time_ms: float
     created_at: datetime
-
 
 class ForecastHistoryResponse(BaseModel):
     forecasts: list[ForecastHistoryItem]

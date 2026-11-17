@@ -168,9 +168,105 @@ def require_published_share(db: Session, share_id: UUID) -> SharedReport:
     return share
 
 
+def resource_name(resource_type: str, resource: Any) -> str:
+    if resource_type == "DATASET":
+        return resource.name
+    if resource_type == "EXPERIMENT":
+        return resource.name
+    stamp = getattr(resource, "created_at", None)
+    label = "Train/Test" if resource_type == "TRAIN_TEST" else "Dự báo"
+    return f"{label} · {stamp.strftime('%d/%m/%Y %H:%M') if stamp else str(resource.id)[:8]}"
+
+
+def managed_resource_name(db: Session, item: SharedReportItem, fallback: str) -> str:
+    resource = {
+        "DATASET": repo.get_dataset, "TRAIN_TEST": repo.get_split,
+        "EXPERIMENT": repo.get_experiment, "PREDICTION": repo.get_prediction,
+    }[item.resource_type](db, item.resource_id)
+    return resource_name(item.resource_type, resource) if resource is not None else fallback
+
+
+def available_resources(
+    db: Session, user: User, *, resource_type: str, search: str | None,
+    page: int, page_size: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """List only persisted resources the caller may share."""
+    candidates: list[dict[str, Any]] = []
+    for resource in repo.list_resource_candidates(db, resource_type):
+        name = resource_name(resource_type, resource)
+        if search and search.casefold() not in name.casefold():
+            continue
+        item = {"resource_type": resource_type, "resource_id": resource.id}
+        try:
+            _require_resource(db, user, item)
+        except HTTPException:
+            continue
+        candidates.append({
+            "resource_type": resource_type, "resource_id": resource.id,
+            "name": name, "created_at": getattr(resource, "created_at", None),
+        })
+    total = len(candidates)
+    selected = candidates[(page - 1) * page_size:page * page_size]
+    shared = repo.active_share_ids(
+        db, [(item["resource_type"], item["resource_id"]) for item in selected],
+    )
+    for item in selected:
+        item["is_shared"] = (item["resource_type"], item["resource_id"]) in shared
+    return selected, total
+
+
+def prepare_resource_shares(
+    db: Session, user: User, resources: list[tuple[str, UUID]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate each requested resource independently and retain per-item errors."""
+    prepared: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    seen: set[tuple[str, UUID]] = set()
+    for kind, resource_id in resources:
+        key = (kind, resource_id)
+        if key in seen:
+            failures.append({"resource_type": kind, "resource_id": resource_id,
+                             "success": False, "message": "Tài nguyên bị chọn trùng."})
+            continue
+        seen.add(key)
+        if kind not in VISIBLE_SECTIONS_BY_TYPE:
+            failures.append({"resource_type": kind, "resource_id": resource_id,
+                             "success": False, "message": "Loại tài nguyên không hợp lệ."})
+            continue
+        item = {"resource_type": kind, "resource_id": resource_id,
+                "visible_sections": sorted(VISIBLE_SECTIONS_BY_TYPE[kind])}
+        try:
+            _require_resource(db, user, item)
+        except HTTPException as exc:
+            detail = exc.detail
+            failures.append({"resource_type": kind, "resource_id": resource_id,
+                             "success": False,
+                             "message": detail.get("message", "Không thể chia sẻ tài nguyên.")
+                             if isinstance(detail, dict) else str(detail)})
+            continue
+        resource = {
+            "DATASET": repo.get_dataset, "TRAIN_TEST": repo.get_split,
+            "EXPERIMENT": repo.get_experiment, "PREDICTION": repo.get_prediction,
+        }[kind](db, resource_id)
+        item["name"] = resource_name(kind, resource)
+        prepared.append(item)
+    return prepared, failures
+
+
+def count_unshared_resources(db: Session, user: User) -> int:
+    total = 0
+    for kind in VISIBLE_SECTIONS_BY_TYPE:
+        rows, _ = available_resources(
+            db, user, resource_type=kind, search=None, page=1, page_size=1000000,
+        )
+        total += sum(not row["is_shared"] for row in rows)
+    return total
+
+
 def _session_row(session: Any) -> dict[str, Any]:
     return {
         "session_id": str(session.id),
+        "session_name": session.original_filename,
         "recording_date": session.recording_date.isoformat(),
         "scheduled_start": session.scheduled_start.isoformat(),
         "scheduled_end": session.scheduled_end.isoformat(),
@@ -232,6 +328,12 @@ def page_item_section(
     else:
         total, rows = repo.page_forecast_results(db, item.resource_id, page, page_size)
         data = [_forecast_row(row) for row in rows]
+    if section != "sessions":
+        names = repo.get_session_names(db, {
+            UUID(row["session_id"]) for row in data if row.get("session_id")
+        })
+        for row in data:
+            row["session_name"] = names.get(row["session_id"])
     return {
         "share_id": share.id if share else item.share_id,
         "item_id": item.id, "section": section,
@@ -279,8 +381,19 @@ def _split_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
             "samples_by_horizon": split.samples_by_horizon,
         }
     if "session_distribution" in item.visible_sections:
+        names = repo.get_session_names(db, {
+            UUID(row["session_id"])
+            for row in [*split.train_sessions, *split.test_sessions]
+        })
         result["session_distribution"] = {
-            "train_sessions": split.train_sessions, "test_sessions": split.test_sessions,
+            "train_sessions": [
+                {**row, "session_name": names.get(row["session_id"])}
+                for row in split.train_sessions
+            ],
+            "test_sessions": [
+                {**row, "session_name": names.get(row["session_id"])}
+                for row in split.test_sessions
+            ],
         }
     if "split_configuration" in item.visible_sections:
         result["split_configuration"] = {
@@ -319,6 +432,9 @@ def _experiment_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
 def _prediction_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
     run = repo.get_prediction(db, item.resource_id)
     result: dict[str, Any] = {}
+    snapshot_names = repo.get_session_names(db, {
+        UUID(snapshot["session_id"]) for snapshot in run.session_snapshots
+    }) if ("lag_features" in item.visible_sections or "forecast_chart" in item.visible_sections) else {}
     if "forecast_summary" in item.visible_sections:
         result["forecast_summary"] = {
             "forecast_id": str(run.id), "status": run.status,
@@ -333,7 +449,9 @@ def _prediction_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
         }
     if "lag_features" in item.visible_sections:
         result["lag_features"] = [
-            {"session_id": snapshot["session_id"], "lag_features": snapshot["lag_features"]}
+            {"session_id": snapshot["session_id"],
+             "session_name": snapshot.get("original_filename") or snapshot_names.get(snapshot["session_id"]),
+             "lag_features": snapshot["lag_features"]}
             for snapshot in run.session_snapshots
         ]
     if "forecast_results" in item.visible_sections:
@@ -341,7 +459,9 @@ def _prediction_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
     if "forecast_chart" in item.visible_sections:
         result["forecast_chart"] = {
             "historical": [
-                {"session_id": snapshot["session_id"], "points": snapshot["historical"]}
+                {"session_id": snapshot["session_id"],
+                 "session_name": snapshot.get("original_filename") or snapshot_names.get(snapshot["session_id"]),
+                 "points": snapshot["historical"]}
                 for snapshot in run.session_snapshots[:DETAIL_PAGE_SIZE]
             ],
             "forecast": page_item_section(db, None, item, "forecast_chart", 1, DETAIL_PAGE_SIZE),

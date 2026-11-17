@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.dataset import Dataset, DatasetVersion, DatasetVersionSession, RecordingSession
@@ -20,6 +20,16 @@ from app.models.prediction import PredictionResult, PredictionRun
 from app.models.sharing import SharedReport, SharedReportItem
 from app.models.traffic import TrafficTimeSeries
 from app.models.user import User
+
+
+class DuplicateActiveShareError(Exception):
+    """A resource already has an active share for the Business User role."""
+
+
+def _lock_share_resources(db: Session, keys: list[tuple[str, UUID]]) -> None:
+    for kind, resource_id in sorted(set(keys), key=lambda value: (value[0], str(value[1]))):
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                   {"key": f"share:{kind}:{resource_id}"})
 
 
 def get_share_by_id(db: Session, share_id: UUID, *, for_update: bool = False) -> SharedReport | None:
@@ -51,7 +61,9 @@ def get_published_shares(
     db: Session, *, resource_type: str | None = None, search: str | None = None,
     page: int = 1, page_size: int = 20,
 ) -> tuple[list[SharedReport], int]:
-    condition = [SharedReport.status == "PUBLISHED"]
+    condition = [SharedReport.status == "PUBLISHED",
+                 select(User.id).where(User.id == SharedReport.created_by,
+                                       User.is_active.is_(True)).exists()]
     if search:
         condition.append(SharedReport.title.ilike(f"%{search}%"))
     if resource_type:
@@ -80,6 +92,11 @@ def create_share(
         published_at=now if status == "PUBLISHED" else None,
     )
     try:
+        if status == "PUBLISHED":
+            keys = [(item["resource_type"], item["resource_id"]) for item in items_data]
+            _lock_share_resources(db, keys)
+            if active_share_ids(db, keys):
+                raise DuplicateActiveShareError
         db.add(report)
         db.flush()
         report.items = [SharedReportItem(**item) for item in items_data]
@@ -98,6 +115,16 @@ def update_share(
 ) -> SharedReport:
     now = datetime.now(UTC)
     try:
+        effective_status = status if status is not None else share.status
+        if effective_status == "PUBLISHED":
+            selected = items_data if items_data is not None else [
+                {"resource_type": item.resource_type, "resource_id": item.resource_id}
+                for item in share.items
+            ]
+            keys = [(item["resource_type"], item["resource_id"]) for item in selected]
+            _lock_share_resources(db, keys)
+            if active_share_ids(db, keys, exclude_share_id=share.id):
+                raise DuplicateActiveShareError
         if title is not None:
             share.title = title
         if set_description:
@@ -152,6 +179,104 @@ def get_prediction(db: Session, resource_id: UUID) -> PredictionRun | None:
     return db.get(PredictionRun, resource_id)
 
 
+def list_resource_candidates(db: Session, resource_type: str) -> list[Any]:
+    """Return persisted resources; authorization is checked by the service."""
+    model = {
+        "DATASET": Dataset,
+        "TRAIN_TEST": LagFeatureSplit,
+        "EXPERIMENT": ModelTrainingExperiment,
+        "PREDICTION": PredictionRun,
+    }[resource_type]
+    return list(db.scalars(select(model).order_by(model.created_at.desc(), model.id)).all())
+
+
+def active_share_ids(
+    db: Session, keys: list[tuple[str, UUID]], *, exclude_share_id: UUID | None = None,
+) -> set[tuple[str, UUID]]:
+    if not keys:
+        return set()
+    types = {kind for kind, _ in keys}
+    ids = {resource_id for _, resource_id in keys}
+    stmt = (
+        select(SharedReportItem.resource_type, SharedReportItem.resource_id)
+        .join(SharedReport, SharedReport.id == SharedReportItem.share_id)
+        .join(User, User.id == SharedReport.created_by)
+        .where(SharedReport.status == "PUBLISHED",
+               User.is_active.is_(True),
+               SharedReportItem.resource_type.in_(types),
+               SharedReportItem.resource_id.in_(ids))
+    )
+    if exclude_share_id is not None:
+        stmt = stmt.where(SharedReport.id != exclude_share_id)
+    rows = db.execute(stmt).all()
+    return set(rows) & set(keys)
+
+
+def create_resource_shares(
+    db: Session, *, owner_id: UUID, resources: list[dict[str, Any]],
+) -> tuple[list[SharedReport], set[tuple[str, UUID]]]:
+    """Create one published report per resource in one transaction.
+
+    Transaction advisory locks serialize duplicate requests for the same resource.
+    """
+    created: list[SharedReport] = []
+    duplicate: set[tuple[str, UUID]] = set()
+    try:
+        for item in sorted(resources, key=lambda value: (value["resource_type"], str(value["resource_id"]))):
+            kind, resource_id = item["resource_type"], item["resource_id"]
+            key = (kind, resource_id)
+            _lock_share_resources(db, [key])
+            if key in active_share_ids(db, [key]):
+                duplicate.add(key)
+                continue
+            report = SharedReport(
+                title=item["name"], created_by=owner_id, status="PUBLISHED",
+                published_at=datetime.now(UTC),
+            )
+            db.add(report)
+            db.flush()
+            db.add(SharedReportItem(
+                share_id=report.id, resource_type=kind, resource_id=resource_id,
+                resource_version_id=item.get("resource_version_id"),
+                visible_sections=list(item["visible_sections"]),
+            ))
+            db.flush()
+            created.append(report)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return created, duplicate
+
+
+def list_managed_resource_shares(
+    db: Session, *, owner_id: UUID, resource_type: str | None,
+    status: str | None, search: str | None, page: int, page_size: int,
+) -> tuple[list[tuple[SharedReport, SharedReportItem]], int, int, int]:
+    base = select(SharedReport, SharedReportItem).join(
+        SharedReportItem, SharedReportItem.share_id == SharedReport.id,
+    ).where(SharedReport.created_by == owner_id)
+    counts = db.execute(
+        select(SharedReport.status, func.count(SharedReportItem.id))
+        .join(SharedReportItem, SharedReportItem.share_id == SharedReport.id)
+        .where(SharedReport.created_by == owner_id)
+        .group_by(SharedReport.status)
+    ).all()
+    count_map = dict(counts)
+    if resource_type:
+        base = base.where(SharedReportItem.resource_type == resource_type)
+    if status:
+        base = base.where(SharedReport.status == status)
+    if search:
+        base = base.where(SharedReport.title.ilike(f"%{search}%"))
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = db.execute(
+        base.order_by(SharedReport.created_at.desc(), SharedReport.id)
+        .offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return list(rows), total, count_map.get("PUBLISHED", 0), count_map.get("REVOKED", 0)
+
+
 def get_user(db: Session, user_id: UUID) -> User | None:
     return db.get(User, user_id)
 
@@ -161,6 +286,17 @@ def get_models(db: Session, experiment_id: UUID) -> list[ExperimentTrainedModel]
         ExperimentTrainedModel.experiment_id == experiment_id,
         ExperimentTrainedModel.status == "COMPLETED",
     ).order_by(ExperimentTrainedModel.horizon)).all())
+
+
+def get_session_names(db: Session, session_ids: set[UUID]) -> dict[str, str]:
+    """Resolve names for sessions already present in an authorized shared result."""
+    if not session_ids:
+        return {}
+    rows = db.execute(
+        select(RecordingSession.id, RecordingSession.original_filename)
+        .where(RecordingSession.id.in_(session_ids))
+    ).all()
+    return {str(session_id): filename for session_id, filename in rows}
 
 
 def page_dataset_sessions(

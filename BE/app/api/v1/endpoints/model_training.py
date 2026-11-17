@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.database.database import get_db
 from app.models.user import User
+from app.schemas.forecast_origin_analysis import ForecastOriginAnalysisResponse
 from app.schemas.model_training import (
     ExperimentComparisonRequest,
     ExperimentComparisonResponse,
@@ -18,6 +20,7 @@ from app.schemas.model_training_experiment import (
     ExperimentPredictionListResponse,
     TrainingExperimentCreateRequest,
 )
+from app.services import forecast_origin_analysis_service
 from app.services import model_training_experiment_service as experiment_service
 
 router = APIRouter(prefix="/model-training", tags=["Huấn luyện mô hình"])
@@ -80,6 +83,23 @@ def compare_experiments(
     user: User = Depends(get_current_user),
 ) -> ExperimentComparisonResponse:
     return experiment_service.compare_experiments(db, user, payload)
+
+
+@router.get(
+    "/experiments/{experiment_id}/forecast-origin-analysis",
+    response_model=ForecastOriginAnalysisResponse,
+    summary="Phân tích dự báo Test theo thời gian gốc",
+)
+def get_forecast_origin_analysis(
+    experiment_id: UUID,
+    session_id: UUID | None = None,
+    origin_time: datetime | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ForecastOriginAnalysisResponse:
+    return forecast_origin_analysis_service.get_forecast_origin_analysis(
+        db, user, experiment_id, session_id=session_id, origin_time=origin_time,
+    )
 
 
 @router.get(

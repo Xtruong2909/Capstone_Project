@@ -72,6 +72,43 @@ def test_latest_lags_use_only_five_observed_minutes_from_one_session() -> None:
         latest_lags(observations[:-1] + [VehicleObservation(dataset_id, session_id, start + timedelta(minutes=7), 124)])
 
 
+def test_prediction_session_preview_uses_the_same_five_lags_as_forecast(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id, version_id, session_id, aggregation_id = (uuid4() for _ in range(4))
+    start = datetime(2018, 10, 24, 6, 10, tzinfo=UTC)
+    observations = [VehicleObservation(dataset_id, session_id, start + timedelta(minutes=i), 120 + i)
+                    for i in range(5)]
+    bins = [SimpleNamespace(time_bucket=observation.timestamp) for observation in observations]
+    job = SimpleNamespace(id=aggregation_id, dataset_id=dataset_id,
+                          dataset_version_id=version_id, aggregation_interval=60)
+    session = SimpleNamespace(id=session_id)
+    version = SimpleNamespace(id=version_id)
+    monkeypatch.setattr(service, "_visible_candidates", lambda *_args: [(None, job, session, version)])
+    monkeypatch.setattr(service, "_observations", lambda *_args: (bins, observations))
+
+    response = service.list_sessions(
+        SimpleNamespace(), SimpleNamespace(role_id="data_scientist"),
+        dataset_id=None, dataset_version_id=None, experiment_id=None,
+        eligible_only=True, page=1, page_size=20,
+    )
+
+    preview = response.sessions[0]
+    assert preview.forecast_origin_time == service._display_time(start + timedelta(minutes=4))
+    assert preview.lag_features == {f"lag_{index}": 125 - index for index in range(1, 6)}
+
+    interrupted = observations[:-1] + [VehicleObservation(
+        dataset_id, session_id, start + timedelta(minutes=6), 124,
+    )]
+    interrupted_bins = [SimpleNamespace(time_bucket=observation.timestamp) for observation in interrupted]
+    monkeypatch.setattr(service, "_observations", lambda *_args: (interrupted_bins, interrupted))
+    invalid = service.list_sessions(
+        SimpleNamespace(), SimpleNamespace(role_id="data_scientist"),
+        dataset_id=None, dataset_version_id=None, experiment_id=None,
+        eligible_only=False, page=1, page_size=20,
+    ).sessions[0]
+    assert not invalid.prediction_eligible
+    assert invalid.lag_features is None
+
+
 def test_forecast_request_rejects_invalid_horizon_and_duplicate_sessions() -> None:
     experiment_id, session_id = uuid4(), uuid4()
     with pytest.raises(ValidationError):
@@ -103,6 +140,32 @@ def test_prediction_rejects_other_roles_and_missing_experiment() -> None:
         assert missing.value.detail["code"] == "EXPERIMENT_NOT_FOUND"
     finally:
         service.repo.experiment = original
+
+
+def test_forecast_history_includes_selected_session_filename(monkeypatch: pytest.MonkeyPatch) -> None:
+    session_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(), experiment_id=uuid4(),
+        session_snapshots=[{"session_id": str(session_id)}],
+        session_count=1, requested_horizons=[1, 3, 5], status="COMPLETED",
+        prediction_time_ms=12.5, created_at=datetime(2026, 11, 17, tzinfo=UTC),
+    )
+    monkeypatch.setattr(service.repo, "list_runs", lambda *_args, **_kwargs: (1, [(run, "Ex-05")]))
+    monkeypatch.setattr(service, "_experiment_scope", lambda *_args: (None, []))
+    monkeypatch.setattr(
+        service.repo, "sessions_by_ids",
+        lambda _db, ids: [SimpleNamespace(id=session_id, original_filename="recording-05.csv")]
+        if session_id in ids else [],
+    )
+
+    response = service.forecast_history(
+        SimpleNamespace(), SimpleNamespace(id=uuid4(), role_id="data_scientist"),
+        experiment_id=None, session_id=None, status=None, created_from=None, created_to=None,
+        page=1, page_size=20,
+    )
+
+    assert response.forecasts[0].sessions[0].session_id == session_id
+    assert response.forecasts[0].sessions[0].original_filename == "recording-05.csv"
 
 
 @pytest.mark.skipif(os.getenv("RUN_PREDICTION_POSTGRES_TESTS") != "1", reason="real PostgreSQL/artifacts opt-in")

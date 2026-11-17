@@ -11,6 +11,12 @@ from app.core.deps import get_current_user, get_db
 from app.crud import crud_sharing
 from app.models.user import User
 from app.schemas.sharing import (
+    AvailableResourcePage,
+    BatchShareRequest,
+    BatchShareResponse,
+    BatchShareResult,
+    ManagedResourceShare,
+    ManagedResourceSharePage,
     PublishedShareListResponse,
     PublishedShareSummary,
     ShareCreate,
@@ -89,14 +95,18 @@ def create_share(
     )
     sharing_service.validate_and_check_items(db, items_data, current_user)
 
-    share = crud_sharing.create_share(
-        db,
-        title=payload.title,
-        description=payload.description,
-        created_by=current_user.id,
-        status=payload.status,
-        items_data=items_data,
-    )
+    try:
+        share = crud_sharing.create_share(
+            db,
+            title=payload.title,
+            description=payload.description,
+            created_by=current_user.id,
+            status=payload.status,
+            items_data=items_data,
+        )
+    except crud_sharing.DuplicateActiveShareError as exc:
+        raise HTTPException(409, {"code": "DUPLICATE_ACTIVE_SHARE",
+                                  "message": "Tài nguyên đã được chia sẻ."}) from exc
 
     audit_log_service.record_audit_event(
         action="SHARE_CREATED",
@@ -185,15 +195,19 @@ def update_share(
         (item.resource_type, str(item.resource_id)): list(item.visible_sections)
         for item in share.items
     }
-    share = crud_sharing.update_share(
-        db,
-        share=share,
-        title=payload.title,
-        description=payload.description,
-        set_description="description" in payload.model_fields_set,
-        status=payload.status,
-        items_data=items_data,
-    )
+    try:
+        share = crud_sharing.update_share(
+            db,
+            share=share,
+            title=payload.title,
+            description=payload.description,
+            set_description="description" in payload.model_fields_set,
+            status=payload.status,
+            items_data=items_data,
+        )
+    except crud_sharing.DuplicateActiveShareError as exc:
+        raise HTTPException(409, {"code": "DUPLICATE_ACTIVE_SHARE",
+                                  "message": "Tài nguyên đã được chia sẻ."}) from exc
 
     new_sections = {
         (item.resource_type, str(item.resource_id)): list(item.visible_sections)
@@ -301,6 +315,132 @@ def list_my_shares(
         total_records=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@ds_router.get("/available-resources", response_model=AvailableResourcePage)
+def list_available_resources(
+    resource_type: Literal["DATASET", "TRAIN_TEST", "EXPERIMENT", "PREDICTION"],
+    search: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(12, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AvailableResourcePage:
+    _require_data_scientist(current_user)
+    rows, total = sharing_service.available_resources(
+        db, current_user, resource_type=resource_type,
+        search=search, page=page, page_size=page_size,
+    )
+    return AvailableResourcePage(data=rows, total_records=total, page=page, page_size=page_size)
+
+
+@ds_router.post("/batch", response_model=BatchShareResponse)
+def create_resource_share_batch(
+    payload: BatchShareRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BatchShareResponse:
+    _require_data_scientist(current_user)
+    prepared, failures = sharing_service.prepare_resource_shares(
+        db, current_user,
+        [(item.resource_type, item.resource_id) for item in payload.resources],
+    )
+    created, duplicates = crud_sharing.create_resource_shares(
+        db, owner_id=current_user.id, resources=prepared,
+    ) if prepared else ([], set())
+    results = [BatchShareResult.model_validate(item) for item in failures]
+    created_by_key = {
+        (share.items[0].resource_type, share.items[0].resource_id): share.id
+        for share in created
+    }
+    for item in prepared:
+        key = (item["resource_type"], item["resource_id"])
+        share_id = created_by_key.get(key)
+        results.append(BatchShareResult(
+            resource_type=key[0], resource_id=key[1], success=share_id is not None,
+            share_id=share_id,
+            message="Tài nguyên đã được chia sẻ." if key in duplicates else None,
+        ))
+        if share_id:
+            audit_log_service.record_audit_event(
+                action="CREATE_SHARE", module="SHARING", status="SUCCESS",
+                description=f"Shared {key[0]} {key[1]}", user=current_user,
+                resource_id=str(share_id), ip_address=_get_client_ip(request),
+                details={"resource_type": key[0], "resource_id": str(key[1])},
+            )
+    return BatchShareResponse(
+        results=results, created_count=len(created), failed_count=len(results) - len(created),
+    )
+
+
+@ds_router.get("/manage", response_model=ManagedResourceSharePage)
+def list_managed_resources(
+    resource_type: Literal["DATASET", "TRAIN_TEST", "EXPERIMENT", "PREDICTION"] | None = Query(None),
+    status_filter: Literal["DRAFT", "PUBLISHED", "REVOKED"] | None = Query(None, alias="status"),
+    search: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ManagedResourceSharePage:
+    _require_data_scientist(current_user)
+    rows, total, active, revoked = crud_sharing.list_managed_resource_shares(
+        db, owner_id=current_user.id, resource_type=resource_type,
+        status=status_filter, search=search, page=page, page_size=page_size,
+    )
+    return ManagedResourceSharePage(
+        data=[ManagedResourceShare(
+            share_id=share.id, resource_type=item.resource_type,
+            resource_id=item.resource_id,
+            name=sharing_service.managed_resource_name(db, item, share.title),
+            shared_by=share.created_by, shared_at=share.published_at,
+            status=share.status, revoked_at=share.revoked_at,
+            item_count=len(share.items),
+        ) for share, item in rows],
+        total_records=total, page=page, page_size=page_size,
+        active_count=active, revoked_count=revoked,
+        unshared_count=sharing_service.count_unshared_resources(db, current_user),
+    )
+
+
+@ds_router.patch("/{share_id}/revoke", response_model=ShareResponse)
+def revoke_resource_share(
+    share_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_data_scientist(current_user)
+    share = crud_sharing.get_share_by_id(db, share_id, for_update=True)
+    if share is None:
+        raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "Không tìm thấy chia sẻ."})
+    sharing_service.require_owner(share, current_user)
+    if share.status != "PUBLISHED":
+        raise HTTPException(409, {"code": "INVALID_SHARE_STATUS", "message": "Chia sẻ không còn hiệu lực."})
+    share = crud_sharing.update_share(db, share=share, status="REVOKED")
+    audit_log_service.record_audit_event(
+        action="REVOKE_SHARE", module="SHARING", status="SUCCESS",
+        description=f"Revoked share {share.id}", user=current_user,
+        resource_id=str(share.id), ip_address=_get_client_ip(request),
+    )
+    return share
+
+
+@ds_router.get("/{share_id}", response_model=SharedResultDetail)
+def get_managed_share_detail(
+    share_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SharedResultDetail:
+    _require_data_scientist(current_user)
+    share = crud_sharing.get_share_by_id(db, share_id)
+    if share is None:
+        raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "Không tìm thấy chia sẻ."})
+    sharing_service.require_owner(share, current_user)
+    return SharedResultDetail.model_validate(
+        sharing_service.assemble_shared_result_detail(db, share)
     )
 
 

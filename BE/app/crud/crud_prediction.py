@@ -63,6 +63,12 @@ def existing_run(db: Session, fingerprint: str) -> PredictionRun | None:
     return db.scalar(select(PredictionRun).where(PredictionRun.request_fingerprint == fingerprint))
 
 
+def sessions_by_ids(db: Session, session_ids: list[UUID]) -> list[RecordingSession]:
+    if not session_ids:
+        return []
+    return list(db.scalars(select(RecordingSession).where(RecordingSession.id.in_(session_ids))))
+
+
 def get_run(db: Session, run_id: UUID) -> PredictionRun | None:
     return db.get(PredictionRun, run_id)
 

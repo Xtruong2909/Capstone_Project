@@ -26,6 +26,7 @@ from app.schemas.prediction import (
     ForecastDetail,
     ForecastHistoryItem,
     ForecastHistoryResponse,
+    ForecastHistorySession,
     ForecastPrediction,
     ForecastRequest,
     ForecastResponse,
@@ -138,7 +139,7 @@ def list_experiments(db: Session, user: User) -> PredictionExperimentsResponse:
     items = []
     for experiment in repo.completed_experiments(db):
         try:
-            _experiment_scope(db, user, experiment.id)
+            _, jobs = _experiment_scope(db, user, experiment.id)
             models, _forest, _bundle = _validated_models(db, experiment)
         except HTTPException:
             continue
@@ -148,6 +149,7 @@ def list_experiments(db: Session, user: User) -> PredictionExperimentsResponse:
                        for key, value in (experiment.performance_by_horizon or {}).items()}
         items.append(PredictionExperiment(
             experiment_id=experiment.id, experiment_name=experiment.name,
+            dataset_version_ids=sorted({job.dataset_version_id for job in jobs}, key=str),
             status=experiment.status,
             hyperparameters=(experiment.configuration or {}).get("hyperparameters", {}),
             model_ids={str(h): models[h].model_id for h in HORIZONS},
@@ -222,20 +224,27 @@ def list_sessions(
             continue
         bins, observations = _observations(db, job, session)
         streak = _latest_streak(observations)
-        eligible = streak >= 5
+        try:
+            origin, lags = latest_lags(observations)
+            eligible = True
+        except ValueError:
+            origin, lags = None, None
+            eligible = False
         if eligible_only and not eligible:
             continue
         reason = None if eligible else (
             "INSUFFICIENT_HISTORY" if len(bins) < 5 else "NON_CONTIGUOUS_HISTORY"
         )
         sessions.append(PredictionSession(
-            session_id=session.id, dataset_id=job.dataset_id,
+            session_id=session.id, aggregation_id=job.id, dataset_id=job.dataset_id,
             dataset_version_id=version.id,
             start_time=_display_time(bins[0].time_bucket) if bins else None,
             end_time=_display_time(bins[-1].time_bucket) if bins else None,
             aggregation_interval=job.aggregation_interval,
             total_records=len(bins), available_consecutive_minutes=streak,
             prediction_eligible=eligible, ineligible_reason=reason,
+            forecast_origin_time=_display_time(origin) if origin else None,
+            lag_features=dict(zip(FEATURE_ORDER, lags, strict=True)) if lags else None,
         ))
     sessions.sort(key=lambda item: (str(item.dataset_id), str(item.session_id)))
     return PredictionSessionsResponse(
@@ -248,7 +257,8 @@ def _run_response(db: Session, run: PredictionRun, experiment: ModelTrainingExpe
     by_session: dict[str, ForecastSessionResult] = {}
     for snapshot in run.session_snapshots:
         by_session[snapshot["session_id"]] = ForecastSessionResult(
-            session_id=snapshot["session_id"], dataset_id=snapshot["dataset_id"],
+            session_id=snapshot["session_id"], original_filename=snapshot.get("original_filename"),
+            dataset_id=snapshot["dataset_id"],
             dataset_version_id=snapshot["dataset_version_id"],
             forecast_origin_time=_display_time(datetime.fromisoformat(snapshot["forecast_origin_time"])),
             lag_features=snapshot["lag_features"], predictions=[],
@@ -367,6 +377,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
         snapshots.append({
             "session_id": str(session.id), "dataset_id": str(job.dataset_id),
             "dataset_version_id": str(version.id),
+            "original_filename": session.original_filename,
             "forecast_origin_time": origin.isoformat(),
             "lag_features": lag_features, "historical": historical,
             "source": "AGGREGATED_OBSERVATIONS",
@@ -412,6 +423,14 @@ def _owned_run(db: Session, user: User, run_id: UUID) -> tuple[PredictionRun, Mo
     return run, experiment
 
 
+def _session_filenames(db: Session, snapshots: list[dict]) -> dict[str, str]:
+    session_ids = list({UUID(snapshot["session_id"]) for snapshot in snapshots})
+    return {
+        str(session.id): session.original_filename
+        for session in repo.sessions_by_ids(db, session_ids)
+    }
+
+
 def forecast_history(
     db: Session, user: User, *, experiment_id: UUID | None,
     session_id: UUID | None, status: str | None,
@@ -430,17 +449,30 @@ def forecast_history(
             _experiment_scope(db, user, run.experiment_id)
         except HTTPException:
             continue
-        visible.append(ForecastHistoryItem(
-            forecast_id=run.id, experiment_id=run.experiment_id,
-            experiment_name=name, session_count=run.session_count,
+        visible.append((run, name))
+    snapshots = [snapshot for run, _name in visible for snapshot in run.session_snapshots]
+    filenames = _session_filenames(db, snapshots)
+    forecasts = []
+    for run, name in visible:
+        forecasts.append(ForecastHistoryItem(
+            forecast_id=run.id, experiment_id=run.experiment_id, experiment_name=name,
+            session_count=run.session_count,
+            sessions=[
+                ForecastHistorySession(
+                    session_id=UUID(snapshot["session_id"]),
+                    original_filename=snapshot.get("original_filename") or filenames.get(snapshot["session_id"]),
+                )
+                for snapshot in run.session_snapshots
+            ],
             forecast_horizons=run.requested_horizons, status=run.status,
             prediction_time_ms=run.prediction_time_ms, created_at=_display_time(run.created_at),
         ))
-    return ForecastHistoryResponse(forecasts=visible, total_records=total, page=page, page_size=page_size)
+    return ForecastHistoryResponse(forecasts=forecasts, total_records=total, page=page, page_size=page_size)
 
 
 def forecast_detail(db: Session, user: User, run_id: UUID) -> ForecastDetail:
     run, experiment = _owned_run(db, user, run_id)
+    filenames = _session_filenames(db, run.session_snapshots)
     return ForecastDetail(
         forecast_id=run.id, experiment_id=experiment.id,
         experiment_name=experiment.name,
@@ -449,6 +481,7 @@ def forecast_detail(db: Session, user: User, run_id: UUID) -> ForecastDetail:
         session_ids=[item["session_id"] for item in run.session_snapshots],
         session_snapshots=[{
             **snapshot,
+            "original_filename": snapshot.get("original_filename") or filenames.get(snapshot["session_id"]),
             "forecast_origin_time": _display_iso(snapshot["forecast_origin_time"]),
             "historical": [
                 {**point, "timestamp": _display_iso(point["timestamp"])}
