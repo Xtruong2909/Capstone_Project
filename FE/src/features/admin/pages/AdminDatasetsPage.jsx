@@ -352,8 +352,13 @@ export default function AdminDatasetsPage() {
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
               {stats.awaiting}
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Awaiting Approval')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {reviewQueue.length}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Awaiting Approval')}
+              </div>
             </div>
           </div>
         </div>
@@ -376,8 +381,13 @@ export default function AdminDatasetsPage() {
             <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
               {stats.totalRecords.toLocaleString()}
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Total Trajectory Points in Queue')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {reviewQueue.reduce((acc, d) => acc + (d.total_records || 0), 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Total Trajectory Points in Queue')}
+              </div>
             </div>
           </div>
         </div>
@@ -475,16 +485,6 @@ export default function AdminDatasetsPage() {
                 }}
               />
             </div>
-
-            <button
-              type="button"
-              className="btn-action btn-action--primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-              onClick={fetchDatasets}
-            >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-              <span>{t('Refresh')}</span>
-            </button>
           </div>
         </div>
 
@@ -1161,9 +1161,8 @@ export default function AdminDatasetsPage() {
               )}
             </div>
 
-            {/* Embedded Review Action Bar inside Preview Modal */}
+            {/* Embedded Representation Switcher & Review Action Bar inside Preview Modal */}
             <div
-              className="modal-actions"
               style={{
                 padding: '1rem 1.25rem',
                 borderTop: '1px solid #e2e8f0',
@@ -1175,24 +1174,13 @@ export default function AdminDatasetsPage() {
                 gap: '0.75rem',
               }}
             >
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleClosePreview}
-              >
-                {t('Close Preview')}
-              </button>
-
-              {isAwaitingReview(previewState.item.approval_status) && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    flex: '1 1 420px',
-                    justifyContent: 'flex-end',
-                    flexWrap: 'wrap',
-                  }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`adm-filter-pill ${
+                    previewState.representation === 'normalized' ? 'active' : ''
+                  }`}
+                  onClick={() => handleToggleRepresentation('normalized')}
                 >
                   <input
                     type="text"
@@ -1232,8 +1220,8 @@ export default function AdminDatasetsPage() {
                       )
                     }
                   >
-                    <XCircle size={14} />
-                    <span>{t('Reject Version')}</span>
+                    <CheckCircle2 size={14} />
+                    <span>{t('Approve Version')}</span>
                   </button>
                   <button
                     type="button"
@@ -1254,8 +1242,8 @@ export default function AdminDatasetsPage() {
                       )
                     }
                   >
-                    <CheckCircle2 size={14} />
-                    <span>{t('Approve Version')}</span>
+                    <XCircle size={14} />
+                    <span>{t('Reject Version')}</span>
                   </button>
                 </div>
               )}

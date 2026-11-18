@@ -58,7 +58,7 @@ def swagger_upload_dropzone_script() -> FileResponse:
 # CORS Middleware Configuration for Frontend Access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -105,6 +105,7 @@ def root():
 
 
 @app.get("/health/db", tags=["Health"], summary="Check Database Connection")
+@app.get(f"{API_V1_STR}/health/db", tags=["Health"], summary="Check Database Connection")
 def check_database(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))

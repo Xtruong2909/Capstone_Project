@@ -132,91 +132,75 @@ export default function AdminUsersPage() {
           </select>
         </div>
 
-        <button
-          type="button"
-          className="btn-action btn-action--primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.1rem' }}
-          onClick={() => setIsModalOpen(true)}
-        >
-          <UserPlus size={16} />
-          <span>{t('Add User')}</span>
-        </button>
-      </div>
-
-      {/* Users Table */}
-      <div className="admin-card">
-        <div className="admin-card__header">
-          <h3 className="admin-card__title">
-            {t('User Accounts')} ({filteredUsers.length})
-          </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <button
+            type="button"
+            className="adm-btn adm-btn--ghost"
+            onClick={fetchUsersAndRoles}
+            disabled={isLoading}
+          >
+            <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+            <span>{t('Refresh')}</span>
+          </button>
           <button
             type="button"
             className="btn-action btn-action--primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
             onClick={fetchUsersAndRoles}
           >
-            <RefreshCw size={14} />
-            <span>{t('Refresh')}</span>
+            <UserPlus size={16} />
+            <span>{t('Add User')}</span>
           </button>
         </div>
 
-        {isLoading ? (
-          <div className="empty-state">
-            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>{t('Loading user accounts...')}</p>
+      {/* Users Table */}
+      <div className="adm-panel">
+        <div className="adm-panel__header">
+          <div className="adm-panel__title-group">
+            <div className="adm-panel__icon adm-tone--blue">
+              <Users size={18} />
+            </div>
+            <div>
+              <h3 className="adm-panel__title">
+                {t('User Accounts')} ({filteredUsers.length})
+              </h3>
+            </div>
           </div>
-        ) : error ? (
-          <div className="empty-state">
-            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{t(error)}</p>
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="empty-state">
-            <Users size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>{t('No matching user accounts found.')}</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>{t('Full Name')}</th>
-                  <th>{t('Email')}</th>
-                  <th>{t('Role')}</th>
-                  <th>{t('Status')}</th>
-                  <th>{t('Created Date')}</th>
-                  <th>{t('Action')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{user.full_name}</strong>
-                    </td>
-                    <td style={{ color: '#475569' }}>{user.email}</td>
-                    <td>
-                      <span className={`badge ${getRoleBadgeClass(user.role_id)}`}>
-                        {t(roles.find((r) => r.id === user.role_id)?.name || user.role_id)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${user.is_active ? 'badge--active' : 'badge--inactive'}`}>
-                        {t(user.is_active ? 'Active' : 'Suspended')}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US') : '—'}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={`btn-action ${user.is_active ? 'btn-action--danger' : 'btn-action--success'}`}
-                        onClick={() => handleToggleStatus(user)}
-                      >
-                        {t(user.is_active ? 'Deactivate' : 'Activate')}
-                      </button>
-                    </td>
+        </div>
+
+        <div className="adm-panel__body--flush">
+          {isLoading ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--blue">
+                <RefreshCw size={24} className="animate-spin" />
+              </div>
+              <h4 className="adm-empty__title">{t('Loading user accounts...')}</h4>
+            </div>
+          ) : error ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--rose">
+                <AlertCircle size={24} />
+              </div>
+              <h4 className="adm-empty__title">{t(error)}</h4>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="adm-empty">
+              <div className="adm-empty__icon adm-tone--slate">
+                <Users size={24} />
+              </div>
+              <h4 className="adm-empty__title">{t('No matching user accounts found.')}</h4>
+            </div>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>{t('User')}</th>
+                    <th>{t('Email')}</th>
+                    <th>{t('Role')}</th>
+                    <th>{t('Status')}</th>
+                    <th>{t('Created Date')}</th>
+                    <th style={{ textAlign: 'right' }}>{t('Action')}</th>
                   </tr>
                 ))}
               </tbody>

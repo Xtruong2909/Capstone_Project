@@ -8,6 +8,7 @@ const ACTION_FILTERS = ['ALL', 'CREATE', 'UPDATE', 'SECURITY']
 export default function AdminAuditLogsPage() {
   const { t, language } = useLanguage()
   const [logs, setLogs] = useState([])
+  const [totalCount, setTotalCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -43,6 +44,17 @@ export default function AdminAuditLogsPage() {
     }
     return 'adm-badge--blue'
   }
+
+  const summary = useMemo(() => {
+    let createCount = 0
+    let securityCount = 0
+    logs.forEach((l) => {
+      const upper = (l.action || '').toUpperCase()
+      if (upper.includes('CREATE') || upper.includes('GRANT') || upper.includes('APPROVE')) createCount += 1
+      if (upper.includes('DELETE') || upper.includes('REJECT') || upper.includes('REVOKE') || l.status === 'FAILED') securityCount += 1
+    })
+    return { total: totalCount || logs.length, createCount, securityCount }
+  }, [logs, totalCount])
 
   const filteredLogs = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()

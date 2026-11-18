@@ -9,13 +9,12 @@ import {
   ArrowRight,
   HardDrive,
   GitBranch,
-  MessageSquareWarning,
   FileSpreadsheet,
   Eye,
   Info,
-  Layers,
   Sparkles,
   Workflow,
+  AlertCircle,
 } from 'lucide-react'
 import {
   formatBytes,
@@ -28,27 +27,27 @@ import PneumaSampleGeneratorModal from '../components/PneumaSampleGeneratorModal
 export default function EngineerOverviewPage() {
   const navigate = useNavigate()
   const {
-    dbStatus,
     datasets,
     isLoadingCatalog,
+    catalogError,
     versionLineageMap,
     recordCountsMap,
     fetchCatalogAndHealth,
     openPreviewForDataset,
+    openPipelineStudioForDataset,
     startNewVersionIteration,
   } = useOutletContext()
 
   const [detailModalItem, setDetailModalItem] = useState(null)
   const [isSampleModalOpen, setIsSampleModalOpen] = useState(false)
 
-  const isOnline = dbStatus?.status === 'connected'
   const totalDatasetsCount = datasets.length
   const approvedCount = datasets.filter((d) => d.approval_status === 'APPROVED').length
   const pendingCount = datasets.filter((d) => d.approval_status === 'PENDING').length
   const rejectedCount = datasets.filter((d) => d.approval_status === 'REJECTED').length
   const totalStorageBytes = datasets.reduce((sum, d) => sum + (d.file_size_bytes || 0), 0)
   const approvalRatePct =
-    totalDatasetsCount > 0 ? Math.round((approvedCount / totalDatasetsCount) * 100) : 100
+    totalDatasetsCount > 0 ? Math.round((approvedCount / totalDatasetsCount) * 100) : 0
 
   const recentDatasets = datasets.slice(0, 6)
 
@@ -59,640 +58,382 @@ export default function EngineerOverviewPage() {
 
   return (
     <>
-      {/* 1. Hero Banner */}
-      <div className="admin-hero-banner">
-        <div className="admin-hero-banner__top">
-          <div className="admin-hero-banner__content">
-            <span className="admin-hero-banner__eyebrow">
-              <Workflow size={13} />
-              pNEUMA Microscopic Trajectory Pipeline
-            </span>
-            <h2 className="admin-hero-banner__title">
-              Data Engineering & Schema QA Studio
-            </h2>
-            <p className="admin-hero-banner__subtitle">
-              Streamline raw UAV trajectory CSV ingestion, execute automated 3-step schema QA validation,
-              and package canonical dataset versions for Admin Quality Gate review.
+      {/* 1. Command Hero + 4-Tile Ribbon */}
+      <section className="adm-command-hero">
+        <div className="adm-command-hero__top">
+          <div>
+            <h2 className="adm-command-hero__title">Data Engineering & Schema QA Studio</h2>
+            <p className="adm-command-hero__desc">
+              Ingest UAV trajectory datasets, run 3-step schema & quality checks, and submit
+              verified versions to the Admin Quality Gate.
             </p>
           </div>
 
-          <div className="admin-hero-banner__actions">
+          <div className="adm-command-hero__actions">
             <button
               type="button"
-              className="btn-hero-sample"
+              className="adm-btn adm-btn--glass"
               onClick={() => setIsSampleModalOpen(true)}
-              title="Generate synthetic pNEUMA CSV drone trajectory file"
             >
               <Sparkles size={15} />
-              <span>Generate pNEUMA Sample</span>
+              <span>Generate Sample</span>
             </button>
-
             <button
               type="button"
-              className="btn-hero-primary"
+              className="adm-btn adm-btn--primary"
               onClick={() => navigate('/engineer/upload')}
             >
-              <Upload size={16} />
+              <Upload size={15} />
               <span>Upload Dataset</span>
             </button>
-
             <button
               type="button"
-              className="btn-hero-refresh"
+              className="adm-btn adm-btn--glass"
               onClick={fetchCatalogAndHealth}
+              disabled={isLoadingCatalog}
+              aria-label="Refresh dataset catalog"
+              title="Refresh catalog"
             >
               <RefreshCw size={15} className={isLoadingCatalog ? 'animate-spin' : ''} />
-              <span>Refresh</span>
             </button>
           </div>
         </div>
 
-        {/* Quick Navigation Tiles */}
-        <div className="hero-quick-grid">
-          <div
-            className="hero-quick-tile"
-            style={{ cursor: 'pointer' }}
-            onClick={() => navigate('/engineer/datasets?status=ALL')}
+        <div className="adm-command-ribbon">
+          <button
+            type="button"
+            className="adm-ribbon-tile eng-ribbon-tile--interactive"
+            onClick={() => navigate('/engineer/datasets')}
           >
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--blue">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon adm-tone--blue">
                 <Database size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{totalDatasetsCount}</div>
-                <div className="hero-quick-tile__label">Total Datasets</div>
+                <div className="adm-ribbon-tile__val">{totalDatasetsCount}</div>
+                <div className="adm-ribbon-tile__lbl">Total Datasets</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta">
-              <ArrowRight size={14} />
-            </span>
-          </div>
+            <ArrowRight size={15} style={{ color: '#64748b' }} />
+          </button>
 
-          <div
-            className="hero-quick-tile"
-            style={{ cursor: 'pointer' }}
-            onClick={() => navigate('/engineer/datasets?status=PENDING')}
+          <button
+            type="button"
+            className="adm-ribbon-tile eng-ribbon-tile--interactive"
+            onClick={() => navigate('/engineer/datasets')}
           >
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--amber">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon adm-tone--amber">
                 <Clock size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{pendingCount}</div>
-                <div className="hero-quick-tile__label">Pending Review</div>
+                <div className="adm-ribbon-tile__val">{pendingCount}</div>
+                <div className="adm-ribbon-tile__lbl">Pending Review</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta">
-              <ArrowRight size={14} />
-            </span>
-          </div>
+            <ArrowRight size={15} style={{ color: '#64748b' }} />
+          </button>
 
-          <div
-            className="hero-quick-tile"
-            style={{ cursor: 'pointer' }}
-            onClick={() => navigate('/engineer/datasets?status=APPROVED')}
+          <button
+            type="button"
+            className="adm-ribbon-tile eng-ribbon-tile--interactive"
+            onClick={() => navigate('/engineer/datasets')}
           >
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--green">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon adm-tone--emerald">
                 <CheckCircle2 size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{approvedCount}</div>
-                <div className="hero-quick-tile__label">Approved</div>
+                <div className="adm-ribbon-tile__val">{approvedCount}</div>
+                <div className="adm-ribbon-tile__lbl">Approved</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta">
-              <ArrowRight size={14} />
-            </span>
-          </div>
+            <ArrowRight size={15} style={{ color: '#64748b' }} />
+          </button>
 
-          <div
-            className="hero-quick-tile"
-            style={{ cursor: 'pointer' }}
-            onClick={() => navigate('/engineer/preview')}
-          >
-            <div className="hero-quick-tile__left">
-              <div className="hero-quick-tile__icon admin-card__icon-box--purple">
+          <div className="adm-ribbon-tile">
+            <div className="adm-ribbon-tile__left">
+              <div className="adm-ribbon-tile__icon adm-tone--purple">
                 <HardDrive size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{formatBytes(totalStorageBytes)}</div>
-                <div className="hero-quick-tile__label">Storage Used</div>
+                <div className="adm-ribbon-tile__val">{formatBytes(totalStorageBytes)}</div>
+                <div className="adm-ribbon-tile__lbl">Storage Used</div>
               </div>
             </div>
-            <span className="hero-quick-tile__cta">
-              <ArrowRight size={14} />
-            </span>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 2. 3-Step UAV Trajectory Ingestion & Schema QA Pipeline Guide */}
-      <div className="pipeline-guide-card">
-        <div className="pipeline-guide-card__header">
-          <div className="pipeline-guide-card__title-group">
-            <div className="pipeline-guide-card__icon">
-              <Workflow size={20} />
-            </div>
-            <div>
-              <h3 className="pipeline-guide-card__title">3-Step Ingestion & Schema QA Pipeline</h3>
-              <p className="pipeline-guide-card__subtitle">
-                Transform raw pNEUMA drone logs into normalized, benchmark-grade spatial-temporal Parquet datasets.
-              </p>
-            </div>
+      {catalogError && (
+        <div className="eng-alert eng-alert--error">
+          <div className="eng-alert__content">
+            <AlertCircle size={17} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>{catalogError}</span>
           </div>
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ fontSize: '0.8rem', padding: '0.45rem 0.95rem' }}
-            onClick={() => navigate('/engineer/pipeline-studio')}
-          >
-            <span>Open Pipeline Studio</span>
-            <ArrowRight size={14} />
-          </button>
-        </div>
-
-        <div className="pipeline-guide-grid">
-          {/* Step 1 */}
-          <div className="pipeline-step-item pipeline-step-item--1">
-            <div>
-              <div className="pipeline-step-item__top">
-                <div className="pipeline-step-item__number">01</div>
-                <div>
-                  <h4 className="pipeline-step-item__title">Column Mapping</h4>
-                  <p className="pipeline-step-item__desc">
-                    Align raw UAV CSV headers to the 10 canonical fields (<code>track_id</code>, <code>type</code>, <code>traveled_d</code>, <code>avg_speed</code>, <code>lat</code>, <code>lon</code>, <code>speed</code>, ...).
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="pipeline-step-item__footer">
-              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Schema Normalization</span>
-              <button
-                type="button"
-                className="btn-action"
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
-                onClick={() => navigate('/engineer/pipeline-studio?step=1')}
-              >
-                Configure Map →
-              </button>
-            </div>
+          <div className="eng-alert__actions">
+            <button
+              type="button"
+              className="adm-btn adm-btn--ghost adm-btn--sm"
+              onClick={fetchCatalogAndHealth}
+            >
+              Retry
+            </button>
           </div>
-
-          {/* Step 2 */}
-          <div className="pipeline-step-item pipeline-step-item--2">
-            <div>
-              <div className="pipeline-step-item__top">
-                <div className="pipeline-step-item__number">02</div>
-                <div>
-                  <h4 className="pipeline-step-item__title">Quality Inspection</h4>
-                  <p className="pipeline-step-item__desc">
-                    Automated anomaly detection: coordinate bounding box checks, negative speed filter, timestamp jumps, and missing GPS fixes.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="pipeline-step-item__footer">
-              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Automated Anomaly Scan</span>
-              <button
-                type="button"
-                className="btn-action"
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}
-                onClick={() => navigate('/engineer/pipeline-studio?step=2')}
-              >
-                Run QA Scan →
-              </button>
-            </div>
-          </div>
-
-          {/* Step 3 */}
-          <div className="pipeline-step-item pipeline-step-item--3">
-            <div>
-              <div className="pipeline-step-item__top">
-                <div className="pipeline-step-item__number">03</div>
-                <div>
-                  <h4 className="pipeline-step-item__title">Normalization & Gate Packaging</h4>
-                  <p className="pipeline-step-item__desc">
-                    Unpivot wide trajectory time-slices into canonical records, generate QA report, and submit clean version (v1.0, v1.1) to Admin Quality Gate.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="pipeline-step-item__footer">
-              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Parquet Packaging & Submission</span>
-              <button
-                type="button"
-                className="btn-action"
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}
-                onClick={() => navigate('/engineer/pipeline-studio?step=3')}
-              >
-                Submit to Gate →
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. KPI Stat Cards */}
-      <div className="stats-grid">
-        <div className="stat-card stat-card--blue">
-          <Database size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{totalDatasetsCount}</h3>
-              <p>Ingested Versions</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--blue">
-              <Database size={22} />
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--green">
-          <CheckCircle2 size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{approvalRatePct}%</h3>
-              <p>Approval Rate</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--green">
-              <CheckCircle2 size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{
-                width: `${approvalRatePct}%`,
-                background: 'linear-gradient(90deg, #059669, #34d399)',
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--amber">
-          <Clock size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{pendingCount}</h3>
-              <p>Awaiting Admin Review</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--amber">
-              <Clock size={22} />
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--purple">
-          <GitBranch size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{Object.keys(versionLineageMap).length + totalDatasetsCount}</h3>
-              <p>Tracked Lineage Commits</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--purple">
-              <GitBranch size={22} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Rejected Alert Banner */}
-      {rejectedCount > 0 && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            padding: '0.9rem 1.15rem',
-            background: '#fff1f2',
-            border: '1px solid #fecdd3',
-            borderRadius: '12px',
-            color: '#9f1239',
-            marginBottom: '1.25rem',
-            fontSize: '0.86rem',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 600 }}>
-            <MessageSquareWarning size={18} color="#e11d48" />
-            <span>
-              {rejectedCount} dataset version(s) were rejected during Admin review. Inspect feedback
-              and upload a cleaned iteration (<code>v1.1-cleaned</code>).
-            </span>
-          </div>
-          <button
-            type="button"
-            className="btn-action btn-action--danger"
-            style={{ fontSize: '0.78rem', padding: '0.38rem 0.8rem' }}
-            onClick={() => navigate('/engineer/datasets?status=REJECTED')}
-          >
-            View Rejected ({rejectedCount})
-          </button>
         </div>
       )}
 
-      {/* 4. Two-Column Overview Layout: Recent Datasets + Pipeline Readiness */}
-      <div className="overview-grid" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '1.75rem' }}>
-        <div className="admin-card" style={{ marginBottom: 0 }}>
-          <div className="admin-card__header">
-            <div className="admin-card__header-left">
-              <div className="admin-card__icon-box admin-card__icon-box--blue">
+      {/* 2. Bento Grid: Recent Versions (8 cols) + Quality & Workflow (4 cols) */}
+      <div className="adm-bento-grid">
+        <section className="adm-panel adm-col-8">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--blue">
                 <FileSpreadsheet size={18} />
               </div>
-              <h3 className="admin-card__title">Recent Ingested Datasets</h3>
+              <div>
+                <h3 className="adm-panel__title">Recent Dataset Versions</h3>
+              </div>
             </div>
-
             <button
               type="button"
-              className="btn-secondary"
+              className="adm-btn adm-btn--ghost adm-btn--sm"
               onClick={() => navigate('/engineer/datasets')}
-              style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}
             >
-              View Full Catalog ({totalDatasetsCount})
+              <span>View All</span>
+              <ArrowRight size={14} />
             </button>
           </div>
 
-          {recentDatasets.length === 0 ? (
-            <div className="vivid-empty-box">
-              <div
-                className="vivid-empty-box__icon"
-                style={{
-                  background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                  color: '#1d4ed8',
-                  border: '1px solid #93c5fd',
-                }}
-              >
-                <Upload size={26} />
+          <div className="adm-panel__body" style={{ padding: 0 }}>
+            {isLoadingCatalog ? (
+              <div style={{ padding: '1.25rem', display: 'grid', gap: '0.75rem' }}>
+                {[1, 2, 3, 4].map((idx) => (
+                  <div key={idx} className="eng-skeleton" style={{ height: '38px' }} />
+                ))}
               </div>
-              <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
-                No datasets uploaded yet
-              </h4>
-              <button
-                type="button"
-                className="btn-action btn-action--primary"
-                style={{ marginTop: '0.5rem' }}
-                onClick={() => navigate('/engineer/upload')}
-              >
-                <Upload size={15} />
-                <span>Upload First Dataset</span>
-              </button>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Dataset</th>
-                    <th>Version</th>
-                    <th>Format & Size</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentDatasets.map((item) => {
-                    const effectiveTag = resolveEffectiveVersionTag(item, versionLineageMap)
-                    const lineage = versionLineageMap[item.dataset_id]
-                    const recordCount = resolveEffectiveRecordCount(item, recordCountsMap)
+            ) : recentDatasets.length === 0 ? (
+              <div className="adm-empty">
+                <div className="adm-empty__icon">
+                  <Database size={24} />
+                </div>
+                <div className="adm-empty__title">No datasets ingested yet</div>
+                <p className="adm-empty__desc">
+                  Upload a raw CSV, Parquet, Excel, or JSON file, or generate a synthetic pNEUMA
+                  sample to begin.
+                </p>
+                <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn--primary adm-btn--sm"
+                    onClick={() => navigate('/engineer/upload')}
+                  >
+                    <Upload size={14} />
+                    <span>Upload Dataset</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="adm-btn adm-btn--ghost adm-btn--sm"
+                    onClick={() => setIsSampleModalOpen(true)}
+                  >
+                    <Sparkles size={14} />
+                    <span>Generate Sample</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="adm-table-wrap">
+                <table className="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Dataset</th>
+                      <th>Version</th>
+                      <th>Records</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentDatasets.map((item) => {
+                      const effectiveVersion = resolveEffectiveVersionTag(item, versionLineageMap)
+                      const effectiveRecordCount = resolveEffectiveRecordCount(item, recordCountsMap)
 
-                    return (
-                      <tr key={item.version_id || item.dataset_id}>
-                        <td>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.name}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            {item.location_name}
-                          </div>
-                        </td>
-                        <td>
-                          <code
-                            style={{
-                              background: lineage ? '#f3e8ff' : '#eff6ff',
-                              color: lineage ? '#7c3aed' : '#1d4ed8',
-                              padding: '0.18rem 0.48rem',
-                              borderRadius: '6px',
-                              border: lineage ? '1px solid #d8b4fe' : '1px solid #bfdbfe',
-                              fontWeight: 700,
-                              fontSize: '0.76rem',
-                            }}
-                          >
-                            {effectiveTag}
-                          </code>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.82rem' }}>
-                            {item.file_format} ({formatBytes(item.file_size_bytes)})
-                          </div>
-                          {recordCount != null && (
-                            <div style={{ fontSize: '0.73rem', color: '#059669', fontWeight: 600 }}>
-                              {Number(recordCount).toLocaleString()} records
+                      return (
+                        <tr key={item.dataset_id}>
+                          <td style={{ maxWidth: '240px' }}>
+                            <div
+                              className="eng-truncate"
+                              title={item.name}
+                              style={{ fontWeight: 700, color: '#0f172a' }}
+                            >
+                              {item.name}
                             </div>
-                          )}
-                        </td>
-                        <td>
-                          <DatasetStatusBadge status={item.approval_status} />
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '0.35rem' }}>
-                            <button
-                              type="button"
-                              className="btn-action btn-action--primary"
-                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
-                              onClick={() => openPreviewForDataset(item.dataset_id)}
-                              title="Preview trajectory records & metadata"
+                            <div
+                              className="eng-truncate"
+                              title={item.original_filename}
+                              style={{ fontSize: '0.75rem', color: '#64748b' }}
                             >
-                              <Eye size={13} />
-                              <span>Preview</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-action"
-                              style={{
-                                padding: '0.35rem 0.65rem',
-                                fontSize: '0.75rem',
-                                background: '#eff6ff',
-                                color: '#1d4ed8',
-                                border: '1px solid #bfdbfe',
-                              }}
-                              onClick={() => navigate(`/engineer/pipeline-studio?datasetId=${item.dataset_id}`)}
-                              title="Open 3-Step Pipeline Studio"
-                            >
-                              <Workflow size={13} />
-                              <span>Pipeline</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Right Card: Pipeline Quality & Quick Actions */}
-        <div className="admin-card" style={{ marginBottom: 0 }}>
-          <div className="admin-card__header">
-            <div className="admin-card__header-left">
-              <div className="admin-card__icon-box admin-card__icon-box--purple">
-                <Layers size={18} />
+                              {item.original_filename || item.code}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="adm-code-tag">{effectiveVersion}</span>
+                          </td>
+                          <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                            {effectiveRecordCount != null
+                              ? Number(effectiveRecordCount).toLocaleString()
+                              : '—'}
+                          </td>
+                          <td>
+                            <DatasetStatusBadge status={item.approval_status} />
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn--ghost adm-btn--sm"
+                                title="Open in Pipeline Studio"
+                                aria-label={`Open ${item.name} in Pipeline Studio`}
+                                onClick={() => openPipelineStudioForDataset(item.dataset_id, 1)}
+                              >
+                                <Workflow size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn--ghost adm-btn--sm"
+                                title="Preview Data"
+                                aria-label={`Preview ${item.name}`}
+                                onClick={() => openPreviewForDataset(item.dataset_id)}
+                              >
+                                <Eye size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn--ghost adm-btn--sm"
+                                title="Dataset Details"
+                                aria-label={`View details for ${item.name}`}
+                                onClick={() => setDetailModalItem(item)}
+                              >
+                                <Info size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <h3 className="admin-card__title">Pipeline Quality & Actions</h3>
+            )}
+          </div>
+        </section>
+
+        <section className="adm-panel adm-col-4">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--emerald">
+                <CheckCircle2 size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">Quality Gate & Workflow</h3>
+              </div>
             </div>
           </div>
 
-          <div
-            style={{
-              padding: '1.5rem 1.6rem 1.75rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1.35rem',
-            }}
-          >
-            <div
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '1.25rem 1.4rem',
-              }}
-            >
+          <div className="adm-panel__body" style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            {/* Approval Rate Gauge */}
+            <div className="adm-gauge-card">
+              <div className="adm-gauge-card__top">
+                <div>
+                  <span className="adm-gauge-card__val">{approvalRatePct}%</span>
+                  <span className="adm-gauge-card__lbl">Approval Rate</span>
+                </div>
+                <span className="adm-badge adm-badge--emerald">
+                  {approvedCount} / {totalDatasetsCount}
+                </span>
+              </div>
+              <div className="adm-progress-track">
+                <div
+                  className="adm-progress-fill"
+                  style={{ width: `${approvalRatePct}%`, background: '#10b981' }}
+                />
+              </div>
+              <div className="adm-gauge-card__meta">
+                <span>Pending: {pendingCount}</span>
+                <span>Rejected: {rejectedCount}</span>
+              </div>
+            </div>
+
+            {/* 3-Step Pipeline Quick Launch */}
+            <div className="adm-rbac-stack">
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '0.86rem',
+                  fontSize: '0.72rem',
                   fontWeight: 700,
-                  color: '#0f172a',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: '#64748b',
                   marginBottom: '0.65rem',
                 }}
               >
-                <span>Approved for Data Science</span>
-                <span style={{ color: '#059669', fontWeight: 800 }}>
-                  {approvedCount} / {totalDatasetsCount} ({approvalRatePct}%)
-                </span>
+                Pipeline Workflow
               </div>
-              <div className="stat-card__mini-bar" style={{ height: '7px', marginBottom: '1.15rem' }}>
-                <div
-                  className="stat-card__mini-bar-fill"
-                  style={{
-                    width: `${approvalRatePct}%`,
-                    background: 'linear-gradient(90deg, #059669, #34d399)',
-                  }}
-                />
+              <div className="adm-queue-list">
+                <button
+                  type="button"
+                  className="adm-queue-item"
+                  style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                  onClick={() => navigate('/engineer/upload')}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#0f172a' }}>
+                      1. Ingest Raw Dataset
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Upload CSV, Parquet, Excel, or JSON
+                    </div>
+                  </div>
+                  <ArrowRight size={15} style={{ color: '#64748b', flexShrink: 0 }} />
+                </button>
+
+                <button
+                  type="button"
+                  className="adm-queue-item"
+                  style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                  onClick={() => openPipelineStudioForDataset(datasets[0]?.dataset_id, 1)}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#0f172a' }}>
+                      2. Run 3-Step QA Studio
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Map schema, inspect anomalies, normalize
+                    </div>
+                  </div>
+                  <ArrowRight size={15} style={{ color: '#64748b', flexShrink: 0 }} />
+                </button>
+
+                <button
+                  type="button"
+                  className="adm-queue-item"
+                  style={{ cursor: 'pointer', textAlign: 'left', width: '100%' }}
+                  disabled={datasets.length === 0}
+                  onClick={() => startNewVersionIteration(datasets[0])}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#0f172a' }}>
+                      3. Create Version Iteration
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Upgrade an existing dataset version
+                    </div>
+                  </div>
+                  <GitBranch size={15} style={{ color: '#64748b', flexShrink: 0 }} />
+                </button>
               </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '0.75rem',
-                  textAlign: 'center',
-                }}
-              >
-                <div
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #bbf7d0',
-                    borderRadius: '10px',
-                    padding: '0.9rem 0.6rem',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669' }}>
-                    {approvedCount}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '0.3rem' }}>
-                    Approved
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #fde68a',
-                    borderRadius: '10px',
-                    padding: '0.9rem 0.6rem',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706' }}>
-                    {pendingCount}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '0.3rem' }}>
-                    Pending
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #fecaca',
-                    borderRadius: '10px',
-                    padding: '0.9rem 0.6rem',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626' }}>
-                    {rejectedCount}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, marginTop: '0.3rem' }}>
-                    Rejected
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-                alignItems: 'center',
-                paddingTop: '0.2rem',
-              }}
-            >
-              <button
-                type="button"
-                className="btn-action btn-action--primary"
-                style={{
-                  width: '100%',
-                  maxWidth: '340px',
-                  justifyContent: 'center',
-                  padding: '0.72rem 1.25rem',
-                  fontSize: '0.86rem',
-                  borderRadius: '9px',
-                }}
-                onClick={() => navigate('/engineer/upload')}
-              >
-                <Upload size={16} />
-                <span>Upload New Dataset (v1.0)</span>
-              </button>
-
-              <button
-                type="button"
-                className="btn-action"
-                style={{
-                  width: '100%',
-                  maxWidth: '340px',
-                  justifyContent: 'center',
-                  padding: '0.72rem 1.25rem',
-                  fontSize: '0.86rem',
-                  background: '#f3e8ff',
-                  color: '#7c3aed',
-                  border: '1px solid #d8b4fe',
-                  borderRadius: '9px',
-                  fontWeight: 700,
-                }}
-                onClick={() => startNewVersionIteration(datasets[0])}
-              >
-                <GitBranch size={16} />
-                <span>Create Version Iteration (v1.1 / v2.0)</span>
-              </button>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
       <DatasetDetailModal
@@ -702,6 +443,8 @@ export default function EngineerOverviewPage() {
         onClose={() => setDetailModalItem(null)}
         onStartNewVersion={startNewVersionIteration}
         onPreviewDataset={openPreviewForDataset}
+        onOpenPipelineStudio={openPipelineStudioForDataset}
+        onResubmitted={fetchCatalogAndHealth}
       />
 
       <PneumaSampleGeneratorModal

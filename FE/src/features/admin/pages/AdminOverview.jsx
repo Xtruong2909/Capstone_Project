@@ -17,6 +17,7 @@ import {
   Activity,
   Layers,
   ScrollText,
+  Layers,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import apiClient from '../../../services/apiClient'
@@ -32,7 +33,10 @@ export default function AdminOverview() {
   const [accessGrants, setAccessGrants] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [partialWarning, setPartialWarning] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
+  const [confirmRevokeId, setConfirmRevokeId] = useState(null)
+  const [actionNotice, setActionNotice] = useState(null)
 
   // Modal grant access
   const [isGrantModalOpen, setIsGrantModalOpen] = useState(false)
@@ -47,23 +51,70 @@ export default function AdminOverview() {
   const fetchData = async () => {
     setIsLoading(true)
     setError(null)
+    setPartialWarning(null)
     try {
-      const [statsData, dbHealth, usersData, datasetsData, expData, grantsData] = await Promise.all([
+      const results = await Promise.allSettled([
         adminService.getStats(),
-        apiClient.get('/health/db').catch(() => ({ data: { status: 'disconnected' } })),
-        adminService.getUsers({ limit: 100 }).catch(() => []),
-        adminService.getDatasets({ limit: 50 }).catch(() => []),
-        adminService.getExperimentsOverview().catch(() => ({ stats: {}, experiments: [] })),
-        adminService.getAccessGrants({ limit: 50 }).catch(() => []),
+        apiClient.get('/health/db'),
+        adminService.getUsers({ limit: 100 }),
+        adminService.getDatasets({ limit: 50 }),
+        adminService.getExperimentsOverview(),
+        adminService.getAccessGrants({ limit: 50 }),
       ])
-      setStats(statsData)
-      setDbStatus(dbHealth.data)
+
+      const [statsRes, dbRes, usersRes, datasetsRes, expRes, grantsRes] = results
+      const allCoreFailed = [statsRes, usersRes, datasetsRes, expRes, grantsRes].every(
+        (r) => r.status === 'rejected'
+      )
+
+      if (allCoreFailed) {
+        const firstErr = statsRes.reason || usersRes.reason
+        const status = firstErr?.response?.status
+        const detail = firstErr?.response?.data?.detail || firstErr?.message || ''
+        setError(
+          status === 401 || status === 403
+            ? t('Session expired or insufficient Admin permissions. Please sign in again.')
+            : `${t('Failed to load system overview statistics.')}${detail ? ` (${detail})` : ''}`
+        )
+        return
+      }
+
+      const usersData = usersRes.status === 'fulfilled' && Array.isArray(usersRes.value) ? usersRes.value : []
+      const datasetsData =
+        datasetsRes.status === 'fulfilled' && Array.isArray(datasetsRes.value) ? datasetsRes.value : []
+      const expData =
+        expRes.status === 'fulfilled' && expRes.value ? expRes.value : { stats: {}, experiments: [] }
+      const grantsData =
+        grantsRes.status === 'fulfilled' && Array.isArray(grantsRes.value) ? grantsRes.value : []
+      const dbHealth =
+        dbRes.status === 'fulfilled' && dbRes.value?.data ? dbRes.value.data : { status: 'disconnected' }
+
+      if (statsRes.status === 'fulfilled' && statsRes.value) {
+        setStats(statsRes.value)
+      } else {
+        // Fallback stats computed from loaded endpoints if /admin/stats is unavailable
+        const pendingCount = datasetsData.filter(
+          (d) => d.approval_status === 'PENDING' || d.approval_status === 'SUBMITTED'
+        ).length
+        setStats({
+          total_users: usersData.length,
+          pending_approvals: pendingCount,
+          total_datasets: datasetsData.length,
+          total_audit_logs: 0,
+        })
+        const statsErr = statsRes.reason?.response?.data?.detail || statsRes.reason?.message
+        setPartialWarning(
+          `${t('Overview stats endpoint unavailable — showing fallback telemetry.')}${statsErr ? ` (${statsErr})` : ''}`
+        )
+      }
+
+      setDbStatus(dbHealth)
       setUsers(usersData)
       setDatasets(datasetsData)
       setExperimentsData(expData)
       setAccessGrants(grantsData)
     } catch (err) {
-      setError(t('Failed to load system overview statistics.'))
+      setError(`${t('Failed to load system overview statistics.')}${err?.message ? ` (${err.message})` : ''}`)
     } finally {
       setIsLoading(false)
     }
@@ -72,6 +123,15 @@ export default function AdminOverview() {
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (!isGrantModalOpen) return
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setIsGrantModalOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isGrantModalOpen])
 
   const handleGrantSubmit = async (e) => {
     e.preventDefault()
@@ -91,6 +151,7 @@ export default function AdminOverview() {
       setGrantForm({ user_id: '', dataset_version_id: '', expires_at: '' })
       const updatedGrants = await adminService.getAccessGrants()
       setAccessGrants(updatedGrants)
+      setActionNotice({ type: 'success', text: t('Dataset access permission granted.') })
     } catch (err) {
       setGrantError(err.response?.data?.detail || t('Failed to grant dataset access.'))
     } finally {
@@ -99,13 +160,21 @@ export default function AdminOverview() {
   }
 
   const handleRevokeGrant = async (grantId) => {
-    if (!confirm(t('Are you sure you want to revoke this access permission?'))) return
+    if (confirmRevokeId !== grantId) {
+      setConfirmRevokeId(grantId)
+      return
+    }
     setActionLoading(grantId)
+    setConfirmRevokeId(null)
     try {
       await adminService.revokeAccess(grantId)
       setAccessGrants((prev) => prev.filter((g) => g.id !== grantId))
+      setActionNotice({ type: 'success', text: t('Access permission revoked.') })
     } catch (err) {
-      alert(err.response?.data?.detail || t('Failed to revoke access permission.'))
+      setActionNotice({
+        type: 'error',
+        text: err.response?.data?.detail || t('Failed to revoke access permission.'),
+      })
     } finally {
       setActionLoading(null)
     }
@@ -113,21 +182,25 @@ export default function AdminOverview() {
 
   if (isLoading) {
     return (
-      <div className="empty-state">
-        <RefreshCw size={28} className="animate-spin" style={{ margin: '0 auto 1rem', color: '#2563eb' }} />
-        <p>{t('Loading system overview...')}</p>
+      <div className="adm-empty">
+        <div className="adm-empty__icon adm-tone--blue">
+          <RefreshCw size={24} className="animate-spin" />
+        </div>
+        <h4 className="adm-empty__title">{t('Loading system overview...')}</h4>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="empty-state">
-        <AlertCircle size={28} style={{ margin: '0 auto 1rem', color: '#dc2626' }} />
-        <p>{t(error)}</p>
+      <div className="adm-empty">
+        <div className="adm-empty__icon adm-tone--rose">
+          <AlertCircle size={24} />
+        </div>
+        <h4 className="adm-empty__title">{t(error)}</h4>
         <button
           type="button"
-          className="btn-action btn-action--primary"
+          className="adm-btn adm-btn--primary"
           style={{ marginTop: '1rem' }}
           onClick={fetchData}
         >
@@ -137,7 +210,6 @@ export default function AdminOverview() {
     )
   }
 
-  // Calculate real role distribution
   const totalUsersCount = users.length || 1
   const roleBreakdown = {
     data_engineer: users.filter((u) => u.role_id === 'data_engineer').length,
@@ -147,13 +219,11 @@ export default function AdminOverview() {
   }
   const activeUsersCount = users.filter((u) => u.is_active).length
 
-  // Filter pending & approved datasets
   const pendingDatasets = datasets.filter(
     (d) => d.approval_status === 'PENDING' || d.approval_status === 'SUBMITTED'
   )
   const approvedDatasetsCount = datasets.filter((d) => d.approval_status === 'APPROVED').length
 
-  // Get experiment stats
   const expStats = experimentsData.stats || {}
   const experimentsList = experimentsData.experiments || []
 
@@ -189,30 +259,87 @@ export default function AdminOverview() {
     }
   }
 
-  const isOnline = dbStatus?.status === 'connected'
-
   return (
-    <div>
-      {/* 1. Hero Banner */}
-      <div className="admin-hero-banner">
-        <div className="admin-hero-banner__top">
-          <div className="admin-hero-banner__content">
-            <h2 className="admin-hero-banner__title">{t('Administration Overview')}</h2>
+    <div className="adm-page">
+      {(partialWarning || actionNotice) && (
+        <div
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            borderRadius: '12px',
+            fontSize: '0.82rem',
+            fontWeight: 600,
+            background:
+              actionNotice?.type === 'success'
+                ? '#ecfdf5'
+                : actionNotice?.type === 'error'
+                ? '#fff1f2'
+                : '#fffbeb',
+            color:
+              actionNotice?.type === 'success'
+                ? '#047857'
+                : actionNotice?.type === 'error'
+                ? '#be123c'
+                : '#b45309',
+            border:
+              actionNotice?.type === 'success'
+                ? '1px solid #a7f3d0'
+                : actionNotice?.type === 'error'
+                ? '1px solid #fecdd3'
+                : '1px solid #fde68a',
+          }}
+        >
+          <span>{actionNotice?.text || partialWarning}</span>
+          <button
+            type="button"
+            className="adm-btn adm-btn--ghost adm-btn--sm"
+            aria-label={t('Dismiss notice')}
+            onClick={() => {
+              setPartialWarning(null)
+              setActionNotice(null)
+            }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* 1. Dark Command Hero Banner */}
+      <section className="adm-command-hero">
+        <div className="adm-command-hero__top">
+          <div>
+            <div className="adm-command-hero__eyebrow">
+              <ShieldCheck size={13} />
+              <span>{t('UAV Traffic Governance & Quality Gate')}</span>
+            </div>
+            <h2 className="adm-command-hero__title">{t('Administration Overview')}</h2>
+            <p className="adm-command-hero__desc">
+              {t('Monitor pNEUMA dataset approvals, RBAC identity health, and short-term traffic forecasting experiments.')}
+            </p>
           </div>
 
-          <div className="admin-hero-banner__actions">
-            <div className={`status-pill-live ${isOnline ? 'status-pill-live--online' : 'status-pill-live--offline'}`}>
-              <span className={`status-pulse-dot ${isOnline ? 'status-pulse-dot--online' : 'status-pulse-dot--offline'}`} />
-              <span>{t(isOnline ? 'Database Online' : 'Database Offline')}</span>
-            </div>
-
+          <div className="adm-command-hero__actions">
+            <button
+              type="button"
+              className="adm-btn adm-btn--glass"
+              onClick={fetchData}
+              disabled={isLoading}
+            >
+              <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+              <span>{t('Sync')}</span>
+            </button>
             <button
               type="button"
               className="btn-hero-refresh"
               onClick={fetchData}
             >
-              <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-              <span>{t('Refresh')}</span>
+              <Plus size={15} />
+              <span>{t('Issue Access Grant')}</span>
             </button>
           </div>
         </div>
@@ -225,8 +352,8 @@ export default function AdminOverview() {
                 <Users size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{stats?.total_users ?? users.length}</div>
-                <div className="hero-quick-tile__label">{t('Users')}</div>
+                <div className="adm-ribbon-tile__val">{stats?.total_users ?? users.length}</div>
+                <div className="adm-ribbon-tile__lbl">{t('Users')}</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -238,8 +365,8 @@ export default function AdminOverview() {
                 <Clock size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{stats?.pending_approvals ?? pendingDatasets.length}</div>
-                <div className="hero-quick-tile__label">{t('Pending Approvals')}</div>
+                <div className="adm-ribbon-tile__val">{stats?.pending_approvals ?? pendingDatasets.length}</div>
+                <div className="adm-ribbon-tile__lbl">{t('Pending Approvals')}</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -251,8 +378,8 @@ export default function AdminOverview() {
                 <Database size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{stats?.total_datasets ?? 0}</div>
-                <div className="hero-quick-tile__label">{t('Datasets')}</div>
+                <div className="adm-ribbon-tile__val">{stats?.total_datasets ?? 0}</div>
+                <div className="adm-ribbon-tile__lbl">{t('Datasets')}</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
@@ -264,27 +391,30 @@ export default function AdminOverview() {
                 <ScrollText size={18} />
               </div>
               <div>
-                <div className="hero-quick-tile__value">{stats?.total_audit_logs ?? 0}</div>
-                <div className="hero-quick-tile__label">{t('Audit Logs')}</div>
+                <div className="adm-ribbon-tile__val">{stats?.total_audit_logs ?? 0}</div>
+                <div className="adm-ribbon-tile__lbl">{t('Audit Logs')}</div>
               </div>
             </div>
             <span className="hero-quick-tile__cta"><ArrowRight size={14} /></span>
           </Link>
         </div>
-      </div>
+      </section>
 
-      {/* 2. Operational & Governance Health Rate Cards */}
-      <div className="stats-grid">
-        <div className="stat-card stat-card--blue">
-          <Users size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{activeUserRatePct}%</h3>
-              <p>{t('Active Accounts')}</p>
+      {/* 2. Bento Row 1: Operational Health Gauges (8 cols) + RBAC Distribution (4 cols) */}
+      <div className="adm-bento-grid">
+        <div className="adm-panel adm-col-8">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--blue">
+                <Activity size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">{t('Platform Health Telemetry')}</h3>
+              </div>
             </div>
-            <div className="stat-card__icon stat-card__icon--blue">
-              <Activity size={22} />
-            </div>
+            <span className={`adm-badge ${dbStatus?.status === 'connected' ? 'adm-badge--emerald' : 'adm-badge--slate'}`}>
+              {dbStatus?.status === 'connected' ? t('PostGIS Connected') : t('Local Mode')}
+            </span>
           </div>
           <div className="stat-card__mini-bar">
             <div
@@ -294,53 +424,59 @@ export default function AdminOverview() {
           </div>
         </div>
 
-        <div className="stat-card stat-card--green">
-          <CheckCircle2 size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{approvalRatePct}%</h3>
-              <p>{t('Approval Rate')}</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--green">
-              <CheckCircle2 size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${approvalRatePct}%`, background: 'linear-gradient(90deg, #059669, #34d399)' }}
-            />
-          </div>
-        </div>
+          <div className="adm-panel__body">
+            <div className="adm-gauge-grid">
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <span className="adm-gauge-card__lbl">{t('Active Accounts')}</span>
+                  <div className="adm-panel__icon adm-tone--blue">
+                    <Users size={16} />
+                  </div>
+                </div>
+                <div className="adm-gauge-card__val">{activeUserRatePct}%</div>
+                <div className="adm-gauge-card__meta">
+                  {activeUsersCount} / {users.length} {t('verified')}
+                </div>
+              </div>
 
-        <div className="stat-card stat-card--purple">
-          <FlaskConical size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{experimentSuccessRatePct}%</h3>
-              <p>{t('Training Success Rate')}</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--purple">
-              <FlaskConical size={22} />
-            </div>
-          </div>
-          <div className="stat-card__mini-bar">
-            <div
-              className="stat-card__mini-bar-fill"
-              style={{ width: `${experimentSuccessRatePct}%`, background: 'linear-gradient(90deg, #7c3aed, #c084fc)' }}
-            />
-          </div>
-        </div>
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <span className="adm-gauge-card__lbl">{t('Approval Rate')}</span>
+                  <div className="adm-panel__icon adm-tone--emerald">
+                    <CheckCircle2 size={16} />
+                  </div>
+                </div>
+                <div className="adm-gauge-card__val">{approvalRatePct}%</div>
+                <div className="adm-gauge-card__meta">
+                  {approvedDatasetsCount} / {datasets.length} {t('versions')}
+                </div>
+              </div>
 
-        <div className="stat-card stat-card--amber">
-          <KeyRound size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <h3>{validGrantRatePct}%</h3>
-              <p>{t('Valid Access Grants')}</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--amber">
-              <KeyRound size={22} />
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <span className="adm-gauge-card__lbl">{t('Training Success')}</span>
+                  <div className="adm-panel__icon adm-tone--purple">
+                    <FlaskConical size={16} />
+                  </div>
+                </div>
+                <div className="adm-gauge-card__val">{experimentSuccessRatePct}%</div>
+                <div className="adm-gauge-card__meta">
+                  {completedExpsCount} / {totalFinishedOrRunningExps} {t('runs')}
+                </div>
+              </div>
+
+              <div className="adm-gauge-card">
+                <div className="adm-gauge-card__top">
+                  <span className="adm-gauge-card__lbl">{t('Valid Grants')}</span>
+                  <div className="adm-panel__icon adm-tone--amber">
+                    <KeyRound size={16} />
+                  </div>
+                </div>
+                <div className="adm-gauge-card__val">{validGrantRatePct}%</div>
+                <div className="adm-gauge-card__meta">
+                  {validGrantsCount} / {accessGrants.length} {t('active')}
+                </div>
+              </div>
             </div>
           </div>
           <div className="stat-card__mini-bar">
@@ -361,32 +497,10 @@ export default function AdminOverview() {
               <div className="admin-card__icon-box admin-card__icon-box--amber">
                 <Clock size={18} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <h3 className="admin-card__title">{t('Pending Approvals')}</h3>
-                {pendingDatasets.length > 0 && (
-                  <span className="badge badge--pending">{pendingDatasets.length}</span>
-                )}
+              <div>
+                <h3 className="adm-panel__title">{t('Role Distribution')}</h3>
               </div>
             </div>
-            <Link
-              to="/admin/datasets"
-              style={{
-                fontSize: '0.8rem',
-                color: '#2563eb',
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '8px',
-                textDecoration: 'none',
-                fontWeight: 600,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-              }}
-            >
-              <span>{t('View All')}</span>
-              <ArrowRight size={14} />
-            </Link>
           </div>
 
           {pendingDatasets.length === 0 ? (
@@ -424,59 +538,16 @@ export default function AdminOverview() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
 
-        {/* Right: User Role Breakdown */}
-        <div className="admin-card" style={{ marginBottom: 0 }}>
-          <div className="admin-card__header">
-            <div className="admin-card__header-left">
-              <div className="admin-card__icon-box admin-card__icon-box--blue">
-                <ShieldCheck size={18} />
-              </div>
-              <h3 className="admin-card__title">{t('Role Distribution')}</h3>
-            </div>
-            <span className="badge badge--active">
-              {activeUsersCount}/{users.length} {t('Active')}
-            </span>
-          </div>
-
-          <div className="role-breakdown-card">
-            {/* Visual Multi-color Progress Bar */}
-            <div className="role-stacked-bar-wrapper">
-              <div className="role-stacked-bar">
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.data_engineer / totalUsersCount) * 100}%`, background: '#2563eb' }}
-                  title={`${t('Data Engineer')}: ${roleBreakdown.data_engineer}`}
-                />
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.data_scientist / totalUsersCount) * 100}%`, background: '#9333ea' }}
-                  title={`${t('Data Scientist')}: ${roleBreakdown.data_scientist}`}
-                />
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.business_user / totalUsersCount) * 100}%`, background: '#16a34a' }}
-                  title={`${t('Business User')}: ${roleBreakdown.business_user}`}
-                />
-                <div
-                  className="role-stacked-segment"
-                  style={{ width: `${(roleBreakdown.admin / totalUsersCount) * 100}%`, background: '#e11d48' }}
-                  title={`${t('Administrator')}: ${roleBreakdown.admin}`}
-                />
-              </div>
-            </div>
-
-            {/* Vivid Role Stat Items */}
-            <div className="role-stat-grid">
-              <div className="role-stat-item role-stat-item--blue">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#2563eb' }} />
-                    {t('Data Engineer')}
-                  </span>
-                  <span className="role-stat-item__pct">
+            <div className="adm-rbac-list">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#2563eb' }} />
+                  <span className="adm-rbac-row__name">{t('Data Engineer')}</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.data_engineer}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.data_engineer / totalUsersCount) * 100)}%
                   </span>
                 </div>
@@ -485,13 +556,14 @@ export default function AdminOverview() {
                 </div>
               </div>
 
-              <div className="role-stat-item role-stat-item--purple">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#9333ea' }} />
-                    {t('Data Scientist')}
-                  </span>
-                  <span className="role-stat-item__pct">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#7c3aed' }} />
+                  <span className="adm-rbac-row__name">{t('Data Scientist')}</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.data_scientist}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.data_scientist / totalUsersCount) * 100)}%
                   </span>
                 </div>
@@ -500,13 +572,14 @@ export default function AdminOverview() {
                 </div>
               </div>
 
-              <div className="role-stat-item role-stat-item--green">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#16a34a' }} />
-                    {t('Business User')}
-                  </span>
-                  <span className="role-stat-item__pct">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#059669' }} />
+                  <span className="adm-rbac-row__name">{t('Business User')}</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.business_user}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.business_user / totalUsersCount) * 100)}%
                   </span>
                 </div>
@@ -515,13 +588,14 @@ export default function AdminOverview() {
                 </div>
               </div>
 
-              <div className="role-stat-item role-stat-item--rose">
-                <div className="role-stat-item__header">
-                  <span className="role-stat-item__name">
-                    <span className="role-stat-item__dot" style={{ background: '#e11d48' }} />
-                    {t('Administrator')}
-                  </span>
-                  <span className="role-stat-item__pct">
+              <div className="adm-rbac-row">
+                <div className="adm-rbac-row__left">
+                  <span className="adm-rbac-dot" style={{ background: '#e11d48' }} />
+                  <span className="adm-rbac-row__name">{t('Administrator')}</span>
+                </div>
+                <div className="adm-rbac-row__right">
+                  <span className="adm-rbac-row__count">{roleBreakdown.admin}</span>
+                  <span className="adm-rbac-row__pct">
                     {Math.round((roleBreakdown.admin / totalUsersCount) * 100)}%
                   </span>
                 </div>
@@ -541,30 +615,151 @@ export default function AdminOverview() {
             <div className="admin-card__icon-box admin-card__icon-box--purple">
               <FlaskConical size={18} />
             </div>
-            <h3 className="admin-card__title">{t('AI/ML Experiments')}</h3>
+            <Link to="/admin/datasets" className="adm-btn adm-btn--ghost adm-btn--sm">
+              <span>{t('View All')}</span>
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          <div className="adm-panel__body">
+            {pendingDatasets.length === 0 ? (
+              <div className="adm-empty">
+                <div className="adm-empty__icon adm-tone--emerald">
+                  <CheckCircle2 size={24} />
+                </div>
+                <h4 className="adm-empty__title">{t('No pending datasets')}</h4>
+                <p className="adm-empty__desc">
+                  {t('All submitted pNEUMA trajectory versions have been reviewed.')}
+                </p>
+              </div>
+            ) : (
+              <div className="adm-queue-list">
+                {pendingDatasets.slice(0, 4).map((item) => (
+                  <div key={item.id} className="adm-queue-item">
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
+                        {item.dataset_name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                        <code style={{ background: '#fffbeb', color: '#b45309', padding: '0.1rem 0.4rem', borderRadius: '6px', border: '1px solid #fde68a', fontWeight: 700 }}>
+                          {item.version_tag}
+                        </code>
+                        <span>•</span>
+                        <span>{item.file_format}</span>
+                        <span>•</span>
+                        <span>{(item.total_records || 0).toLocaleString()} rows</span>
+                      </div>
+                    </div>
+                    <Link to="/admin/datasets" className="adm-btn adm-btn--ghost adm-btn--sm">
+                      {t('Inspect')}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 4-Box KPI Ribbon */}
-        <div className="exp-kpi-ribbon">
-          <div className="exp-kpi-box exp-kpi-box--slate">
-            <div className="admin-card__icon-box" style={{ background: '#e2e8f0', color: '#334155' }}>
-              <Layers size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val">{expStats.total_experiments ?? 0}</div>
-              <div className="exp-kpi-box__lbl">{t('Total')}</div>
+        {/* Granular Access Permissions (7 cols) */}
+        <div className="adm-panel adm-col-7">
+          <div className="adm-panel__header">
+            <div className="adm-panel__title-group">
+              <div className="adm-panel__icon adm-tone--emerald">
+                <KeyRound size={18} />
+              </div>
+              <div>
+                <h3 className="adm-panel__title">{t('Dataset Access Permissions')}</h3>
+              </div>
             </div>
           </div>
 
-          <div className="exp-kpi-box exp-kpi-box--blue">
-            <div className="admin-card__icon-box admin-card__icon-box--blue">
-              <Activity size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val">{expStats.running_count ?? 0}</div>
-              <div className="exp-kpi-box__lbl">{t('Running')}</div>
-            </div>
+          <div className="adm-panel__body--flush">
+            {accessGrants.length === 0 ? (
+              <div className="adm-empty">
+                <div className="adm-empty__icon adm-tone--blue">
+                  <KeyRound size={24} />
+                </div>
+                <h4 className="adm-empty__title">{t('No access grants issued yet')}</h4>
+                <p className="adm-empty__desc">
+                  {t('Issue scoped dataset permissions to Data Scientists or Business Users.')}
+                </p>
+              </div>
+            ) : (
+              <div className="adm-table-wrap">
+                <table className="adm-table">
+                  <thead>
+                    <tr>
+                      <th>{t('Granted User')}</th>
+                      <th>{t('Role')}</th>
+                      <th>{t('Dataset & Version')}</th>
+                      <th>{t('Expiration')}</th>
+                      <th>{t('Action')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accessGrants.map((grant) => (
+                      <tr key={grant.id}>
+                        <td>
+                          <strong style={{ color: '#0f172a' }}>{grant.user_name}</strong>
+                          <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{grant.user_email}</div>
+                        </td>
+                        <td>
+                          <span className={`adm-badge ${getRoleBadgeClass(grant.user_role)}`}>
+                            {t(grant.user_role)}
+                          </span>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 600, color: '#0f172a' }}>{grant.dataset_name}</span>{' '}
+                          <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.12rem 0.4rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
+                            {grant.version_tag}
+                          </code>
+                        </td>
+                        <td>
+                          {grant.expires_at ? (
+                            <span className="adm-badge adm-badge--amber">
+                              {new Date(grant.expires_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                            </span>
+                          ) : (
+                            <span className="adm-badge adm-badge--emerald">{t('Unlimited')}</span>
+                          )}
+                        </td>
+                        <td>
+                          {confirmRevokeId === grant.id ? (
+                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn--danger adm-btn--sm"
+                                disabled={actionLoading === grant.id}
+                                onClick={() => handleRevokeGrant(grant.id)}
+                              >
+                                {t('Confirm')}
+                              </button>
+                              <button
+                                type="button"
+                                className="adm-btn adm-btn--ghost adm-btn--sm"
+                                onClick={() => setConfirmRevokeId(null)}
+                              >
+                                {t('Cancel')}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="adm-btn adm-btn--danger adm-btn--sm"
+                              disabled={actionLoading === grant.id}
+                              onClick={() => handleRevokeGrant(grant.id)}
+                            >
+                              <Trash2 size={12} />
+                              <span>{t('Revoke')}</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="exp-kpi-box exp-kpi-box--green">
@@ -572,21 +767,24 @@ export default function AdminOverview() {
               <CheckCircle2 size={18} />
             </div>
             <div>
-              <div className="exp-kpi-box__val">{expStats.completed_count ?? 0}</div>
-              <div className="exp-kpi-box__lbl">{t('Completed')}</div>
+              <h3 className="adm-panel__title">{t('Short-Term Traffic Flow Forecasting Audit')}</h3>
             </div>
           </div>
 
-          <div className="exp-kpi-box exp-kpi-box--purple">
-            <div className="admin-card__icon-box admin-card__icon-box--purple">
-              <AlertCircle size={18} />
-            </div>
-            <div>
-              <div className="exp-kpi-box__val" style={{ fontSize: '1rem' }}>
-                {expStats.failed_count ?? 0}
-              </div>
-              <div className="exp-kpi-box__lbl">{t('Failed')}</div>
-            </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span className="adm-badge adm-badge--slate">
+              <Layers size={12} />
+              {t('Total')}: {expStats.total_experiments ?? 0}
+            </span>
+            <span className="adm-badge adm-badge--blue">
+              {t('Running')}: {expStats.running_count ?? 0}
+            </span>
+            <span className="adm-badge adm-badge--emerald">
+              {t('Completed')}: {expStats.completed_count ?? 0}
+            </span>
+            <span className="adm-badge adm-badge--rose">
+              {t('Failed')}: {expStats.failed_count ?? 0}
+            </span>
           </div>
         </div>
 
@@ -602,162 +800,63 @@ export default function AdminOverview() {
             >
               <FlaskConical size={26} />
             </div>
-            <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              {t('No experiments recorded yet')}
-            </h4>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>{t('Experiment Name')}</th>
-                  <th>{t('Model')}</th>
-                  <th>{t('Target Variable')}</th>
-                  <th>{t('Aggregation Window')}</th>
-                  <th>{t('Status')}</th>
-                  <th>{t('Created By')}</th>
-                  <th>{t('Evaluation Metrics')}</th>
-                  <th>{t('Date')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {experimentsList.map((exp) => (
-                  <tr key={exp.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{exp.name}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {exp.dataset_name} ({exp.dataset_version_tag})
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge--scientist">{exp.model_type}</span>
-                    </td>
-                    <td>{exp.target_variable}</td>
-                    <td>{exp.temporal_aggregation_sec / 60} min</td>
-                    <td>
-                      <span className={`badge ${
-                        exp.status === 'COMPLETED' ? 'badge--active' :
-                        exp.status === 'RUNNING' ? 'badge--pending' : 'badge--rejected'
-                      }`}>
-                        {t(exp.status === 'COMPLETED' ? 'Completed' :
-                         exp.status === 'RUNNING' ? 'Running' : exp.status)}
-                      </span>
-                    </td>
-                    <td>{exp.creator_name || '—'}</td>
-                    <td>
-                      {exp.metrics ? (
-                        <div style={{ fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                          <span>MAE: <strong>{exp.metrics.mae}</strong></span> | <span>RMSE: {exp.metrics.rmse}</span>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{t('No metrics')}</span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {new Date(exp.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
-                    </td>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>{t('Experiment Name')}</th>
+                    <th>{t('Model')}</th>
+                    <th>{t('Target Variable')}</th>
+                    <th>{t('Aggregation Window')}</th>
+                    <th>{t('Status')}</th>
+                    <th>{t('Metrics (MAE / RMSE)')}</th>
+                    <th>{t('Created Date')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Dataset Access Governance Matrix */}
-      <div className="admin-card" style={{ marginBottom: 0 }}>
-        <div className="admin-card__header">
-          <div className="admin-card__header-left">
-            <div className="admin-card__icon-box admin-card__icon-box--green">
-              <KeyRound size={18} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <h3 className="admin-card__title">{t('Dataset Access Permissions')}</h3>
-              <span className="badge badge--engineer">{accessGrants.length}</span>
+                </thead>
+                <tbody>
+                  {experimentsList.map((exp) => (
+                    <tr key={exp.id}>
+                      <td>
+                        <strong style={{ color: '#0f172a' }}>{exp.experiment_name}</strong>
+                      </td>
+                      <td>
+                        <span className="adm-badge adm-badge--purple">{exp.model_type}</span>
+                      </td>
+                      <td style={{ fontSize: '0.82rem', color: '#475569' }}>{exp.target_variable || 'flow'}</td>
+                      <td style={{ fontSize: '0.82rem', color: '#475569' }}>{exp.aggregation_window || '5min'}</td>
+                      <td>
+                        <span
+                          className={`adm-badge ${
+                            exp.status === 'COMPLETED'
+                              ? 'adm-badge--emerald'
+                              : exp.status === 'FAILED'
+                              ? 'adm-badge--rose'
+                              : 'adm-badge--amber'
+                          }`}
+                        >
+                          {exp.status}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0f172a' }}>
+                        {exp.metrics && (exp.metrics.mae !== undefined || exp.metrics.rmse !== undefined) ? (
+                          <span>
+                            MAE: {exp.metrics.mae ?? '—'} | RMSE: {exp.metrics.rmse ?? '—'}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {new Date(exp.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-
-        {accessGrants.length === 0 ? (
-          <div className="vivid-empty-box">
-            <div
-              className="vivid-empty-box__icon"
-              style={{
-                background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                color: '#1d4ed8',
-                border: '1px solid #93c5fd',
-              }}
-            >
-              <KeyRound size={26} />
-            </div>
-            <h4 style={{ margin: '0.2rem 0 0', fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-              {t('No access grants issued yet')}
-            </h4>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>{t('Granted User')}</th>
-                  <th>{t('Role')}</th>
-                  <th>{t('Dataset & Version')}</th>
-                  <th>{t('Granted By')}</th>
-                  <th>{t('Expiration')}</th>
-                  <th>{t('Granted Date')}</th>
-                  <th>{t('Action')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accessGrants.map((grant) => (
-                  <tr key={grant.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{grant.user_name}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{grant.user_email}</div>
-                    </td>
-                    <td>
-                      <span className={`badge ${getRoleBadgeClass(grant.user_role)}`}>
-                        {t(grant.user_role)}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ fontWeight: 600, color: '#0f172a' }}>{grant.dataset_name}</span>{' '}
-                      <code style={{ background: '#f1f5f9', color: '#0f172a', padding: '0.12rem 0.4rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
-                        {grant.version_tag}
-                      </code>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{grant.granted_by_email || t('System')}</td>
-                    <td>
-                      {grant.expires_at ? (
-                        <span style={{ fontSize: '0.8rem', color: '#d97706', fontWeight: 600 }}>
-                          {new Date(grant.expires_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
-                        </span>
-                      ) : (
-                        <span className="badge badge--active">{t('Unlimited')}</span>
-                      )}
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(grant.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-action btn-action--danger"
-                        style={{ padding: '0.38rem 0.75rem', fontSize: '0.75rem' }}
-                        disabled={actionLoading === grant.id}
-                        onClick={() => handleRevokeGrant(grant.id)}
-                      >
-                        <Trash2 size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />
-                        {t('Revoke')}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       {/* Grant Dataset Access Modal */}
@@ -768,9 +867,11 @@ export default function AdminOverview() {
             if (e.target === e.currentTarget) setIsGrantModalOpen(false)
           }}
         >
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <h3>{t('Grant Dataset Access')}</h3>
+          <div className="adm-modal">
+            <div className="adm-modal__header">
+              <h3 id="grant-access-modal-title" className="adm-modal__title">
+                {t('Grant Dataset Access')}
+              </h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -780,71 +881,71 @@ export default function AdminOverview() {
               </button>
             </div>
 
-            <form onSubmit={handleGrantSubmit} className="modal-body">
-              {grantError && (
-                <div style={{
-                  padding: '0.75rem',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '6px',
-                  color: '#dc2626',
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem',
-                }}>
-                  {t(grantError)}
-                </div>
-              )}
-
-              <div className="form-field">
-                <label className="form-label">{t('Select Recipient User')}</label>
-                <select
-                  required
-                  value={grantForm.user_id}
-                  onChange={(e) => setGrantForm({ ...grantForm, user_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  <option value="">{t('-- Select team member --')}</option>
-                  {candidateUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name} ({u.email}) - [{u.role_id}]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">{t('Select Dataset Version')}</label>
-                <select
-                  required
-                  value={grantForm.dataset_version_id}
-                  onChange={(e) => setGrantForm({ ...grantForm, dataset_version_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  <option value="">{t('-- Select dataset version --')}</option>
-                  {datasets.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.dataset_name} ({d.version_tag}) - [{d.approval_status}]
-                    </option>
-                  ))}
-                </select>
-                {datasets.length === 0 && (
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
-                    {t('* No dataset versions have been created in the system yet.')}
-                  </p>
+            <form onSubmit={handleGrantSubmit}>
+              <div className="adm-modal__body">
+                {grantError && (
+                  <div className="adm-badge adm-badge--rose" style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem' }}>
+                    {t(grantError)}
+                  </div>
                 )}
-              </div>
 
-              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">{t('Expiration Date (Leave blank for unlimited access)')}</label>
-                <input
-                  type="date"
-                  value={grantForm.expires_at}
-                  onChange={(e) => setGrantForm({ ...grantForm, expires_at: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
+                <div className="adm-field">
+                  <label htmlFor="grant-user-select" className="adm-label">
+                    {t('Select Recipient User')}
+                  </label>
+                  <select
+                    id="grant-user-select"
+                    required
+                    value={grantForm.user_id}
+                    onChange={(e) => setGrantForm({ ...grantForm, user_id: e.target.value })}
+                    className="adm-select"
+                  >
+                    <option value="">{t('-- Select team member --')}</option>
+                    {candidateUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name} ({u.email}) - [{u.role_id}]
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="adm-field">
+                  <label htmlFor="grant-dataset-select" className="adm-label">
+                    {t('Select Dataset Version')}
+                  </label>
+                  <select
+                    id="grant-dataset-select"
+                    required
+                    value={grantForm.dataset_version_id}
+                    onChange={(e) => setGrantForm({ ...grantForm, dataset_version_id: e.target.value })}
+                    className="adm-select"
+                  >
+                    <option value="">{t('-- Select dataset version --')}</option>
+                    {datasets.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.dataset_name} ({d.version_tag}) - [{d.approval_status}]
+                      </option>
+                    ))}
+                  </select>
+                  {datasets.length === 0 && (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#d97706' }}>
+                      {t('* No dataset versions have been created in the system yet.')}
+                    </p>
+                  )}
+                </div>
+
+                <div className="adm-field">
+                  <label htmlFor="grant-expires-input" className="adm-label">
+                    {t('Expiration Date (Leave blank for unlimited access)')}
+                  </label>
+                  <input
+                    id="grant-expires-input"
+                    type="date"
+                    value={grantForm.expires_at}
+                    onChange={(e) => setGrantForm({ ...grantForm, expires_at: e.target.value })}
+                    className="adm-input"
+                  />
+                </div>
               </div>
 
               <div className="modal-actions">
