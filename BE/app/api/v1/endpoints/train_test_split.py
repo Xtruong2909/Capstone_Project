@@ -18,7 +18,7 @@ def split_training(
     user: User = Depends(get_current_user),
     request: Request = None,
 ) -> TrainTestSplitResponse:
-    """Dán nguyên response của /api/feature-engineering/training vào request body.
+    """Accept prepared training samples and split them into train/test sets.
 
     Tự lấy recording_session_id từ samples, mặc định train_ratio=0.7.
     Có thể thêm split_strategy=purged_chronological để chia an toàn.

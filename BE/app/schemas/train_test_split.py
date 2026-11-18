@@ -56,7 +56,7 @@ class TrainTestSplitRequest(BaseModel):
     target_order: tuple[Literal["target_h1"], Literal["target_h3"], Literal["target_h5"]] = TARGET_ORDER
     samples: list[SplitSample] = Field(
         min_length=2,
-        description="Copy samples from /api/feature-engineering/training. FE is not persisted; ID-only requests cannot be resolved without rebuilding lags.",
+        description="Prepared feature samples. Samples are required; ID-only requests are not rebuilt automatically.",
     )
 
     @model_validator(mode="after")

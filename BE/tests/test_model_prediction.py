@@ -175,7 +175,7 @@ def test_predict_loads_existing_model_and_persists_three_forecasts(
     assert saved.call_count == 1
     assert saved.call_args.args[1:3] == (final.id, features.latest_time_bucket)
     assert len(saved.call_args.args[3]) == 3
-    assert "/api/model-training/predict" in app.openapi()["paths"]
+    assert "/api/model-training/predict" not in app.openapi()["paths"]
 
 
 def test_missing_final_model_returns_clear_error(

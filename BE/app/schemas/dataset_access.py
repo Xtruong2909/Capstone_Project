@@ -28,6 +28,33 @@ class DatasetAccessResponse(BaseModel):
     granted_at: datetime
 
 
+class GroupAccessCatalogItem(BaseModel):
+    group_id: UUID
+    group_name: str | None
+    source: str
+    drone_id: str
+    total_datasets: int
+    approved_datasets: int
+
+
+class GroupUserAccess(BaseModel):
+    user_id: UUID
+    full_name: str
+    email: str
+    role: str
+    granted_datasets: int
+    total_datasets: int
+    has_full_access: bool
+
+
+class GroupAccessResponse(BaseModel):
+    group_id: UUID
+    user_id: UUID
+    total_datasets: int
+    granted_datasets: int
+    grants: list[DatasetAccessResponse]
+
+
 class AccessibleDataset(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
@@ -36,6 +63,8 @@ class AccessibleDataset(BaseModel):
     source: str
     description: str | None
     capture_date: date | None
+    recording_date: date | None = None
+    drone_id: str | None = None
     location_name: str
     created_at: datetime
 
@@ -47,6 +76,8 @@ class ApprovedDatasetResponse(BaseModel):
     dataset_code: str
     source: str
     location_name: str
+    recording_date: date | None = None
+    drone_id: str | None = None
     version_id: UUID
     version_tag: str
     approval_status: str

@@ -35,6 +35,10 @@ DATASET_UPLOAD_DIR = Path(
 )
 # Match the frontend's binary-size limit: 2.5 GiB (2,684,354,560 bytes).
 MAX_DATASET_UPLOAD_BYTES = int(os.getenv("MAX_DATASET_UPLOAD_BYTES", str(5 * 1024**3 // 2)))
+MAX_DATASET_UPLOAD_BATCH_BYTES = int(os.getenv("MAX_DATASET_UPLOAD_BATCH_BYTES", str(10 * 1024**3)))
+ASYNC_DATASET_UPLOAD_THRESHOLD_BYTES = int(
+    os.getenv("ASYNC_DATASET_UPLOAD_THRESHOLD_BYTES", str(512 * 1024**2))
+)
 
 # Gemini is optional until the AI Assistant endpoint is called.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

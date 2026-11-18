@@ -37,7 +37,7 @@ def _check_rate_limit(user_id: UUID) -> None:
     "/assistant",
     response_model=AssistantResponse,
     response_model_exclude_none=True,
-    summary="Trợ lý Data Scientist bằng Gemini",
+    summary="Trợ lý AI phân tích Aggregation, thí nghiệm và dự báo",
 )
 def assistant(
     payload: AssistantRequest = Body(openapi_examples={
@@ -46,27 +46,34 @@ def assistant(
             "value": {"action": "CHAT", "message": "Random Forest dự báo lưu lượng như thế nào?"},
         },
         "experiment_analysis": {
-            "summary": "Phân tích thí nghiệm (thay UUID theo dữ liệu của bạn)",
+            "summary": "Phân tích thí nghiệm Lag Features đã hoàn thành",
             "value": {"action": "EXPERIMENT_ANALYSIS", "experiment_ids": [
-                "5af4e12e-0b70-4516-936f-2376f550f9fe",
+                "6706af09-6335-41b0-a5d1-7831763538fc",
             ]},
         },
         "model_recommendation": {
             "summary": "Gợi ý cấu hình (thay UUID theo dữ liệu của bạn)",
             "value": {"action": "MODEL_RECOMMENDATION", "experiment_ids": [
-                "5af4e12e-0b70-4516-936f-2376f550f9fe",
+                "6706af09-6335-41b0-a5d1-7831763538fc",
             ]},
         },
         "experiment_comparison": {
             "summary": "So sánh thí nghiệm (thay UUID theo dữ liệu của bạn)",
             "value": {"action": "EXPERIMENT_COMPARISON", "experiment_ids": [
-                "5af4e12e-0b70-4516-936f-2376f550f9fe",
-                "de3bc3a9-c134-47fa-91f0-f40141c19232",
+                "6706af09-6335-41b0-a5d1-7831763538fc",
+                "a1bce81f-7f36-450e-afef-c6ea6694afb7",
             ]},
         },
         "forecast_explanation": {
-            "summary": "Giải thích dự báo (thay ID bằng kết quả đã lưu)",
-            "value": {"action": "FORECAST_EXPLANATION", "prediction_id": 1},
+            "summary": "Giải thích dự báo (lấy forecast_id từ API dự báo)",
+            "value": {"action": "FORECAST_EXPLANATION",
+                      "forecast_id": "6328fdae-47bd-4b8d-81a7-8b30ec50eddb"},
+        },
+        "aggregation_chat": {
+            "summary": "Hỏi về nhóm tổng hợp và thí nghiệm mới nhất",
+            "value": {"action": "CHAT", "group_id":
+                      "ad8714dc-c786-49ce-8ee6-ce6e351863cb",
+                      "message": "Phân tích thí nghiệm mới nhất của nhóm này"},
         },
     }),
     db: Session = Depends(get_db),

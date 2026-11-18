@@ -13,9 +13,10 @@ from app.database.database import get_db
 from app.models.dataset import DatasetVersion
 from app.models.user import User
 from app.schemas.admin import (
+    AdminGroupApprovalSummary,
+    AdminGroupReviewResponse,
     AdminStats,
     AuditLogPage,
-    AuditLogResponse,
     DatasetApprovalAction,
     DatasetApprovalResponse,
     ExperimentsOverviewResponse,
@@ -23,18 +24,23 @@ from app.schemas.admin import (
     UserCreate,
     UserStatusUpdate,
 )
-from app.schemas.dataset import DatasetPreviewResponse
-from app.schemas.user import UserResponse
-from app.services.audit_log_service import audit_action, record_audit_event
-from app.services.dataset_mapping_service import (
-    DatasetMappingNotFoundError,
-    apply_saved_column_mappings,
+from app.schemas.dataset import (
+    GroupDatasetListResponse,
+    RecordingSessionListResponse,
+    RecordingSessionPreviewResponse,
 )
+from app.schemas.user import UserResponse
+from app.services import admin_group_review_service as group_review
+from app.services import admin_monitoring_service as monitoring
+from app.services.audit_log_service import audit_action, record_audit_event
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
     DatasetPreviewNotFoundError,
     DatasetPreviewReadError,
-    get_dataset_preview,
+)
+from app.services.dataset_review_service import (
+    list_recording_sessions,
+    preview_recording_session,
 )
 from app.services.email_service import EmailConfigurationError, send_initial_credentials
 
@@ -210,13 +216,25 @@ def list_roles(
     return [RoleResponse.model_validate(r) for r in roles]
 
 
-@router.get("/audit-logs", response_model=AuditLogPage, summary="Nhật ký hoạt động hệ thống")
+@router.get(
+    "/audit-logs",
+    response_model=AuditLogPage,
+    summary="Nhật ký hoạt động hệ thống và thí nghiệm",
+    description=(
+        "Lọc thí nghiệm bằng module=Model Training và resource_id=experiment_id. "
+        "Các sự kiện huấn luyện mới được ghi sau khi chạy xong."
+    ),
+)
 def list_audit_logs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     user_id: UUID | None = None,
     action: Annotated[str | None, Query(max_length=100)] = None,
     module: Annotated[str | None, Query(max_length=100)] = None,
+    resource_id: Annotated[
+        str | None,
+        Query(max_length=255, description="ID tài nguyên; dùng experiment_id để lọc thí nghiệm"),
+    ] = None,
     status_filter: Annotated[
         Literal["SUCCESS", "FAILED"] | None, Query(alias="status")
     ] = None,
@@ -225,35 +243,110 @@ def list_audit_logs(
     search: Annotated[str | None, Query(max_length=255)] = None,
     db: Session = Depends(get_db),
 ) -> AuditLogPage:
-    """Search and page the append-only audit trail; timestamps must include timezone."""
-    if start_date and (start_date.tzinfo is None or start_date.utcoffset() is None):
-        raise HTTPException(status_code=422, detail="start_date must include a timezone")
-    if end_date and (end_date.tzinfo is None or end_date.utcoffset() is None):
-        raise HTTPException(status_code=422, detail="end_date must include a timezone")
-    if start_date and end_date and start_date > end_date:
-        raise HTTPException(status_code=422, detail="start_date must not be later than end_date")
-
-    total, logs = crud_admin.get_audit_logs(
+    """Search persisted events, including Model Training experiments."""
+    return monitoring.list_audit_logs(
         db,
         skip=skip,
         limit=limit,
         user_id=user_id,
         action=action,
         module=module,
+        resource_id=resource_id,
         status=status_filter,
         start_date=start_date,
         end_date=end_date,
         search=search,
     )
-    return AuditLogPage(
-        total=total,
-        skip=skip,
-        limit=limit,
-        items=[AuditLogResponse.model_validate(log) for log in logs],
-    )
 
 
-@router.get("/datasets", response_model=list[DatasetApprovalResponse], summary="Danh sách phiên bản dataset")
+@router.get(
+    "/datasets/groups",
+    response_model=list[AdminGroupApprovalSummary],
+    summary="Các nhóm Dataset đang chờ Admin xét duyệt",
+)
+def list_dataset_groups_for_approval(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[AdminGroupApprovalSummary]:
+    return group_review.list_groups_for_review(db, skip=skip, limit=limit)
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets",
+    response_model=GroupDatasetListResponse,
+    summary="Admin xem các Dataset và phiên bản Export trong nhóm",
+)
+def list_group_datasets_for_admin(
+    group_id: UUID,
+    db: Session = Depends(get_db),
+) -> GroupDatasetListResponse:
+    return group_review.list_group_datasets_for_review(db, group_id)
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="Admin xem Recording Sessions của Dataset trong nhóm",
+)
+def list_group_sessions_for_admin(
+    group_id: UUID,
+    dataset_id: UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+) -> RecordingSessionListResponse:
+    try:
+        return group_review.list_group_sessions_for_review(
+            db, group_id, dataset_id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="Admin xem dữ liệu CSV của Session trong nhóm",
+)
+def preview_group_session_for_admin(
+    group_id: UUID,
+    dataset_id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+) -> RecordingSessionPreviewResponse:
+    try:
+        return group_review.preview_group_session_for_review(
+            db, group_id, dataset_id, session_id, page=page, limit=limit,
+            column_offset=column_offset, representation=representation,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except DatasetPreviewFormatError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    except DatasetPreviewReadError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post(
+    "/datasets/groups/{group_id}/review",
+    response_model=AdminGroupReviewResponse,
+    summary="Admin phê duyệt hoặc từ chối các phiên bản đã gửi trong nhóm",
+)
+def review_dataset_group(
+    group_id: UUID,
+    action: DatasetApprovalAction,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> AdminGroupReviewResponse:
+    return group_review.review_group(db, group_id, action, admin)
+
+
+@router.get("/datasets", response_model=list[DatasetApprovalResponse], include_in_schema=False, summary="Danh sách phiên bản dataset")
 def list_datasets_for_approval(
     skip: int = 0,
     limit: int = 50,
@@ -265,51 +358,68 @@ def list_datasets_for_approval(
 
 
 @router.get(
-    "/datasets/{dataset_id}/versions/{id}/preview",
-    response_model=DatasetPreviewResponse,
-    summary="Admin xem trước nội dung phiên bản dataset",
+    "/datasets/{dataset_id}/versions/{id}/sessions",
+    response_model=RecordingSessionListResponse,
+    include_in_schema=False,
+    summary="Admin xem Recording Sessions thuộc phiên bản Dataset",
 )
-def preview_dataset_version_for_admin(
+def list_dataset_version_sessions_for_admin(
     dataset_id: UUID,
     id: UUID,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+) -> RecordingSessionListResponse:
+    try:
+        return list_recording_sessions(
+            db, dataset_id, id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/datasets/{dataset_id}/versions/{id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    include_in_schema=False,
+    summary="Admin preview nội dung CSV của một Recording Session",
+    description=(
+        "Trả về dữ liệu dạng bảng có phân trang. representation=raw giữ nguyên cột CSV gốc; "
+        "representation=normalized áp dụng mapping đã lưu nếu có. Mặc định 20 dòng."
+    ),
+    responses={
+        404: {"description": "Dataset, phiên bản, session hoặc file không tồn tại"},
+        415: {"description": "Session không chứa file CSV"},
+        422: {"description": "CSV lỗi định dạng hoặc không đọc được"},
+    },
+)
+def preview_dataset_session_for_admin(
+    dataset_id: UUID,
+    id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
     representation: Literal["raw", "normalized"] = "normalized",
     db: Session = Depends(get_db),
-) -> DatasetPreviewResponse:
-    """Read a paginated preview of a specific dataset version for admin review."""
+) -> RecordingSessionPreviewResponse:
     try:
-        preview = get_dataset_preview(
-            db,
-            dataset_id=dataset_id,
-            dataset_version_id=id,
-            page=page,
-            page_size=page_size,
+        return preview_recording_session(
+            db, dataset_id, id, session_id,
+            page=page, limit=limit, column_offset=column_offset,
             representation=representation,
-        )
-        return apply_saved_column_mappings(
-            db,
-            dataset_id=dataset_id,
-            preview=preview,
         )
     except DatasetPreviewNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DatasetPreviewFormatError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
     except DatasetPreviewReadError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-    except DatasetMappingNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.post(
     "/datasets/{dataset_id}/versions/{id}/review",
+    include_in_schema=False,
     summary="Phê duyệt hoặc từ chối phiên bản dataset",
 )
 def review_dataset(
@@ -406,11 +516,14 @@ def review_dataset_legacy(
     )
 
 
-@router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
+@router.get(
+    "/experiments/overview",
+    response_model=ExperimentsOverviewResponse,
+    summary="Tổng quan thí nghiệm Train/Test và Evaluation",
+)
 def get_experiments_overview(
     limit: int = Query(default=10, ge=1, le=100),
     db: Session = Depends(get_db),
 ) -> ExperimentsOverviewResponse:
     """Giám sát trạng thái, metrics và nhật ký chạy thí nghiệm AI/ML."""
-    data = crud_admin.get_experiments_overview_data(db, limit=limit)
-    return ExperimentsOverviewResponse(**data)
+    return monitoring.get_experiments_overview(db, limit=limit)

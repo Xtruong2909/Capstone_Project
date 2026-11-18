@@ -20,7 +20,7 @@ from app.schemas.user import (
     UserResponse,
     VerifyOtpRequest,
 )
-from app.services import otp_service
+from app.services import auth_service, otp_service
 from app.services.audit_log_service import record_audit_event
 from app.services.email_service import EmailConfigurationError, send_otp_email
 
@@ -137,6 +137,17 @@ def change_password(
 def get_current_user_profile(current_user: User = Depends(get_current_user)) -> UserResponse:
     """Xem thông tin tài khoản và vai trò đang đăng nhập."""
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/logout", response_model=MessageResponse, summary="Đăng xuất tài khoản")
+def logout(
+    client_request: HttpRequest,
+    current_user: User = Depends(get_current_user),
+) -> MessageResponse:
+    """Finish the current client session and record the logout event."""
+    client_ip = client_request.client.host if client_request.client else None
+    auth_service.logout_user(current_user, client_ip)
+    return MessageResponse(message="Đăng xuất thành công.")
 
 ##########Quên mật khẩu (Forgot Password)#########
 @router.post(

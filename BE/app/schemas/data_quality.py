@@ -51,9 +51,19 @@ class DataQualityOutlierRule(BaseModel):
 class DataQualityCheckRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
-        json_schema_extra={"examples": [{"outlier_rules": []}]},
+        json_schema_extra={
+            "examples": [
+                {"dataset_version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+                 "outlier_rules": []},
+                {"dataset_version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+                 "session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c",
+                 "outlier_rules": []},
+            ]
+        },
     )
 
+    dataset_version_id: UUID | None = None
+    session_id: UUID | None = None
     outlier_rules: list[DataQualityOutlierRule] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
@@ -67,6 +77,7 @@ class DataQualityCheckStatus(BaseModel):
     check_id: UUID
     dataset_id: UUID
     dataset_version_id: UUID
+    session_id: UUID | None = None
     status: QualityCheckStatus
     progress_percent: int = Field(ge=0, le=100)
     processed_rows: int = Field(ge=0)
@@ -99,11 +110,40 @@ class DataQualityColumnCount(BaseModel):
     errors: int = 0
 
 
+class DataQualitySessionSummary(BaseModel):
+    session_id: UUID
+    source_check_id: UUID
+    original_filename: str
+    detected_structure: str = "unknown"
+    validation_status: Literal["PASS", "WARNING", "FAIL"]
+    total_rows: int = 0
+    valid_rows: int = 0
+    invalid_rows: int = 0
+    total_errors: int = 0
+    total_warnings: int = 0
+    warning_rows: int = 0
+    missing_required_columns: list[str] = Field(default_factory=list)
+    errors_by_type: dict[str, DataQualityIssueCount] = Field(default_factory=dict)
+    errors_by_column: list[DataQualityColumnCount] = Field(default_factory=list)
+    missing_values_by_column: list[DataQualityColumnCount] = Field(default_factory=list)
+    warnings_by_column: dict[str, int] = Field(default_factory=dict)
+    warnings_by_type: dict[str, DataQualityWarningCount] = Field(default_factory=dict)
+
+
 class DataQualityReport(BaseModel):
     check_id: UUID
     dataset_id: UUID
     dataset_version_id: UUID
     status: Literal["completed"]
+    validation_status: Literal["PASS", "WARNING", "FAIL"] = "PASS"
+    session_id: UUID | None = None
+    session_counts: dict[Literal["PASS", "WARNING", "FAIL"], int] = Field(
+        default_factory=lambda: {"PASS": 0, "WARNING": 0, "FAIL": 0}
+    )
+    total_sessions: int = 0
+    sessions_checked: int = 0
+    unchecked_session_count: int = 0
+    sessions: list[DataQualitySessionSummary] = Field(default_factory=list)
     detected_structure: str
     total_rows: int
     valid_rows: int
@@ -128,6 +168,7 @@ class DataQualityIssueItem(BaseModel):
     column_name: str | None
     message: str
     observed_value: str | None
+    session_id: UUID | None = None
 
 
 class DataQualityIssuesPage(BaseModel):
@@ -135,4 +176,5 @@ class DataQualityIssuesPage(BaseModel):
     page: int
     page_size: int
     total: int
+    session_id: UUID | None = None
     issues: list[DataQualityIssueItem]

@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.dataset import DatasetPreviewResponse
 
@@ -13,8 +13,11 @@ from app.schemas.dataset import DatasetPreviewResponse
 class DatasetNormalizeResult(BaseModel):
     dataset_id: UUID
     source_version_id: UUID
+    source_version_tag: str
     staging_id: UUID
     status: str = Field(default="normalized")
+    source_session_count: int = Field(ge=1)
+    source_session_ids: list[UUID] = Field(default_factory=list)
     records_before: int = Field(description="Số xe ban đầu trong file gốc")
     records_after: int = Field(description="Số điểm quỹ đạo sau khi bung dòng (unpivot)")
     source_columns: list[str]
@@ -25,22 +28,6 @@ class DatasetNormalizeResult(BaseModel):
     )
 
 
-class NormalizedDataValidationCounts(BaseModel):
-    missing_values: int = Field(ge=0)
-    duplicate_records: int = Field(ge=0)
-    invalid_coordinates: int = Field(ge=0)
-    negative_speed: int = Field(ge=0)
-
-
-class NormalizedDataValidationResponse(BaseModel):
-    dataset_id: UUID
-    validation_status: Literal["completed"]
-    total_rows: int = Field(ge=0)
-    valid_rows: int = Field(ge=0)
-    invalid_rows: int = Field(ge=0)
-    validation_results: NormalizedDataValidationCounts
-
-
 # =====================================================================
 # BƯỚC 5: XUẤT PHIÊN BẢN MỚI (EXPORT NORMALIZED DATASET)
 # =====================================================================
@@ -48,24 +35,20 @@ class NormalizedDataValidationResponse(BaseModel):
 class DatasetExportRequest(BaseModel):
     staging_id: UUID | None = Field(
         default=None,
-        description="ID phiên làm việc từ Bước 4 (nếu để trống, hệ thống tự lấy bản chuẩn hóa gần nhất)",
+        description="ID kết quả Normalize cần xuất; để trống sẽ dùng kết quả gần nhất của Dataset.",
     )
     new_version_tag: str | None = Field(
         default=None,
-        description="Tag phiên bản mới (mặc định tự tăng: v1.0-clean, v1.1...)",
+        description="Tag phiên bản mới; để trống hệ thống tự chọn tag chưa được dùng.",
     )
     export_format: Literal["PARQUET", "CSV"] = Field(
         default="PARQUET",
-        description="Định dạng xuất: Khuyên dùng PARQUET để tối ưu dung lượng",
+        description="Định dạng file Dataset Version được tạo.",
     )
-    quality_check_id: UUID | None = Field(
-        default=None,
-        description="ID lần kiểm tra chất lượng ở Bước 3 (nếu có để gắn vào báo cáo)",
-    )
-
-
 class DatasetExportResult(BaseModel):
     dataset_id: UUID
+    source_version_id: UUID
+    source_session_count: int = Field(ge=1)
     version_id: UUID
     version_tag: str
     file_format: str
@@ -77,9 +60,44 @@ class DatasetExportResult(BaseModel):
     )
 
 
+class GroupProcessingDatasetResult(BaseModel):
+    dataset_id: UUID
+    dataset_name: str
+    status: Literal["PENDING", "RUNNING", "COMPLETED", "FAILED"]
+    session_count: int = 0
+    source_version_id: UUID | None = None
+    version_id: UUID | None = None
+    records_before: int | None = None
+    records_after: int | None = None
+    error_message: str | None = None
+
+
+class GroupProcessingJobResponse(BaseModel):
+    group_id: UUID
+    staging_id: UUID = Field(description="ID chung của lần Normalize, áp dụng cho mọi Dataset trong nhóm")
+    job_id: UUID
+    operation: Literal["NORMALIZE", "EXPORT"]
+    status: Literal["PENDING", "RUNNING", "COMPLETED", "PARTIAL_SUCCESS", "FAILED"]
+    total_datasets: int
+    processed_datasets: int
+    results: list[GroupProcessingDatasetResult] = Field(default_factory=list)
+
+
 # =====================================================================
 # BƯỚC 6: BÁO CÁO XỬ LÝ TỔNG HỢP (PROCESSING REPORT)
 # =====================================================================
+
+class DatasetVersionSessionSummary(BaseModel):
+    session_id: UUID
+    original_filename: str
+    drone_id: str
+    recording_date: date
+    scheduled_start: datetime
+    scheduled_end: datetime
+    file_size: int
+    checksum: str
+    upload_status: str
+
 
 class ProcessingReportResponse(BaseModel):
     dataset_id: UUID
@@ -87,6 +105,10 @@ class ProcessingReportResponse(BaseModel):
     dataset_code: str
     version_id: UUID
     version_tag: str
+    source_version_id: UUID | None = None
+    source_version_tag: str | None = None
+    source_session_count: int = 0
+    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
     file_format: str
     file_size_bytes: int
     file_size_mb: float
@@ -107,9 +129,14 @@ class DatasetVersionSubmitRequest(BaseModel):
 
 class DatasetVersionSubmitResponse(BaseModel):
     dataset_id: UUID
+    dataset_name: str | None = None
     version_id: UUID
     version_tag: str
     approval_status: str
+    source_version_id: UUID | None = None
+    source_version_tag: str | None = None
+    source_session_count: int = 0
+    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
     submitted_by: UUID
     submitted_at: datetime
     message: str
@@ -124,9 +151,14 @@ class DatasetVersionResubmitRequest(BaseModel):
 
 class DatasetVersionResubmitResponse(BaseModel):
     dataset_id: UUID
+    dataset_name: str | None = None
     version_id: UUID
     version_tag: str
     approval_status: str
+    source_version_id: UUID | None = None
+    source_version_tag: str | None = None
+    source_session_count: int = 0
+    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
     submitted_by: UUID
     submitted_at: datetime
     message: str
@@ -134,8 +166,16 @@ class DatasetVersionResubmitResponse(BaseModel):
 
 class DatasetVersionListItem(BaseModel):
     dataset_id: UUID
+    dataset_name: str | None = None
     version_id: UUID
     version_tag: str
+    file_format: str | None = None
+    file_size_bytes: int = 0
+    total_records: int = 0
+    source_version_id: UUID | None = None
+    source_version_tag: str | None = None
+    source_session_count: int = 0
+    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
     approval_status: str
     submitted_by: UUID | None = None
     submitted_at: datetime | None = None
@@ -146,11 +186,52 @@ class DatasetVersionListItem(BaseModel):
 
 class DatasetVersionStatusResponse(BaseModel):
     dataset_id: UUID
+    dataset_name: str | None = None
     version_id: UUID
     version_tag: str
     approval_status: str
+    source_version_id: UUID | None = None
+    source_version_tag: str | None = None
+    source_session_count: int = 0
+    source_sessions: list["DatasetVersionSessionSummary"] = Field(default_factory=list)
     submitted_by: UUID | None = None
     submitted_at: datetime | None = None
     approved_by: UUID | None = None
     approval_note: str | None = None
     message: str | None = None
+
+
+class GroupDatasetVersionsResponse(BaseModel):
+    group_id: UUID
+    total_datasets: int
+    total_versions: int
+    versions: list[DatasetVersionListItem] = Field(default_factory=list)
+
+
+class GroupVersionSubmitRequest(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"example": {"comment": "Đã kiểm tra dữ liệu, nhờ Admin duyệt nhóm."}})
+
+    comment: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Bình luận của Data Engineer gửi Admin khi duyệt các Dataset trong nhóm",
+    )
+
+
+class GroupVersionStatusResponse(BaseModel):
+    group_id: UUID
+    staging_id: UUID
+    total_datasets: int
+    approval_status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED", "MIXED"]
+    versions: list[DatasetVersionStatusResponse] = Field(default_factory=list)
+    message: str | None = None
+
+
+class GroupProcessingReportResponse(BaseModel):
+    group_id: UUID
+    staging_id: UUID
+    total_datasets: int
+    total_sessions: int
+    total_records_before: int
+    total_records_after: int
+    reports: list[ProcessingReportResponse] = Field(default_factory=list)

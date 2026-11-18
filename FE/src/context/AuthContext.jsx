@@ -34,10 +34,16 @@ export function AuthProvider({ children }) {
   }, [])
 
   // Hàm đăng xuất
-  const logout = useCallback(() => {
-    setToken(null)
-    setUser(null)
-    authStorage.clear()
+  const logout = useCallback(async () => {
+    try {
+      await authService.logout()
+    } catch {
+      // Local logout must still succeed when the API is temporarily unavailable.
+    } finally {
+      setToken(null)
+      setUser(null)
+      authStorage.clear()
+    }
   }, [])
 
   return (

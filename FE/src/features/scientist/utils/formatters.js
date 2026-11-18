@@ -14,6 +14,13 @@ export function formatNumber(value) {
   return value == null ? '-' : Number(value).toLocaleString('en-US')
 }
 
+// Round vehicle flow only when rendering. Forecasts and evaluation metrics keep
+// their original floating-point values throughout API responses and calculations.
+export function formatTrafficFlow(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  return Math.round(Number(value)).toLocaleString('vi-VN')
+}
+
 // The API sends recording buckets with their source offset (for example, 09:30+03:00).
 // Keep that wall-clock time instead of converting it to the browser's timezone.
 function recordingDateParts(value) {
@@ -57,6 +64,18 @@ export function formatRecordingDateTime(value) {
     : date.toLocaleString('en-GB', {
         day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
       })
+}
+
+// Experiment predictions are stored as UTC instants. pNEUMA recordings use
+// Europe/Athens wall time, whose UTC offset changes with daylight saving.
+export function formatAthensRecordingDateTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Athens', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).format(date)
 }
 
 export function formatDate(iso) {

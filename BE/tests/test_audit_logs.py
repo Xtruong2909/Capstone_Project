@@ -79,6 +79,7 @@ def test_audit_query_filters_stably_and_paginates() -> None:
         user_id=user_id,
         action="LOGIN",
         module="Authentication",
+        resource_id="experiment-123",
         status="SUCCESS",
         start_date=start,
         end_date=end,
@@ -89,7 +90,7 @@ def test_audit_query_filters_stably_and_paginates() -> None:
     assert page == rows[1:3]
     assert query.offset_value == 1
     assert query.limit_value == 2
-    assert len(query.filters) == 7
+    assert len(query.filters) == 8
     assert len(query.ordering) == 2
     assert "created_at DESC" in str(query.ordering[0])
     assert "id DESC" in str(query.ordering[1])
@@ -119,6 +120,7 @@ def test_admin_audit_endpoint_returns_paged_shape_and_validates_dates(
     assert result.skip == 5
     assert result.limit == 10
     assert result.items[0].username == "Admin"
+    assert result.items[0].resource_type == "AUTHENTICATION"
     assert result.items[0].created_at == created_at
 
     with pytest.raises(HTTPException) as error:
@@ -207,7 +209,7 @@ def test_audit_route_is_admin_protected_and_has_no_mutation_routes() -> None:
         method in paths["/api/v1/admin/audit-logs"]
         for method in ("post", "put", "patch", "delete")
     )
-    assert {"skip", "limit", "user_id", "action", "module", "status",
+    assert {"skip", "limit", "user_id", "action", "module", "resource_id", "status",
             "start_date", "end_date", "search"} <= {
         parameter["name"] for parameter in operation["parameters"]
     }

@@ -4,6 +4,36 @@ FastAPI backend service for Urban Traffic Pattern Analysis and Short-Term Conges
 
 For complete project documentation, architecture diagrams, and quick-start instructions, please refer to the [Root README](../README.md).
 
+## Requirements
+
+- Python 3.11 or newer
+- [`uv`](https://docs.astral.sh/uv/) for dependency and environment management
+- Docker Desktop with Docker Compose
+- PostgreSQL 16 with PostGIS when the database is not run through Docker
+
+## Backend layout
+
+```text
+BE/
+├── app/
+│   ├── api/v1/endpoints/   # FastAPI HTTP routers
+│   ├── crud/               # SQLAlchemy database queries
+│   ├── schemas/            # Pydantic request/response models
+│   ├── services/           # Business logic and integrations
+│   └── main.py             # FastAPI application entry point
+├── docs/                   # Feature-specific documentation
+├── migrations/             # Ordered PostgreSQL SQL migrations
+├── scripts/                # Operational and migration helpers
+├── tests/                  # Backend test suite
+├── init_db.sql             # Schema for a new database only
+├── pyproject.toml
+└── uv.lock
+```
+
+The application package is `app`. The unused starter package under `src/be_app` has
+been removed. Runtime uploads and fitted model artifacts are stored under `uploads/`
+and `artifacts/` locally, or in their Docker volumes.
+
 ## Local Development
 
 ```powershell
@@ -11,7 +41,10 @@ For complete project documentation, architecture diagrams, and quick-start instr
 docker compose up -d
 
 # Run FastAPI Development Server
+Push-Location BE
+uv sync
 uv run uvicorn app.main:app --reload --port 8000
+Pop-Location
 ```
 
 API Documentation: `http://localhost:8000/docs`
@@ -25,6 +58,44 @@ Pop-Location
 ```
 
 This includes the per-dataset experiment-name migration required by the experiment browser.
+Before running it, apply the Lag Feature generation and Train/Test Split migrations,
+because the experiment-batch migration references those tables.
+
+### Latest schema cleanup
+
+Existing databases must apply `migrations/20261129_remove_unused_schema.sql`. It removes
+the empty, unreferenced `ai_assistant_logs`, `model_parameters`, and `traffic_reports`
+tables, and removes the unused `dataset_column_mappings.recording_session_id` column.
+The migration intentionally does not use `CASCADE`, so PostgreSQL stops if an unexpected
+dependency exists.
+
+From the repository root with the Docker database running:
+
+```powershell
+Get-Content -Raw 'BE\migrations\20261129_remove_unused_schema.sql' |
+  docker compose exec -T postgres psql -U admin -d traffic_urban -v ON_ERROR_STOP=1
+```
+
+New databases created from `init_db.sql` already use the cleaned schema. Do not run
+`init_db.sql` against an existing database because it recreates the schema.
+
+## Validation
+
+Run these commands from `BE`:
+
+```powershell
+uv run pytest -q
+uv run ruff check .
+```
+
+To inspect test discovery without executing tests:
+
+```powershell
+uv run pytest --collect-only -q
+```
+
+The current suite contains 721 collected backend tests. PostgreSQL integration tests
+that are explicitly guarded by environment variables remain opt-in.
 
 ## Administrator audit logs
 
@@ -35,16 +106,26 @@ converts their IDs to UUID. For example, from the repository root:
 
 ```powershell
 Get-Content -Raw 'BE\migrations\20261107_complete_audit_logs.sql' |
-  docker compose exec -T postgres psql -U admin -d urban_traffic -v ON_ERROR_STOP=1
+  docker compose exec -T postgres psql -U admin -d traffic_urban -v ON_ERROR_STOP=1
 ```
 
 The endpoint returns `{ total, skip, limit, items }` and supports `user_id`, exact
-`action`, exact `module`, `status=SUCCESS|FAILED`, timezone-aware `start_date` and
+`action`, exact `module`, exact `resource_id`, `status=SUCCESS|FAILED`, timezone-aware `start_date` and
 `end_date`, and free-text `search`. Results are sorted newest first with UUID as the
 stable tie-breaker. Authentication, user administration, dataset, feature-engineering,
 train/test, model-training, traffic aggregation, and unhandled system errors are logged
 by the backend where those operations exist. There are no API routes to create, edit,
-or delete audit events.
+or delete audit events. New split-scoped training runs record `RUN_EXPERIMENT` with
+`module=Model Training` and `resource_id=experiment_id` after completion or failure.
+Apply `migrations/20261127_backfill_experiment_audit_history.sql` to show older
+saved experiments as `IMPORT_EXPERIMENT_HISTORY`; these entries carry
+`details.historical_backfill=true` and the original timestamps, so they are not
+mistaken for events captured when the original run occurred.
+
+`GET /api/v1/admin/experiments/overview` includes the group, aggregation, feature
+generation, and split IDs for recent training runs, Train/Test sample counts, and
+saved metrics for all three methods and horizons. Its `limit` controls the number
+of recent experiments returned.
 
 ## Outgoing email
 
@@ -98,41 +179,45 @@ different name before uploading.
 Existing databases must apply `migrations/20261015_add_dataset_upload_file_metadata.sql`
 before using this endpoint. New databases initialized from `init_db.sql` include the columns.
 
-### Normalize and validate a dataset
+### Step 4: Normalize and export a Dataset group
 
-`POST /api/v1/datasets/{dataset_id}/normalize?page=1&page_size=20` runs Step 4.1. It applies the
-saved column mappings, creates a normalized staging file, and returns a paginated preview.
-The request body is not needed.
+Data Engineers only need the `group_id` from the upload response:
 
-`POST /api/v1/datasets/{dataset_id}/normalize/validate` runs Step 4.2 against the latest
-normalized staging file for that dataset. It returns a completed summary with row counts and
-counts for missing values, duplicate records, out-of-range coordinates, and negative speeds.
-`invalid_rows` counts distinct rows with at least one issue; issue counts can overlap. Latitude
-and longitude are checked against WGS84 bounds. This validation does not modify the staging file.
+1. `POST /api/v1/datasets/groups/{group_id}/normalize` creates a background job that normalizes every Dataset and its Recording Sessions independently. No body is required.
+2. `GET /api/v1/datasets/groups/{group_id}/processing-jobs/{job_id}` shows progress, counts, and errors per Dataset. The response has one top-level `staging_id` for the whole group; per-Dataset staging file IDs stay internal. Wait for `COMPLETED` before exporting.
+3. `POST /api/v1/datasets/groups/{group_id}/export` creates a background job that exports the successful staging result of each Dataset as its own new version. No body is required. Poll the same job-status endpoint.
 
-Example response:
+New group jobs return HTTP 202. A group job can finish with `COMPLETED`, `PARTIAL_SUCCESS`, or `FAILED`; a failed Dataset does not discard other successful results. Export requires all Datasets in the latest group normalization job to have completed successfully. The original CSV files remain unchanged.
+Repeating Export after a completed run returns the existing completed job with HTTP 200. The staging files are consumed by the first successful Export; if they are missing without a completed export, the API returns HTTP 409 and asks for a new Normalize run.
+The Export job carries the same group `staging_id` as its source Normalize job, while each operation has its own `job_id`.
 
-```json
-{
-  "dataset_id": "3cfdf4c5-d7bf-4958-9a14-0cb6bcb02a11",
-  "validation_status": "completed",
-  "total_rows": 2165658,
-  "valid_rows": 2165558,
-  "invalid_rows": 100,
-  "validation_results": {
-    "missing_values": 40,
-    "duplicate_records": 30,
-    "invalid_coordinates": 20,
-    "negative_speed": 10
-  }
-}
-```
+### Step 5: Review and submit exported Dataset versions
+
+All endpoints use the `group_id` from upload. The report, status, and submit actions use the versions created by the latest completed Export for that group, so versions from different Export runs are never mixed.
+
+1. `GET /api/v1/datasets/groups/{group_id}/versions` lists versions across the group; optional `?status=PENDING|SUBMITTED|APPROVED|REJECTED` filters them.
+2. `GET /api/v1/datasets/groups/{group_id}/report` returns one normalization report per exported Dataset, including source Sessions and group totals.
+3. `GET /api/v1/datasets/groups/{group_id}/status` returns each exported version's approval status and a group status. `MIXED` means the versions differ in status.
+4. `POST /api/v1/datasets/groups/{group_id}/submit` submits all pending exported versions to Admin in one transaction. Optional JSON body `{"comment":"Đã kiểm tra dữ liệu, nhờ Admin duyệt nhóm."}` saves the same comment on each submitted version; omitting the body uses a default comment. The request fails with 409 before any change if a version is rejected, lacks export history, or the group has changed since Export.
+5. `POST /api/v1/datasets/groups/{group_id}/resubmit` submits only rejected exported versions again. No body is required; approved versions stay approved.
+
+The earlier per-Dataset version routes remain callable for compatibility but are hidden from Swagger. Admin approval remains per Dataset version.
+
+### Admin: Review and grant access by Dataset group
+
+1. `GET /api/v1/admin/datasets/groups` lists groups with exported versions waiting for review.
+2. `GET /api/v1/admin/datasets/groups/{group_id}/datasets` lists the Dataset versions from the latest completed group Export.
+3. `GET /api/v1/admin/datasets/groups/{group_id}/datasets/{dataset_id}/sessions` lists the source Sessions; append `/{session_id}/preview` to inspect paginated CSV rows.
+4. `POST /api/v1/admin/datasets/groups/{group_id}/review` accepts `{"status":"APPROVED"}` or `{"status":"REJECTED","note":"..."}` and updates only submitted versions together. An already reviewed version keeps its decision.
+5. `GET /api/v1/admin/datasets/groups/catalog` lists all groups for access management. Use `/groups/{group_id}/eligible-users`, `POST /groups/{group_id}/access`, `GET /groups/{group_id}/access`, and `DELETE /groups/{group_id}/access/{user_id}` under `/api/v1/admin/datasets` to manage access across the group. Grant request body is `{"user_id":"..."}`.
+
+Group access reuses the existing per-Dataset grants. Every current Dataset in the group needs an approved version before group grant; newly added Datasets can be included by granting the group again after approval. `GET /api/v1/datasets/accessible-groups` lists the groups visible to the signed-in user. Older per-Dataset Admin routes remain callable for compatibility but are hidden from Swagger.
 
 ### Dataset preview
 
 `GET /api/v1/datasets/{dataset_id}/preview?page=1&page_size=20&representation=normalized`
 returns a paginated preview from the latest uploaded version without modifying the original
-file. It is available to authenticated Data Engineers, Admins, and Data Scientists/Business Users
+file. It is available to authenticated Data Engineers, Admins, and Data Scientists
 with a dataset access grant. `dataset_id` is the dataset UUID;
 `page_size` must be between 1 and 100. CSV, JSON, XLS, XLSX, and Parquet files are supported.
 For an exactly matching pNEUMA CSV header, the default `normalized` representation expands
@@ -144,15 +229,15 @@ versioned sidecar index next to the immutable uploaded file so later pages do no
 ### Dataset column mapping
 
 These endpoints are available to authenticated Data Engineers. Read-only GET endpoints also allow
-Admins and Data Scientists/Business Users with a dataset access grant; PATCH remains restricted
+Admins and Data Scientists with a dataset access grant; PATCH remains restricted
 to Data Engineers. They configure display/consumer
 column names for the latest uploaded version; they do not transform or overwrite the source file.
 
 | Method  | Endpoint                                        | Purpose                                                     |
 | ------- | ----------------------------------------------- | ----------------------------------------------------------- |
-| `GET`   | `/api/v1/datasets/{dataset_id}/columns`         | List source headers, inferred types, and saved target names |
-| `PATCH` | `/api/v1/datasets/{dataset_id}/column-mappings` | Create, update, or remove custom column-name mappings       |
-| `GET`   | `/api/v1/datasets/{dataset_id}/column-mappings` | Retrieve saved mappings for the latest version              |
+| `GET`   | `/api/v1/datasets/groups/{group_id}/columns`         | List shared source headers for all Datasets and Sessions in the group |
+| `PATCH` | `/api/v1/datasets/groups/{group_id}/column-mappings` | Save one shared mapping for the group                         |
+| `GET`   | `/api/v1/datasets/groups/{group_id}/column-mappings` | Retrieve the shared mapping                                   |
 
 Mappings are arbitrary display names rather than fixed model fields. The request uses a `mappings`
 array of `{ "source_column": "...", "target_column": "..." }` items. Source names must exist in
@@ -215,7 +300,7 @@ user role is one of `data_scientist` or `business_user`.
 | `GET`    | `/api/v1/admin/datasets/{dataset_id}/access`           | List users already granted access to the dataset                 |
 | `DELETE` | `/api/v1/admin/datasets/{dataset_id}/access/{user_id}` | Revoke access                                                    |
 | `GET`    | `/api/v1/datasets/accessible`                          | List datasets visible to the current authenticated user          |
-| `GET`    | `/api/v1/datasets/approved`                            | List approved datasets visible to Data Scientist / Business User |
+| `GET`    | `/api/v1/datasets/approved`                            | List approved datasets visible to Data Scientist |
 
 The key rule is that dataset access is not global; it is scoped by dataset. This is why the admin APIs require
 `dataset_id` in the path and then accept a single `user_id` in the request body when granting access.
@@ -228,202 +313,52 @@ Example grant request:
 }
 ```
 
-For approved datasets, the system returns only entries where `DatasetVersion.approval_status == "APPROVED"` and the
-current user has an access grant. This endpoint is grouped separately in Swagger under
-**Data Scientist / Business User** and is restricted to these two roles. Admins and Data Engineers
-receive `403 Forbidden`; missing or invalid bearer tokens receive `401 Unauthorized`.
-The URL remains `GET /api/v1/datasets/approved`. It accepts optional `search` (name/code),
-`skip=0`, and `limit=50` (1–100), with no request body. No matching entries returns `[]`.
-Each entry represents an approved version; a dataset with multiple approved versions can appear
-more than once. The `/datasets/accessible` endpoint keeps its existing permissions.
+Data Scientists browse approved data by group, Dataset, then Recording Session:
 
-### Data Quality Check
+1. `GET /api/v1/datasets/approved` lists groups containing at least one approved Dataset granted to the caller. It accepts optional `search` (group name/drone), `skip=0`, and `limit=50` (1–100).
+2. `GET /api/v1/datasets/approved/groups/{group_id}/datasets` lists only approved Datasets in that group granted to the caller. Each item includes the selected approved `version_id`.
+3. `GET /api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions` lists the Sessions of that Dataset's latest approved version; `page` and `page_size` paginate the list.
+4. `GET /api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview` returns paginated raw or normalized rows for one Session.
 
-Authenticated Data Engineers can run a complete quality scan on the latest uploaded dataset
-version. The source is opened read-only. CSV records are scanned incrementally; Parquet is read
-in record batches, JSON record arrays are streamed, and XLSX is read in read-only mode. A
-disk-backed temporary SQLite index tracks full-row duplicates and affected row numbers so those
-sets are not held in application memory. The database stores the run state, report, and individual
-issues; issue values are clipped and API issue details are paginated.
+The group, Dataset, and Session IDs must match. These routes require a Dataset access grant and an approved version; Admins and Data Engineers receive `403 Forbidden`. Missing or invalid bearer tokens receive `401 Unauthorized`. The older version-ID Session routes remain callable for compatibility but are hidden from Swagger. The `/datasets/accessible` endpoint keeps its existing permissions.
 
-pNEUMA's fixed schema is validated directly without preloading a sample of whole trajectories.
-Issue details are inserted in bounded batches of 1,000 through the CRUD layer, and each affected
-row/type is indexed only once per source row. All individual findings are retained, including
-multiple findings in the same trajectory; batching does not truncate the report or issue list.
+### Data Scientist: Temporal aggregation
 
-Progress is persisted approximately every two seconds of validation, or every 5,000 completed
-source rows, whichever occurs first. Long pNEUMA rows also check the timer every 1,024 points.
-`processed_rows` counts completed source rows, not trajectory points. For formats with known row
-counts, progress uses that total; otherwise the percentage is an estimate until completion.
-Blocking file/database I/O can delay an update. Swagger does not poll automatically: execute the
-status GET again to see the latest persisted progress.
+`POST /api/v1/ds/aggregations` accepts `{"group_id":"...","aggregation_interval":60}`; the interval defaults to 60 seconds. It selects every Dataset in the group and each Dataset's latest approved normalized version. The caller must have access to every Dataset. A single `aggregation_id` identifies the group run, while each Dataset and Recording Session is processed independently in the background.
 
-| Method | Endpoint                                                                             | Purpose                                                    |
-| ------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `POST` | `/api/v1/datasets/{dataset_id}/quality-checks`                                       | Queue a scan for the latest dataset version                |
-| `GET`  | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}`                            | Poll status and progress                                   |
-| `GET`  | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/report`                     | Read the completed aggregate report                        |
-| `GET`  | `/api/v1/datasets/{dataset_id}/quality-checks/{check_id}/issues?page=1&page_size=50` | Read paginated issue details; optional `issue_type` filter |
+Use `GET /api/v1/ds/aggregations/{aggregation_id}/results` for paginated results across the entire group; add `?session_id=...` to select one Session. `GET /api/v1/ds/aggregations/{aggregation_id}/combined-results` reads all saved Session time bins. Each result row includes `dataset_id` and `session_id`. Sessions and recording days stay separate; results are never recomputed from the source files.
+
+Each minute's `vehicle_count` is `COUNT DISTINCT track_id` within its own Recording Session. The three Temporal Aggregation APIs return saved counts and timestamps only; they do not perform quality checks or create features.
+
+### Data Scientist: Lag Features and vehicle-count prediction
+
+`POST /api/lag-features/generate` accepts `{"aggregation_id":"..."}` for a completed 60-second aggregation. It saves sliding windows independently for each Session. `lag_1` is the count at the forecast origin, `lag_5` is four minutes earlier, and `target_h1`, `target_h3`, `target_h5` are observed counts one, three, and five minutes later. Missing or duplicated minutes break a window; outliers are kept. Repeating the same request returns the saved `feature_generation_id` and does not duplicate samples.
+
+Use `GET /api/lag-features/{feature_generation_id}` for status, `/sessions` for each Session's sample count, `/preview?page=1&page_size=20` for saved rows, and `/summary` for horizon counts. The path parameter is the `feature_generation_id` returned by Generate, not a Dataset or Session ID. These endpoints read PostgreSQL. Feature Generation uses observed consecutive minutes without coverage flags. Five lags plus the +5 target require ten consecutive time bins, so a completed Session with fewer than ten bins appears in `/sessions` with `sample_count: 0`.
+
+`POST /api/train-test-splits` creates a reusable Train/Test split from a COMPLETED `feature_generation_id`, grouped by recording day (`DAY_BASED`, default) or whole Session (`SESSION_BASED`). It returns a stable `split_id`; `GET /api/train-test-splits/{split_id}` returns the saved summary, and `/preview?subset=TRAIN|TEST&page=1&page_size=20` pages through the saved samples. The split API checks that Train targets do not overlap Test feature history and never trains a model. For repeatable experiments, submit the saved `split_id` and each configuration to `POST /api/model-training/experiments`; the backend manages experiment batches internally, assigns Ex-01, Ex-02, etc., and stores per-horizon metrics, predictions, and model metadata. The experiment comparison endpoint reports Test metrics but does not select a model. `POST /api/predictions` accepts `model_id`, `aggregation_id`, and `session_id`; it uses the chosen saved forest and the latest five consecutive counts from that Session, without refitting. The response contains forecast timestamps and predicted vehicle counts for horizons 1, 3, and 5; a per-horizon model ID returns that horizon.
+
+Apply `migrations/20261121_lag_feature_generation.sql` and `migrations/20261122_persistent_train_test_splits.sql` before the model-training migration script. The script also applies `20261123_model_training_batches.sql`, which adds Batch support and preserves existing experiment history. These migrations create the feature/model/split tables, backfill `aggregation_id` for any feature rows saved by an earlier revision, and add the forest-to-split reference. The Docker backend stores fitted model artifacts in the `lag_feature_models` volume.
+
+### Experiment Evaluation (RQ2/RQ3)
+
+The six Model Training endpoints keep their existing paths. Completed split-scoped experiments save Test predictions for Random Forest, Persistence (`lag_1`), and Historical Average (the mean of each horizon's **Train** targets). The separate Swagger section **Thí nghiệm - Evaluation RQ2/RQ3** provides three read-only tables:
+
+1. `GET /api/model-training/experiments/{experiment_id}/evaluation/horizon-results` lists Random Forest Test forecasts with input, forecast, and actual timestamps, actual/predicted vehicle counts, absolute and squared error, plus MAE/MSE/RMSE for each horizon. It supports `horizon`, `session_id`, `page`, and `page_size`.
+2. `GET /api/model-training/experiments/{experiment_id}/evaluation/comparison` lists all three methods; filter by `model`, `horizon`, and `session_id` and paginate with `page` and `page_size`.
+3. `GET /api/model-training/experiments/{experiment_id}/evaluation/summary` returns nine aggregate metric sets and six signed Random Forest minus baseline MAE/RMSE differences. Negative differences mean Random Forest has lower error. The response includes the Historical Average method and saved Train target means.
+
+All API timestamps are UTC. `display_timezone: "Europe/Athens"` tells Frontend which timezone to use for local display. These endpoints read persisted Test results and do not retrain or change the saved split. Apply `migrations/20261125_model_training_evaluation_results.sql` and `migrations/20261126_backfill_saved_experiment_baselines.sql` to existing PostgreSQL databases after the earlier Model Training migrations. The backfill computes baseline results for previously completed split-scoped experiments without fitting Random Forest again.
+
+### Data Quality Validation
+
+The former pre-normalization Data Quality Check API and normalization validation endpoint are removed.
+Internal Data Quality history remains available to the AI assistant.
 
 Admins can review a specific version's file contents with
 `GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview?page=1&page_size=20&representation=normalized`.
 It returns the same paginated preview shape as the Data Engineer preview endpoint and applies that
 version's saved column mappings. The route is restricted to administrators.
-
-Start a scan in Swagger UI. The response is `202 Accepted`:
-
-```json
-{
-  "check_id": "28b1796b-3e4c-4d39-a42f-34ba5d687e73",
-  "dataset_id": "f337f852-18f1-47a1-8cb7-783fb6d8c4f1",
-  "dataset_version_id": "7861e12f-c975-4cc1-bfa3-48913cfca973",
-  "status": "queued",
-  "progress_percent": 0,
-  "processed_rows": 0,
-  "total_rows": null,
-  "message": "Đã xếp hàng kiểm tra chất lượng dataset"
-}
-```
-
-Poll the status route until `status` is `completed` or `failed`. Then fetch the report:
-
-```json
-{
-  "check_id": "28b1796b-3e4c-4d39-a42f-34ba5d687e73",
-  "dataset_id": "f337f852-18f1-47a1-8cb7-783fb6d8c4f1",
-  "dataset_version_id": "7861e12f-c975-4cc1-bfa3-48913cfca973",
-  "status": "completed",
-  "detected_structure": "tabular_csv",
-  "total_rows": 1000,
-  "valid_rows": 980,
-  "invalid_rows": 20,
-  "total_errors": 25,
-  "errors_by_type": {
-    "missing_value": { "total_errors": 10, "affected_rows": 8 },
-    "duplicate_record": { "total_errors": 5, "affected_rows": 5 },
-    "invalid_timestamp": { "total_errors": 3, "affected_rows": 3 },
-    "invalid_coordinate": { "total_errors": 4, "affected_rows": 4 },
-    "invalid_format": { "total_errors": 3, "affected_rows": 3 }
-  },
-  "errors_by_column": [],
-  "missing_values_by_column": [],
-  "missing_required_columns": [],
-  "generated_at": "2026-10-19T08:00:00Z"
-}
-```
-
-`total_errors` counts individual errors, while `invalid_rows` counts distinct data rows with at
-least one error; therefore a row with multiple errors contributes once to `invalid_rows`.
-Outlier warnings are counted separately and do not invalidate a row.
-Required trajectory fields are detected using source names and saved column mappings. Supported
-aliases include `track_id`/`vehicle_id` and `timestamp`/`time`/`timestamp_ms`. pNEUMA's exact wide
-trajectory header is recognized and checked as one source row per vehicle track, including each
-repeated point group; relative `time` values are checked as finite, non-negative seconds, and no
-reshape or data cleanup is performed. Latitude/longitude fields are checked against WGS84 bounds.
-
-#### Rule-based outlier warnings
-
-The same `POST /api/v1/datasets/{dataset_id}/quality-checks` accepts an **optional** JSON body
-with an `outlier_rules` array. Omitting the body, sending `{}`, or sending `{"outlier_rules": []}`
-keeps outlier detection disabled. There are **no default production thresholds**: the operator
-must supply bounds supported by the dataset, a research reference, or an approved domain rule.
-The service validates configuration syntax, not the scientific validity of the supplied basis.
-Swagger's request example is `{"outlier_rules": []}` so executing the example does not accidentally
-flag every positive speed against a generated `[0, 0]` range.
-
-##### Cách dùng `outlier_rules: []` trong Swagger
-
-Nếu chưa có ngưỡng outlier được xác định và có cơ sở, giữ nguyên body sau rồi bấm **Execute**:
-
-```json
-{
-  "outlier_rules": []
-}
-```
-
-Danh sách trống nghĩa là **không chạy Outlier Detection trong lần kiểm tra này**, không phải
-tắt toàn bộ Data Quality Validation. Các kiểm tra sau vẫn chạy:
-
-- **Missing Value:** phát hiện giá trị thiếu.
-- **Duplicate:** phát hiện bản ghi trùng hoàn toàn.
-- **Timestamp Validation:** kiểm tra định dạng và miền giá trị thời gian.
-- **Coordinate Validation:** kiểm tra tọa độ hợp lệ.
-- **Negative Speed Validation:** phát hiện `speed < 0` và `avg_speed < 0`.
-- **Format/Schema Validation:** kiểm tra cấu trúc và kiểu dữ liệu theo logic hiện có.
-
-Muốn phát hiện tốc độ quá cao hoặc gia tốc bất thường, thêm rule cho trường cần kiểm tra vào
-`outlier_rules`, kèm ngưỡng, đơn vị và `basis` (cơ sở lựa chọn ngưỡng) như bảng bên dưới.
-Cấu hình áp dụng cho lần kiểm tra được tạo bởi request đó. Không dùng nguyên mẫu
-`min_value: 0, max_value: 0` để kiểm tra tốc độ: khoảng `[0, 0]` sẽ cảnh báo mọi tốc độ dương.
-
-Outlier được ghi là **warning**, không tự tăng `invalid_rows`. Hệ thống chỉ ghi nhận và báo cáo,
-không tự sửa hoặc xóa dữ liệu gốc. Khi `outlier_rules` trống, các trường thống kê warning bằng
-0 hoặc rỗng; điều này có nghĩa là chưa chạy kiểm tra outlier, không chứng minh dữ liệu không có outlier.
-
-Each rule has the following fields:
-
-| Field       | Requirement                                                                              |
-| ----------- | ---------------------------------------------------------------------------------------- |
-| `field`     | One of `speed`, `avg_speed`, `lon_acc`, `lat_acc`; at most one rule per field            |
-| `min_value` | Optional finite numeric lower bound                                                      |
-| `max_value` | Optional finite numeric upper bound                                                      |
-| `unit`      | `km/h` for speed fields; `m/s^2` for acceleration fields                                 |
-| `basis`     | Required non-empty explanation/reference supporting these bounds (up to 1000 characters) |
-
-At least one bound is required; if both are supplied, `min_value <= max_value`. Bounds are
-inclusive: only a value strictly below the minimum or above the maximum is an outlier. Speed
-bounds must be non-negative. Acceleration bounds can be signed and asymmetric. Malformed rules,
-duplicate fields, non-finite bounds, or incompatible units return HTTP 422 before a job is queued.
-
-The [official pNEUMA data documentation](https://open-traffic.epfl.ch/index.php/downloads/)
-confirms that original `speed` and `avg_speed` are in **km/h**, while `lon_acc` and `lat_acc` are
-in **m/s²**. The existing structural normalization preserves these values and units. For other
-tabular/normalized inputs, the caller must verify that the values use the units declared in the
-rules. This check neither infers units from numeric magnitudes nor converts or changes data.
-The source confirms units, not universal outlier thresholds.
-
-Rules apply to canonical source names (case-insensitive) and saved mappings to these four fields.
-An explicitly mapped supported field takes precedence over the source name. Unconfigured fields
-are skipped. pNEUMA checks the track's `avg_speed` once and each point's `speed`, `lon_acc`, and
-`lat_acc`; normalized files are checked per stored record using the existing format readers.
-Missing, non-numeric, boolean, and non-finite values are not outlier warnings. Existing validation
-still handles invalid values. Negative speeds remain `negative_speed` **errors**, without an
-additional outlier warning; negative acceleration is permitted unless outside the configured range.
-
-The completed `/report` includes:
-
-- `outlier_rules`: exact configured bounds, units, and basis for this run; an empty array means
-  outlier detection was disabled.
-- `total_warnings` and `warning_rows`: individual warnings and distinct rows containing warnings.
-- `warnings_by_type.outlier`: `total_warnings` and `affected_rows`, present when warnings exist.
-- `warnings_by_column`: counts keyed by the original column name.
-
-Warnings do not contribute to `errors_by_type`, `errors_by_column`, `total_errors`, or `invalid_rows`.
-A row with warnings only remains in `valid_rows`; a row with an actual error still counts once in
-`invalid_rows`. Multiple outlier points in one pNEUMA trajectory count as separate warnings but
-one warning row. Warning and error row counts can overlap.
-
-The existing paginated `/issues` includes both severities. Outliers have `issue_type: "outlier"`
-and `severity: "warning"`; existing issue types have `severity: "error"`. Each issue retains its
-source row number, source column name, observed value, and a message describing the bounds and
-unit. Severity is derived from the stored issue type, so existing issue rows require no database
-migration. Older reports remain readable with empty/zero warning fields. No source file is edited.
-
-`409 Conflict` means the latest version already has a queued/running quality scan. A report is
-available only after completion (`409` while queued/running; `409` if the check failed, with the
-failure message available from the status endpoint). The current job runner uses FastAPI
-`BackgroundTasks` and persists progress in PostgreSQL; queued/running work is not automatically
-resumed after an application process restart. Production deployments that require durable
-retries should dispatch these persisted job IDs through a dedicated worker queue.
-
-For an existing database, apply `migrations/20261019_add_data_quality_checks.sql`. New databases
-initialized from `init_db.sql` create the run and issue tables. The scan does not alter, remove,
-or write back to the uploaded dataset file.
-
-Submitting an exported version to admin does not require a separate
-`POST /api/v1/datasets/{dataset_id}/quality-checks` run. The version must still have export /
-normalization history before it can be submitted. The normalized staging validation endpoint
-(`/api/v1/datasets/{dataset_id}/normalize/validate`) can be used separately to inspect the output.
 
 ## Quản lý quyền truy cập Dataset
 
@@ -473,7 +408,6 @@ Theo yêu cầu mới, đã bỏ hai cột `dataset_version_id` và `expires_at`
 - [app/api/v1/api.py](app/api/v1/api.py): đăng ký router mới.
 - [app/api/v1/endpoints/datasets.py](app/api/v1/endpoints/datasets.py): kiểm tra quyền các thao tác đọc.
 - [app/api/v1/endpoints/dataset_mapping.py](app/api/v1/endpoints/dataset_mapping.py): kiểm tra quyền đọc columns/mappings.
-- [app/api/v1/endpoints/data_quality.py](app/api/v1/endpoints/data_quality.py): kiểm tra quyền đọc kết quả quality check.
 - [app/api/v1/endpoints/admin.py](app/api/v1/endpoints/admin.py), [app/crud/crud_admin.py](app/crud/crud_admin.py), [app/schemas/admin.py](app/schemas/admin.py): bỏ router, CRUD và schema chỉ dùng cho ba API cấp quyền cũ.
 - [init_db.sql](init_db.sql): schema cấp quyền toàn dataset cho database mới.
 
@@ -519,8 +453,8 @@ giữ nguyên 2 bản ghi quyền tại thời điểm kiểm tra. Không chạy
 [init_db.sql](init_db.sql) trên database hiện có vì script có lệnh DROP TABLE.
 
 Ba API cũ GET/POST `/admin/access-grants` và DELETE
-`/admin/access-grants/{grant_id}` đã bị xóa, trả 404. Frontend chưa thay đổi:
-các màn hình còn gọi API cũ cần chuyển sang API mới bên dưới.
+`/admin/access-grants/{grant_id}` đã bị xóa và trả 404. Các client phải dùng
+API quản lý quyền theo Dataset ở bên dưới.
 
 ### 5. API và ví dụ
 
@@ -677,9 +611,6 @@ Các GET sau cho phép admin, data engineer hiện có, và consumer có grant:
 | `/{dataset_id}/versions`                         | Chặn danh sách phiên bản của dataset                 |
 | `/{dataset_id}/versions/{version_id}/status`     | Grant dataset + xác nhận version thuộc dataset       |
 | `/{dataset_id}/versions/{version_id}/report`     | Grant dataset + truy vấn cặp dataset/version hiện có |
-| `/{dataset_id}/quality-checks/{check_id}`        | Grant dataset + truy vấn cặp dataset/check           |
-| `/{dataset_id}/quality-checks/{check_id}/report` | Như trên                                             |
-| `/{dataset_id}/quality-checks/{check_id}/issues` | Như trên, trước phân trang lỗi                       |
 
 `GET /datasets/versions` toàn hệ thống vẫn chỉ dành cho data engineer như cũ. Các API admin toàn hệ thống giữ dependency admin. Consumer không thể dùng những API này để liệt kê dữ liệu chưa được cấp.
 
@@ -687,13 +618,12 @@ Dependency `require_dataset_scientist` kết hợp role admin/scientist và data
 
 ### 8. Kiểm thử và giới hạn xác minh
 
-- Lần chạy toàn bộ gần nhất: **287 tests passed** sau khi bỏ hai cột. Sau khi xóa ba API cũ, chạy lại bộ test phân quyền: **40 tests passed**.
-- Lint tất cả file Python tạo/chỉnh sửa: **pass**. `git diff --check`: **pass**.
-- Bộ test phân quyền: cấp quyền hai role; nhiều user/dataset; duplicate; role guards; thu hồi; 403; danh sách theo JWT; missing/invalid token; UUID/body validation; xác nhận bỏ hai cột và ba API cũ; cạnh tranh unique mô phỏng; kiểm tra 9 router đọc thật; cấm business preprocessing; sai parent version; query SQLAlchemy và unique constraint trên SQLite tạm.
-- 247 test cũ pass trước khi bổ sung test mới.
-- Concurrency được kiểm tra qua mô phỏng IntegrityError và unique constraint thực trong SQLite; chưa chạy hai transaction đồng thời trên PostgreSQL.
-- SQLite test không kiểm chứng PostGIS. Trên PostgreSQL local đã kiểm tra migration, truy vấn quyền và response; kiểm thử tạo quyền trước khi bỏ cột dùng transaction rollback, không lưu quyền thử nghiệm.
-- Môi trường Windows mặc định gặp lỗi có sẵn `csv.field_size_limit` với giá trị 2 GiB lớn hơn C long. Chạy test với biến môi trường process-only, không sửa cấu hình file/thuật toán:
+- Pytest hiện thu thập **721 tests** từ 46 file test Python.
+- Migration `20261129_remove_unused_schema.sql` đã được kiểm tra trên PostgreSQL local.
+- Các test dùng SQLite không xác minh hành vi riêng của PostgreSQL/PostGIS.
+- Những test PostgreSQL hoặc model artifact được bảo vệ bằng biến môi trường vẫn là opt-in.
+- Trên Windows, nếu `csv.field_size_limit` không nhận giá trị 2 GiB, đặt giới hạn
+  theo process trước khi chạy toàn bộ test:
 
 ```powershell
 $env:MAX_DATASET_UPLOAD_BYTES = '2147483647'
@@ -701,22 +631,22 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-Trong phiên thực thi dùng Python của `.venv` hiện có (`.venv/Scripts/python.exe -m pytest`) thay vì cài dependency mới.
+Không ghi số test `passed` cố định trong tài liệu vì con số thay đổi theo feature và các
+integration test được bật. CI hoặc lần chạy cục bộ là nguồn kết quả chính xác.
 
-Lint toàn repo còn các lỗi có sẵn ở [crud_dataset.py](app/crud/crud_dataset.py), [crud_user.py](app/crud/crud_user.py), [user.py](app/models/user.py) (import order), và [dataset_normalization_service.py](app/services/dataset_normalization_service.py) (S110/S112). Không sửa logic normalization ngoài phạm vi.
+### 9. Phạm vi truy cập
 
-### 9. Những phần chưa có trong backend hiện tại
+Các API Dataset, Temporal Aggregation, Lag Features, Train/Test, Model Training,
+Evaluation, Prediction và Result Sharing đều có router nghiệp vụ. Mọi endpoint phải
+giữ kiểm tra role và quyền Dataset hiện có; ID version, session, split, experiment và
+prediction phải được đối chiếu về đúng Dataset hoặc group trước khi trả dữ liệu.
 
-Chưa thấy HTTP API riêng cho Dataset Detail, Download, Analysis, Traffic Aggregation, Traffic Visualization, Heatmap, Forecasting hay Model Training. Có schema SQL liên quan traffic/forecast và model experiment, nhưng không có router nghiệp vụ tương ứng để tích hợp. Không tạo API giả hoặc viết lại những tính năng này.
 
-Vì vậy test Business User không được training hiện xác minh dependency dành cho training, không phải một API training đang tồn tại. Khi triển khai các router mới, phải sử dụng dependency phù hợp và phân giải mọi ID file/version/experiment về dataset gốc trước khi trả dữ liệu. Quyền dataset-wide áp dụng cho toàn bộ phiên bản hiện tại và tương lai của dataset đó; không tự bổ sung bộ lọc approval ngoài nghiệp vụ đã có.
+### Data Scientist xem trước dữ liệu đã duyệt
 
+Trong nhóm Swagger **Data Scientist Dataset Access**:
 
-### DS/BU xem trước dữ liệu đã duyệt
-
-Trong nhóm Swagger **Data Scientist / Business User**:
-
-1. Đăng nhập DS/BU và Authorize bằng access token.
+1. Đăng nhập Data Scientist và Authorize bằng access token.
 2. Gọi `GET /api/v1/datasets/approved`, lấy `dataset_id` và `version_id`.
 3. Gọi `GET /api/v1/datasets/{dataset_id}/versions/{version_id}/preview?page=1&page_size=20`.
 
@@ -726,8 +656,15 @@ Response gồm metadata, `dataset_version_id`, `columns`, `rows`, `warnings` và
 `pagination` (page, page_size, returned_rows, has_more, total_rows).
 Áp dụng mapping của đúng phiên bản đã chọn, không tự lấy bản mới nhất.
 
-Chỉ DS/BU có grant dataset và phiên bản được chọn là `APPROVED` mới được xem.
+Chỉ Data Scientist có grant dataset và phiên bản được chọn là `APPROVED` mới được xem.
 Admin/DE, chưa có quyền hoặc phiên bản chưa duyệt: `403`. Thiếu/sai token: `401`.
 Dataset/version không tồn tại, sai dataset cha hoặc thiếu file: `404`.
 Định dạng không hỗ trợ: `415`; tham số sai hoặc lỗi đọc dữ liệu: `422`.
 API chỉ đọc, không sửa file và không trả đường dẫn lưu trữ server.
+
+### Chia sẻ kết quả cho Business User
+
+Business User xem dữ liệu nghiên cứu qua API `/api/shared-results`. Các API nội bộ đọc Dataset,
+Train/Test Split và Experiment không trả dữ liệu cho role này. Data Scientist công bố từng
+resource và bật từng section qua `/api/shares`; việc thu hồi có hiệu lực ở request kế tiếp.
+Xem [hướng dẫn Result Sharing](docs/result_sharing.md) để biết migration, payload và phân trang.

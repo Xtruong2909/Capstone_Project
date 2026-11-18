@@ -59,6 +59,15 @@ CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
 -- PHÂN HỆ 2: QUẢN LÝ BỘ DỮ LIỆU UAV & KIỂM ĐỊNH CHẤT LƯỢNG
 -- ====================================================================
 
+CREATE TABLE dataset_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(128),
+    source VARCHAR(255) NOT NULL,
+    drone_id VARCHAR(32) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_dataset_group_source_drone UNIQUE(source, drone_id)
+);
+
 CREATE TABLE datasets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(128) NOT NULL UNIQUE CHECK (length(trim(name)) >= 3),
@@ -66,15 +75,38 @@ CREATE TABLE datasets (
     source VARCHAR(255) NOT NULL,
     description TEXT,
     capture_date DATE,
+    recording_date DATE,
+    drone_id VARCHAR(32),
+    group_id UUID REFERENCES dataset_groups(id) ON DELETE SET NULL,
     location_name VARCHAR(255) NOT NULL,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX ix_datasets_group_id ON datasets(group_id);
+
+CREATE TABLE dataset_group_processing_jobs (
+    id UUID PRIMARY KEY,
+    group_id UUID NOT NULL REFERENCES dataset_groups(id) ON DELETE CASCADE,
+    staging_id UUID NOT NULL,
+    operation VARCHAR(16) NOT NULL CHECK (operation IN ('NORMALIZE', 'EXPORT')),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    total_datasets INTEGER NOT NULL,
+    processed_datasets INTEGER NOT NULL DEFAULT 0,
+    results JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX ix_dataset_group_processing_jobs_group_id
+    ON dataset_group_processing_jobs(group_id);
+CREATE INDEX ix_dataset_group_processing_jobs_staging_id
+    ON dataset_group_processing_jobs(staging_id);
 
 CREATE TABLE dataset_versions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     version_tag VARCHAR(32) NOT NULL CHECK (version_tag ~ '^v[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9_-]+)?$'),
+    version_number INTEGER,
     data_file_path VARCHAR(512),
     original_filename VARCHAR(255),
     csv_file_path VARCHAR(512),
@@ -92,6 +124,42 @@ CREATE TABLE dataset_versions (
 );
 CREATE INDEX idx_dataset_versions_status ON dataset_versions(approval_status);
 
+CREATE TABLE recording_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+    original_filename VARCHAR(255) NOT NULL,
+    drone_id VARCHAR(32) NOT NULL,
+    recording_date DATE NOT NULL,
+    scheduled_start TIMESTAMPTZ NOT NULL,
+    scheduled_end TIMESTAMPTZ NOT NULL,
+    file_path VARCHAR(512) NOT NULL,
+    file_size BIGINT NOT NULL,
+    checksum VARCHAR(64) NOT NULL,
+    upload_status VARCHAR(32) NOT NULL DEFAULT 'UPLOADED',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_recording_session_filename UNIQUE(dataset_id, original_filename),
+    CONSTRAINT uq_recording_session_checksum UNIQUE(dataset_id, checksum)
+);
+CREATE INDEX ix_recording_sessions_dataset_id ON recording_sessions(dataset_id);
+
+CREATE TABLE dataset_version_sessions (
+    version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    session_id UUID NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+    CONSTRAINT uq_version_session PRIMARY KEY(version_id, session_id)
+);
+
+CREATE TABLE dataset_upload_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    total_files INTEGER NOT NULL,
+    processed_files INTEGER NOT NULL DEFAULT 0,
+    result JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE dataset_column_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
@@ -107,6 +175,7 @@ CREATE TABLE data_quality_checks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
     dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL,
     started_by UUID REFERENCES users(id) ON DELETE SET NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'queued'
         CHECK (status IN ('queued', 'running', 'completed', 'failed')),
@@ -123,6 +192,8 @@ CREATE TABLE data_quality_checks (
 CREATE INDEX ix_data_quality_checks_dataset_id ON data_quality_checks(dataset_id);
 CREATE INDEX ix_data_quality_checks_dataset_version_id
     ON data_quality_checks(dataset_version_id);
+CREATE INDEX ix_data_quality_checks_recording_session_id
+    ON data_quality_checks(recording_session_id);
 CREATE INDEX ix_data_quality_checks_status ON data_quality_checks(status);
 CREATE UNIQUE INDEX uq_data_quality_active_version
     ON data_quality_checks(dataset_version_id)
@@ -135,10 +206,13 @@ CREATE TABLE data_quality_issues (
     issue_type VARCHAR(32) NOT NULL,
     column_name VARCHAR(512),
     message VARCHAR(512) NOT NULL,
-    observed_value VARCHAR(256)
+    observed_value VARCHAR(256),
+    recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL
 );
 CREATE INDEX ix_data_quality_issues_check_id ON data_quality_issues(check_id);
 CREATE INDEX ix_data_quality_issues_issue_type ON data_quality_issues(issue_type);
+CREATE INDEX ix_data_quality_issues_recording_session_id
+    ON data_quality_issues(recording_session_id);
 CREATE INDEX ix_data_quality_issue_check_row
     ON data_quality_issues(check_id, row_number);
 
@@ -230,15 +304,6 @@ CREATE TABLE experiments (
 CREATE INDEX idx_experiments_model ON experiments(model_type);
 CREATE INDEX idx_experiments_status ON experiments(status);
 
-CREATE TABLE model_parameters (
-    id BIGSERIAL PRIMARY KEY,
-    experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
-    parameter_name VARCHAR(64) NOT NULL CHECK (parameter_name ~ '^[a-zA-Z0-9_]+$'),
-    parameter_value VARCHAR(255) NOT NULL,
-    parameter_type VARCHAR(16) NOT NULL DEFAULT 'string'
-);
-CREATE INDEX idx_model_params_exp ON model_parameters(experiment_id);
-
 CREATE TABLE forecast_results (
     id BIGSERIAL PRIMARY KEY,
     experiment_id UUID NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
@@ -261,31 +326,6 @@ CREATE TABLE evaluation_metrics (
     rmse DECIMAL(10, 4) NOT NULL CONSTRAINT ck_metric_rmse CHECK (rmse >= 0 AND rmse < 'Infinity'),
     evaluated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
-
--- ====================================================================
--- PHÂN HỆ 5: BÁO CÁO & TRỢ LÝ AI (REPORTING & GENAI ASSISTANT)
--- ====================================================================
-
-CREATE TABLE traffic_reports (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL CHECK (length(trim(title)) >= 3),
-    report_type VARCHAR(32) NOT NULL, -- TRAFFIC_PATTERN, FORECAST_BENCHMARK, EXPERIMENT_SUMMARY
-    file_format VARCHAR(16) NOT NULL DEFAULT 'PDF', -- PDF, EXCEL
-    file_path VARCHAR(512) NOT NULL,
-    experiment_id UUID REFERENCES experiments(id) ON DELETE SET NULL,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE ai_assistant_logs (
-    id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    query_text TEXT NOT NULL,
-    response_text TEXT NOT NULL,
-    context_metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_ai_logs_user ON ai_assistant_logs(user_id);
 
 -- ====================================================================
 -- SEED MASTER DATA

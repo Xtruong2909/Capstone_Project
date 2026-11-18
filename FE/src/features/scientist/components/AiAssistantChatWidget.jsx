@@ -29,6 +29,11 @@ function extractVersionIdFromPath(pathname = '') {
   return match ? match[1] : null
 }
 
+function extractGroupIdFromPath(pathname = '') {
+  const match = pathname.match(/\/scientist\/(?:datasets|experiments)\/groups\/([^/]+)/)
+  return match ? match[1] : null
+}
+
 function renderAssistantResult(msg) {
   const res = msg.result || {}
   if (msg.isError) {
@@ -118,7 +123,32 @@ function renderAssistantResult(msg) {
 
       {res.best_experiment_id && (
         <div className="sci-ai-msg__badge">
-          Thí nghiệm tốt nhất: <code>{String(res.best_experiment_id).slice(0, 12)}…</code>
+          Thí nghiệm tốt nhất: <strong>{res.comparison?.find(
+            (item) => String(item.experiment_id) === String(res.best_experiment_id)
+          )?.experiment_name || String(res.best_experiment_id).slice(0, 12)}</strong>
+        </div>
+      )}
+
+      {Array.isArray(res.comparison) && res.comparison.length > 0 && (
+        <div className="sci-ai-comparison-scroll">
+          <table className="sci-ai-comparison-table">
+            <thead>
+              <tr><th>Thí nghiệm</th><th>Mốc</th><th>MAE</th><th>RMSE</th></tr>
+            </thead>
+            <tbody>
+              {res.comparison.flatMap((item) => [1, 3, 5].map((horizon) => {
+                const metric = item.performance_by_horizon?.[String(horizon)]?.random_forest
+                return (
+                  <tr key={`${item.experiment_id}-${horizon}`}>
+                    <td>{item.experiment_name}</td>
+                    <td>+{horizon} phút</td>
+                    <td>{metric ? Number(metric.mae).toFixed(2) : '—'}</td>
+                    <td>{metric ? Number(metric.rmse).toFixed(2) : '—'}</td>
+                  </tr>
+                )
+              }))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -150,6 +180,14 @@ export default function AiAssistantChatWidget() {
     () => extractVersionIdFromPath(location.pathname),
     [location.pathname]
   )
+  const activeGroupId = useMemo(
+    () => extractGroupIdFromPath(location.pathname),
+    [location.pathname]
+  )
+  const activeAggregationId = useMemo(
+    () => new URLSearchParams(location.search).get('aggregationId'),
+    [location.search]
+  )
 
   const [isOpen, setIsOpen] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -162,20 +200,26 @@ export default function AiAssistantChatWidget() {
 
   const threadEndRef = useRef(null)
 
-  const { messages, isSending, sendRequest, clearMessages } = useAiAssistant(activeVersionId)
-  const { experiments, reloadExperiments } = useModelTrainingExperiments(activeVersionId)
+  const { messages, isSending, sendRequest, clearMessages } = useAiAssistant(
+    activeVersionId,
+    activeGroupId,
+    activeAggregationId,
+  )
+  const { experiments, reloadExperiments } = useModelTrainingExperiments(activeGroupId || activeVersionId)
 
   const completedExperiments = useMemo(
-    () => experiments.filter((e) => e.status === 'COMPLETED'),
-    [experiments]
+    () => experiments.filter((e) => e.status === 'COMPLETED' &&
+      (!activeGroupId || String(e.group_id) === activeGroupId) &&
+      (!activeVersionId || String(e.dataset_version_id) === activeVersionId)),
+    [experiments, activeGroupId, activeVersionId]
   )
 
   // Refresh experiment list when opening widget on a dataset version route
   useEffect(() => {
-    if (isOpen && activeVersionId) {
+    if (isOpen && (activeVersionId || activeGroupId)) {
       reloadExperiments()
     }
-  }, [isOpen, activeVersionId, reloadExperiments])
+  }, [isOpen, activeVersionId, activeGroupId, reloadExperiments])
 
   const effectiveSelectedExpId = useMemo(() => {
     if (
@@ -416,6 +460,20 @@ export default function AiAssistantChatWidget() {
             </div>
           </div>
 
+          {!showWelcome && (
+            <div className="sci-ai-auto-bar">
+              <Sparkles size={15} aria-hidden="true" />
+              <span>{activeAction === 'CHAT'
+                ? 'Tự nhận diện câu hỏi về dữ liệu, thí nghiệm và dự báo'
+                : 'Đang xem dữ liệu đã chọn'}</span>
+              {activeAction !== 'CHAT' && (
+                <button type="button" onClick={() => setActiveAction('CHAT')} disabled={isSending}>
+                  Hỏi tự do
+                </button>
+              )}
+            </div>
+          )}
+
           {showWelcome ? (
             <div className="sci-ai-welcome">
               <div className="sci-ai-welcome__intro">
@@ -547,14 +605,16 @@ export default function AiAssistantChatWidget() {
               <div className="sci-ai-empty-state">
                 <p>Em có thể giúp gì cho Anh/Chị?</p>
                 <div className="sci-ai-suggestions">
-                  {activeVersionId && (
+                  {(activeVersionId || activeGroupId) && (
                     <button
                       type="button"
                       className="sci-ai-suggestion-chip"
-                      onClick={() => handleQuickPrompt('Phân tích dataset này và cho tôi biết chất lượng dữ liệu.')}
+                      onClick={() => handleQuickPrompt(activeGroupId
+                        ? 'Batch này có những dataset và session nào?'
+                        : 'Phân tích dataset này và cho tôi biết chất lượng dữ liệu.')}
                     >
                       <MessageSquare size={15} />
-                      <span>Phân tích dataset này</span>
+                      <span>{activeGroupId ? 'Tóm tắt batch này' : 'Phân tích dataset này'}</span>
                     </button>
                   )}
                   {QUICK_PROMPTS.map((q) => (

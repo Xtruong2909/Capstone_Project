@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   UserCheck,
+  Share2,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useLanguage } from '../../hooks/useLanguage'
@@ -19,23 +20,30 @@ import './ScientistPages.css'
 
 const STORAGE_KEY = 'sidebar_collapsed_scientist'
 
+function profileDisplayName(fullName, fallback) {
+  if (!fullName) return fallback
+  return fullName.replace(/\s*\(data\s+scientist\)\s*$/i, '').trim() || fallback
+}
+
 const NAV_ITEMS = [
   { to: '/scientist', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/scientist/datasets', label: 'Approved Datasets', icon: FileSpreadsheet,
     end: true,
     // Training / Prediction pages are opened from the approved dataset list
-    extraActivePattern: /^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/(train|predict)\/?$|^\/scientist\/datasets\/[^/]+\/versions\/[^/]+\/?$/,
+    extraActivePattern: /^\/scientist\/datasets\//,
   },
   {
     to: '/scientist/experiments',
     label: 'Thí nghiệm',
     icon: FlaskConical,
   },
+  { to: '/scientist/shares', label: 'Chia sẻ kết quả', icon: Share2 },
 ]
 
 export default function ScientistLayout() {
   const { t } = useLanguage()
   const { user, logout } = useAuth()
+  const displayName = profileDisplayName(user?.full_name, t('Data Scientist'))
   const navigate = useNavigate()
   const location = useLocation()
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
@@ -60,8 +68,8 @@ export default function ScientistLayout() {
     })
   }
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate('/login')
   }
 
@@ -132,12 +140,12 @@ export default function ScientistLayout() {
             title={t('Click to view account profile and change password')}
           >
             <div className="admin-avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'S'}
+              {displayName.charAt(0).toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="admin-user-info">
                 <span className="admin-user-name" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  {user?.full_name || t('Data Scientist')}
+                  {displayName}
                 </span>
                 <span className="admin-user-email">{user?.email || ''}</span>
               </div>

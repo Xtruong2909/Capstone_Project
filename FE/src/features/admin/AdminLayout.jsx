@@ -1,8 +1,9 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
-  ShieldCheck,
+  CheckCircle,
   Database,
   ScrollText,
   LogOut,
@@ -25,27 +26,33 @@ export default function AdminLayout() {
   const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
 
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
-  const currentMeta = ROUTE_META[location.pathname] || ROUTE_META['/admin']
-
   return (
-    <div className="adm-shell">
-      {/* Dark Obsidian Command Sidebar — Auto-expanding Rail */}
-      <aside className="adm-sidebar">
-        <div className="adm-sidebar__brand">
-          <div className="adm-sidebar__logo" title="Traffic Governance Control Center">
-            <Shield size={21} />
-          </div>
-          <div className="adm-sidebar__brand-info">
-            <h2 className="adm-sidebar__brand-title">TRAFFIC GOV</h2>
-            <span className="adm-sidebar__brand-sub">Command & Control</span>
-          </div>
+    <div className="admin-shell">
+      {/* Collapsible Sidebar */}
+      <aside
+        className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
+      >
+        {/* Single Center-Edge Proximity Hover Zone & Floating Toggle Button */}
+        <div className="admin-sidebar__edge-zone">
+          <button
+            type="button"
+            className="admin-sidebar__floating-toggle"
+            onClick={toggleSidebar}
+            aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+            title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
+          >
+            {isSidebarCollapsed ? (
+              <ChevronRight size={18} strokeWidth={2.6} />
+            ) : (
+              <ChevronLeft size={18} strokeWidth={2.6} />
+            )}
+          </button>
         </div>
 
         <nav className="adm-sidebar__nav" aria-label={t('Admin Navigation')}>
@@ -69,14 +76,66 @@ export default function AdminLayout() {
               <span className="adm-nav-link__text">{t('User Management')}</span>
             </NavLink>
           </div>
+        </div>
 
-          <div className="adm-nav-group">
-            <span className="adm-nav-group__label">{t('Data Quality Gate')}</span>
-            <NavLink
-              to="/admin/datasets"
-              end
-              title={t('Dataset Approvals')}
-              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+        <nav className="admin-sidebar__nav">
+          <NavLink
+            to="/admin"
+            end
+            title={t('System Overview')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
+            <span>{t('System Overview')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/users"
+            title={t('User Management')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Users size={19} style={{ flexShrink: 0 }} />
+            <span>{t('User Management')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/datasets"
+            end
+            title={t('Dataset Approvals')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <CheckCircle size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Dataset Approvals')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/datasets-available"
+            title={t('Dataset Available')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <Database size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Dataset Available')}</span>
+          </NavLink>
+
+          <NavLink
+            to="/admin/audit-logs"
+            title={t('Audit Logs')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <ScrollText size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Audit Logs')}</span>
+          </NavLink>
+        </nav>
+
+        <div className="admin-sidebar__footer">
+          {!isSidebarCollapsed ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.1rem 0.2rem',
+              }}
             >
               <ShieldCheck size={18} style={{ flexShrink: 0 }} />
               <span className="adm-nav-link__text">{t('Dataset Approvals')}</span>
@@ -104,28 +163,17 @@ export default function AdminLayout() {
           </div>
         </nav>
 
-        <div className="adm-sidebar__footer">
           <div
-            className="adm-user-card"
-            title={`${user?.full_name || 'Administrator'} • Admin (${user?.email || 'admin@gmail.com'})`}
+            className="admin-user-profile"
+            title={`${user?.full_name || 'Administrator'} (${user?.email || 'admin@gmail.com'})`}
           >
-            <div className="adm-user-card__avatar-wrap">
-              <div className="adm-user-card__avatar">
-                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
-              </div>
-              <span className="adm-user-card__status-dot" title="Online" />
+            <div className="admin-avatar">
+              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
             </div>
-            <div className="adm-user-card__meta">
-              <div className="adm-user-card__name-row">
-                <span className="adm-user-card__name">
-                  {user?.full_name === 'System Administrator'
-                    ? 'System Admin'
-                    : user?.full_name || 'Administrator'}
-                </span>
-                <span className="adm-user-card__role-pill">
-                  <Shield size={10} />
-                  <span>Admin</span>
-                </span>
+            {!isSidebarCollapsed && (
+              <div className="admin-user-info">
+                <span className="admin-user-name">{user?.full_name || 'Administrator'}</span>
+                <span className="admin-user-email">{user?.email || 'admin@gmail.com'}</span>
               </div>
               <span className="adm-user-card__role">{user?.email || 'admin@gmail.com'}</span>
             </div>
@@ -133,7 +181,7 @@ export default function AdminLayout() {
 
           <button
             type="button"
-            className="adm-logout-btn"
+            className="admin-logout-btn"
             onClick={handleLogout}
             title={t('Sign Out')}
           >
@@ -154,7 +202,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="adm-canvas">
+        <main className="admin-content">
           <Outlet />
         </main>
       </div>

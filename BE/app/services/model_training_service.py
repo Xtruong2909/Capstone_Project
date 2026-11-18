@@ -218,23 +218,37 @@ def build_result_tables(prediction_rows: list[dict]) -> ResultTables:
 
 def serialize_experiment(experiment: ModelTrainingExperiment) -> TrainingExperimentResponse:
     config = experiment.configuration
+    split_id = getattr(experiment, "lag_feature_split_id", None) or experiment.split_id
     return TrainingExperimentResponse(
         experiment_id=experiment.id, experiment_name=experiment.name,
-        dataset_version_id=config["dataset_version_id"], split_id=experiment.split_id,
+        name=experiment.name,
+        dataset_version_id=config.get("dataset_version_id"),
+        split_id=split_id,
+        train_samples=config.get("train_samples"),
+        test_samples=config.get("test_samples"),
         model=config["model"], forecast_horizons=config["forecast_horizons"],
         hyperparameters=config["hyperparameters"], status=experiment.status,
+        baseline_configuration=config.get("baseline_configuration", {}),
+        model_ids=config.get("model_ids", {}),
         training_time_sec=experiment.training_time_sec,
         prediction_time_sec=experiment.prediction_time_sec,
+        training_time_ms=getattr(experiment, "training_time_ms", None),
+        prediction_time_ms=getattr(experiment, "prediction_time_ms", None),
         execution_time_sec=experiment.execution_time_sec,
         evaluation_mode=experiment.evaluation["evaluation_mode"],
         official_evaluation_eligible=experiment.evaluation["official_evaluation_eligible"],
         evaluation_policy=experiment.evaluation["evaluation_policy"],
         performance_by_horizon=experiment.performance_by_horizon,
+        performance_by_model_and_horizon=getattr(
+            experiment, "performance_by_model_and_horizon", {},
+        ) or {},
         prediction_rows=experiment.prediction_rows,
         result_tables=build_result_tables(experiment.prediction_rows),
         library_versions=experiment.library_versions, error=experiment.error,
         created_at=experiment.created_at,
+        completed_at=getattr(experiment, "completed_at", None),
         logs=getattr(experiment, "logs", None) or [],
+        warnings=[],
     )
 
 
@@ -329,7 +343,12 @@ def get_detail(db: Session, experiment_id: UUID, user: User) -> TrainingExperime
     experiment = repository.get_experiment(db, experiment_id)
     if experiment is None:
         raise HTTPException(404, "Experiment not found")
-    require_version(db, UUID(experiment.configuration["dataset_version_id"]), user)
+    if getattr(experiment, "lag_feature_split_id", None) is not None:
+        from app.services.train_test_splits_service import get_accessible_split
+
+        get_accessible_split(db, user, experiment.lag_feature_split_id)
+    else:
+        require_version(db, UUID(experiment.configuration["dataset_version_id"]), user)
     return serialize_experiment(experiment)
 
 
@@ -343,7 +362,13 @@ def list_results(db: Session, user: User, version_id: UUID | None, skip: int,
             for item in repository.list_experiments(db, user, version_id, skip, limit)]
 
 
-def compare_results(db: Session, ids: list[UUID], user: User) -> dict:
+def compare_results(
+    db: Session,
+    ids: list[UUID],
+    user: User,
+    *,
+    forecast_horizons: list[int] | tuple[int, ...] = (1, 3, 5),
+) -> dict:
     if not 2 <= len(ids) <= 20:
         raise HTTPException(422, "Select between 2 and 20 experiments")
     if len(set(ids)) != len(ids):
@@ -357,19 +382,29 @@ def compare_results(db: Session, ids: list[UUID], user: User) -> dict:
         raise HTTPException(422, "Comparison requires the same dataset version, split, horizons and evaluation rules")
     if any(r.status != "COMPLETED" for r in results):
         raise HTTPException(409, "Only completed experiments can be compared")
+    requested_horizons = tuple(int(value) for value in forecast_horizons)
+    if not requested_horizons or len(set(requested_horizons)) != len(requested_horizons):
+        raise HTTPException(422, "forecast_horizons must contain distinct supported horizons")
+    if any(horizon not in (1, 3, 5) for horizon in requested_horizons):
+        raise HTTPException(422, "Only forecast horizons 1, 3 and 5 are supported")
     test_signature = None
     experiments = []
     for result in results:
-        rows = [row for row in result.prediction_rows if row.model == "RANDOM_FOREST"]
-        signature = sorted((row.horizon_minutes, row.forecast_origin_time,
-                            row.target_timestamp, row.actual_traffic_flow) for row in rows)
+        rows = [
+            row for row in result.prediction_rows
+            if row.model == "RANDOM_FOREST" and row.horizon_minutes in requested_horizons
+        ]
+        signature = sorted((
+            str(row.dataset_id or ""), str(row.session_id or ""), row.horizon_minutes, row.forecast_origin_time,
+            row.target_timestamp, row.actual_traffic_flow,
+        ) for row in rows)
         if not signature or len(set(signature)) != len(signature):
             raise HTTPException(422, "Missing or duplicate Random Forest test predictions")
         if test_signature is not None and signature != test_signature:
             raise HTTPException(422, "Experiments must use identical Test timestamps and actual values")
         test_signature = signature
         performance = {}
-        for horizon in (1, 3, 5):
+        for horizon in requested_horizons:
             metric = result.performance_by_horizon.get(str(horizon), {}).get("random_forest")
             count = sum(row.horizon_minutes == horizon for row in rows)
             if (metric is None or not count or metric.sample_count != count
@@ -380,17 +415,15 @@ def compare_results(db: Session, ids: list[UUID], user: User) -> dict:
         experiments.append({
             "experiment_id": result.experiment_id, "experiment_name": result.experiment_name,
             **result.hyperparameters.model_dump(), "training_time_sec": result.training_time_sec,
-            "prediction_time_sec": result.prediction_time_sec, "performance": performance,
+            "prediction_time_sec": result.prediction_time_sec,
+            "training_time_ms": getattr(result, "training_time_ms", None),
+            "prediction_time_ms": getattr(result, "prediction_time_ms", None),
+            "performance": performance,
         })
-    best, best_ids, ties = {}, {}, {}
-    for horizon in ("1", "3", "5"):
-        minimum = min(item["performance"][horizon]["rmse"] for item in experiments)
-        winners = sorted(
-            [item for item in experiments if item["performance"][horizon]["rmse"] == minimum],
-            key=lambda item: str(item["experiment_id"]),
-        )
-        best[horizon] = winners[0]["experiment_name"]
-        best_ids[horizon] = winners[0]["experiment_id"]
-        ties[horizon] = [item["experiment_id"] for item in winners]
-    return {"experiments": experiments, "best_by_horizon": best,
-            "best_experiment_ids_by_horizon": best_ids, "tied_experiment_ids_by_horizon": ties}
+    batch_ids = {getattr(result, "batch_id", None) for result in results}
+    batch_ids.discard(None)
+    return {
+        "batch_id": next(iter(batch_ids)) if len(batch_ids) == 1 else None,
+        "forecast_horizons": list(forecast_horizons),
+        "experiments": experiments,
+    }
