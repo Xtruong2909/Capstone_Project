@@ -137,6 +137,39 @@ class AvailableResourcePage(BaseModel):
     page_size: int
 
 
+class ShareCatalogPrediction(BaseModel):
+    resource_id: UUID
+    name: str
+    is_shared: bool
+
+
+class ShareCatalogExperiment(BaseModel):
+    resource_id: UUID
+    name: str
+    is_shared: bool
+    predictions: list[ShareCatalogPrediction]
+
+
+class ShareCatalogBatch(BaseModel):
+    group_id: UUID
+    name: str
+    dataset_count: int
+    session_count: int
+    shared_dataset_count: int
+    is_shared: bool
+    experiments: list[ShareCatalogExperiment]
+
+
+class ShareCatalogResponse(BaseModel):
+    batches: list[ShareCatalogBatch]
+
+
+class GroupShareRequest(BaseModel):
+    group_id: UUID
+    experiment_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    prediction_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+
 class ResourceShareSelection(BaseModel):
     resource_type: str
     resource_id: UUID

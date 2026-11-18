@@ -15,10 +15,12 @@ from app.schemas.sharing import (
     BatchShareRequest,
     BatchShareResponse,
     BatchShareResult,
+    GroupShareRequest,
     ManagedResourceShare,
     ManagedResourceSharePage,
     PublishedShareListResponse,
     PublishedShareSummary,
+    ShareCatalogResponse,
     ShareCreate,
     SharedItemPage,
     SharedResultDetail,
@@ -335,6 +337,43 @@ def list_available_resources(
     return AvailableResourcePage(data=rows, total_records=total, page=page, page_size=page_size)
 
 
+@ds_router.get("/catalog", response_model=ShareCatalogResponse)
+def get_share_catalog(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ShareCatalogResponse:
+    _require_data_scientist(current_user)
+    return ShareCatalogResponse(batches=sharing_service.share_catalog(db, current_user))
+
+
+@ds_router.post("/selection", response_model=ShareResponse, status_code=status.HTTP_201_CREATED)
+def share_group_selection(
+    payload: GroupShareRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_data_scientist(current_user)
+    title, items = sharing_service.prepare_group_share(
+        db, current_user, payload.group_id, payload.experiment_ids, payload.prediction_ids,
+    )
+    try:
+        share = crud_sharing.create_share(
+            db, title=title, description=None, created_by=current_user.id,
+            status="PUBLISHED", items_data=items,
+        )
+    except crud_sharing.DuplicateActiveShareError as exc:
+        raise HTTPException(409, {"code": "DUPLICATE_ACTIVE_SHARE",
+                                  "message": "Một tài nguyên trong batch đã được chia sẻ."}) from exc
+    audit_log_service.record_audit_event(
+        action="CREATE_SHARE", module="SHARING", status="SUCCESS",
+        description=f"Shared batch {payload.group_id} with {len(items)} resources",
+        user=current_user, resource_id=str(share.id), ip_address=_get_client_ip(request),
+        details={"group_id": str(payload.group_id), "item_count": len(items)},
+    )
+    return share
+
+
 @ds_router.post("/batch", response_model=BatchShareResponse)
 def create_resource_share_batch(
     payload: BatchShareRequest,
@@ -390,15 +429,25 @@ def list_managed_resources(
         db, owner_id=current_user.id, resource_type=resource_type,
         status=status_filter, search=search, page=page, page_size=page_size,
     )
-    return ManagedResourceSharePage(
-        data=[ManagedResourceShare(
+    summaries = []
+    for share in rows:
+        if not share.items:
+            continue
+        item = next(
+            (item for item in share.items if item.resource_type == resource_type),
+            share.items[0],
+        )
+        summaries.append(ManagedResourceShare(
             share_id=share.id, resource_type=item.resource_type,
             resource_id=item.resource_id,
-            name=sharing_service.managed_resource_name(db, item, share.title),
+            name=share.title if len(share.items) > 1 else
+            sharing_service.managed_resource_name(db, item, share.title),
             shared_by=share.created_by, shared_at=share.published_at,
             status=share.status, revoked_at=share.revoked_at,
             item_count=len(share.items),
-        ) for share, item in rows],
+        ))
+    return ManagedResourceSharePage(
+        data=summaries,
         total_records=total, page=page, page_size=page_size,
         active_count=active, revoked_count=revoked,
         unshared_count=sharing_service.count_unshared_resources(db, current_user),

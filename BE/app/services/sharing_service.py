@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -17,9 +19,12 @@ from app.models.sharing import (
 )
 from app.models.user import User
 from app.services.dataset_access_service import check_dataset_access
+from app.services.dataset_review_service import list_recording_sessions
+from app.services.recording_time_service import recording_start_from_filename, recording_timestamp
 from app.services.train_test_splits_service import get_accessible_split
 
 DETAIL_PAGE_SIZE = 20
+ATHENS = ZoneInfo("Europe/Athens")
 PAGED_SECTIONS = {
     "DATASET": {"sessions", "traffic_flow_chart"},
     "EXPERIMENT": {"prediction_rows"},
@@ -33,6 +38,12 @@ def _error(code: str, message: str, http_status: int) -> HTTPException:
 
 def _not_found() -> HTTPException:
     return _error("SHARE_NOT_FOUND", "Không tìm thấy kết quả đã chia sẻ", 404)
+
+
+def _athens_iso(value: datetime) -> str:
+    """Match the recording clock shown by scientist experiment and forecast views."""
+    instant = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return instant.astimezone(ATHENS).isoformat()
 
 
 def require_owner(share: SharedReport, user: User) -> None:
@@ -215,6 +226,116 @@ def available_resources(
     return selected, total
 
 
+def _shareable_group_datasets(db: Session, user: User, group_id: UUID) -> list[dict[str, Any]]:
+    """Use every approved dataset version visible to this scientist in a batch."""
+    result: list[dict[str, Any]] = []
+    for dataset in repo.list_group_datasets(db, group_id):
+        item = {
+            "resource_type": "DATASET", "resource_id": dataset.id,
+            "visible_sections": sorted(VISIBLE_SECTIONS_BY_TYPE["DATASET"]),
+        }
+        try:
+            _require_resource(db, user, item)
+        except HTTPException:
+            continue
+        result.append(item)
+    return result
+
+
+def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
+    """Offer batches with all sessions and individually selectable results."""
+    batches: dict[UUID, dict[str, Any]] = {}
+    for group in repo.list_dataset_groups(db):
+        datasets = _shareable_group_datasets(db, user, group.id)
+        if not datasets:
+            continue
+        keys = [("DATASET", item["resource_id"]) for item in datasets]
+        active = repo.active_share_ids(db, keys)
+        batches[group.id] = {
+            "group_id": group.id,
+            "name": group.name or f"Batch {str(group.id)[:8]}",
+            "dataset_count": len(datasets),
+            "session_count": sum(_dataset_session_page(
+                db, item["resource_id"], item["resource_version_id"], 1, 1,
+            )[0] for item in datasets),
+            "shared_dataset_count": len(active),
+            "is_shared": len(active) == len(datasets),
+            "experiments": [],
+        }
+
+    experiments: dict[UUID, dict[str, Any]] = {}
+    for experiment in repo.list_resource_candidates(db, "EXPERIMENT"):
+        group_id = repo.experiment_group_id(db, experiment)
+        if group_id not in batches:
+            continue
+        item = {"resource_type": "EXPERIMENT", "resource_id": experiment.id,
+                "visible_sections": sorted(VISIBLE_SECTIONS_BY_TYPE["EXPERIMENT"])}
+        try:
+            _require_resource(db, user, item)
+        except HTTPException:
+            continue
+        option = {
+            "resource_id": experiment.id, "name": experiment.name,
+            "is_shared": bool(repo.active_share_ids(db, [("EXPERIMENT", experiment.id)])),
+            "predictions": [],
+        }
+        batches[group_id]["experiments"].append(option)
+        experiments[experiment.id] = option
+
+    for prediction in repo.list_resource_candidates(db, "PREDICTION"):
+        option = experiments.get(prediction.experiment_id)
+        if option is None:
+            continue
+        item = {"resource_type": "PREDICTION", "resource_id": prediction.id,
+                "visible_sections": sorted(VISIBLE_SECTIONS_BY_TYPE["PREDICTION"])}
+        try:
+            _require_resource(db, user, item)
+        except HTTPException:
+            continue
+        option["predictions"].append({
+            "resource_id": prediction.id,
+            "name": resource_name("PREDICTION", prediction),
+            "is_shared": bool(repo.active_share_ids(db, [("PREDICTION", prediction.id)])),
+        })
+    return list(batches.values())
+
+
+def prepare_group_share(
+    db: Session, user: User, group_id: UUID,
+    experiment_ids: list[UUID], prediction_ids: list[UUID],
+) -> tuple[str, list[dict[str, Any]]]:
+    group = repo.get_dataset_group(db, group_id)
+    if group is None:
+        raise _error("BATCH_NOT_FOUND", "Không tìm thấy batch.", 404)
+    datasets = _shareable_group_datasets(db, user, group_id)
+    if not datasets:
+        raise _error("BATCH_NOT_SHAREABLE", "Batch chưa có dataset đã duyệt được cấp quyền.", 422)
+    active_datasets = repo.active_share_ids(
+        db, [("DATASET", item["resource_id"]) for item in datasets],
+    )
+    items = [item for item in datasets
+             if ("DATASET", item["resource_id"]) not in active_datasets]
+    if len(set(experiment_ids)) != len(experiment_ids) or len(set(prediction_ids)) != len(prediction_ids):
+        raise _error("DUPLICATE_SHARE_ITEM", "Tài nguyên được chọn trùng nhau.", 422)
+    for experiment_id in experiment_ids:
+        experiment = repo.get_experiment(db, experiment_id)
+        if experiment is None or repo.experiment_group_id(db, experiment) != group_id:
+            raise _error("RESOURCE_NOT_IN_BATCH", "Thí nghiệm không thuộc batch đã chọn.", 422)
+        items.append({"resource_type": "EXPERIMENT", "resource_id": experiment_id,
+                      "visible_sections": sorted(VISIBLE_SECTIONS_BY_TYPE["EXPERIMENT"])})
+    for prediction_id in prediction_ids:
+        prediction = repo.get_prediction(db, prediction_id)
+        experiment = repo.get_experiment(db, prediction.experiment_id) if prediction else None
+        if experiment is None or repo.experiment_group_id(db, experiment) != group_id:
+            raise _error("RESOURCE_NOT_IN_BATCH", "Dự đoán không thuộc batch đã chọn.", 422)
+        items.append({"resource_type": "PREDICTION", "resource_id": prediction_id,
+                      "visible_sections": sorted(VISIBLE_SECTIONS_BY_TYPE["PREDICTION"])})
+    validate_and_check_items(db, items, user)
+    if not items:
+        raise _error("ALREADY_SHARED", "Các mục đã chọn đều đang được chia sẻ.", 409)
+    return group.name or f"Batch {str(group.id)[:8]}", items
+
+
 def prepare_resource_shares(
     db: Session, user: User, resources: list[tuple[str, UUID]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -254,23 +375,46 @@ def prepare_resource_shares(
 
 
 def count_unshared_resources(db: Session, user: User) -> int:
-    total = 0
-    for kind in VISIBLE_SECTIONS_BY_TYPE:
-        rows, _ = available_resources(
-            db, user, resource_type=kind, search=None, page=1, page_size=1000000,
+    return sum(
+        int(not batch["is_shared"]) + sum(
+            int(not experiment["is_shared"]) + sum(
+                not prediction["is_shared"] for prediction in experiment["predictions"]
+            ) for experiment in batch["experiments"]
+        ) for batch in share_catalog(db, user)
+    )
+
+
+def _dataset_session_page(
+    db: Session, dataset_id: UUID, version_id: UUID, page: int, page_size: int,
+) -> tuple[int, list[dict[str, Any]]]:
+    dataset = repo.get_dataset(db, dataset_id)
+    if dataset is not None and dataset.drone_id and dataset.recording_date:
+        result = list_recording_sessions(
+            db, dataset_id, version_id, page=page, page_size=page_size,
         )
-        total += sum(not row["is_shared"] for row in rows)
-    return total
-
-
-def _session_row(session: Any) -> dict[str, Any]:
-    return {
-        "session_id": str(session.id),
-        "session_name": session.original_filename,
-        "recording_date": session.recording_date.isoformat(),
-        "scheduled_start": session.scheduled_start.isoformat(),
-        "scheduled_end": session.scheduled_end.isoformat(),
-    }
+        return result.total, [{
+            "session_id": str(row.session_id),
+            "session_name": row.original_filename,
+            "recording_date": row.recording_date.isoformat(),
+            "scheduled_start": recording_timestamp(
+                row.scheduled_start, recording_start_from_filename(row.original_filename),
+            ).isoformat(),
+            "scheduled_end": recording_timestamp(
+                row.scheduled_end, recording_start_from_filename(row.original_filename),
+            ).isoformat(),
+        } for row in result.sessions]
+    total, rows = repo.page_dataset_sessions(db, version_id, page, page_size)
+    return total, [{
+        "session_id": str(row.id),
+        "session_name": row.original_filename,
+        "recording_date": row.recording_date.isoformat(),
+        "scheduled_start": recording_timestamp(
+            row.scheduled_start, recording_start_from_filename(row.original_filename),
+        ).isoformat(),
+        "scheduled_end": recording_timestamp(
+            row.scheduled_end, recording_start_from_filename(row.original_filename),
+        ).isoformat(),
+    } for row in rows]
 
 
 def _traffic_row(row: Any) -> dict[str, Any]:
@@ -286,9 +430,9 @@ def _experiment_row(row: Any) -> dict[str, Any]:
         "session_id": str(row.session_id),
         "model": row.model_type,
         "horizon": row.horizon,
-        "input_timestamp": row.input_timestamp.isoformat(),
-        "forecast_timestamp": row.forecast_timestamp.isoformat(),
-        "actual_timestamp": row.actual_timestamp.isoformat(),
+        "input_timestamp": _athens_iso(row.input_timestamp),
+        "forecast_timestamp": _athens_iso(row.forecast_timestamp),
+        "actual_timestamp": _athens_iso(row.actual_timestamp),
         "actual_vehicle_count": row.actual_vehicle_count,
         "predicted_vehicle_count": row.predicted_vehicle_count,
         "absolute_error": row.absolute_error,
@@ -300,7 +444,7 @@ def _forecast_row(row: Any) -> dict[str, Any]:
     return {
         "session_id": str(row.session_id),
         "horizon": row.horizon,
-        "forecast_timestamp": row.forecast_timestamp.isoformat(),
+        "forecast_timestamp": _athens_iso(row.forecast_timestamp),
         "predicted_vehicle_count": row.predicted_vehicle_count,
         "actual_vehicle_count": row.actual_vehicle_count,
     }
@@ -317,8 +461,9 @@ def page_item_section(
         if item.resource_version_id is None:
             raise _not_found()
         if section == "sessions":
-            total, rows = repo.page_dataset_sessions(db, item.resource_version_id, page, page_size)
-            data = [_session_row(row) for row in rows]
+            total, data = _dataset_session_page(
+                db, item.resource_id, item.resource_version_id, page, page_size,
+            )
         else:
             total, rows = repo.page_traffic_bins(db, item.resource_version_id, page, page_size)
             data = [_traffic_row(row) for row in rows]
@@ -334,6 +479,11 @@ def page_item_section(
         })
         for row in data:
             row["session_name"] = names.get(row["session_id"])
+            if item.resource_type == "DATASET" and section == "traffic_flow_chart":
+                row["timestamp"] = recording_timestamp(
+                    datetime.fromisoformat(row["timestamp"]),
+                    recording_start_from_filename(row["session_name"]),
+                ).isoformat()
     return {
         "share_id": share.id if share else item.share_id,
         "item_id": item.id, "section": section,
@@ -354,7 +504,7 @@ def _dataset_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
             ),
         }
     if "statistics" in item.visible_sections:
-        session_count, _ = repo.page_dataset_sessions(db, version.id, 1, 1)
+        session_count = _dataset_session_page(db, dataset.id, version.id, 1, 1)[0]
         result["statistics"] = {
             "dataset_version_id": str(version.id), "total_records": version.total_records,
             "session_count": session_count,
@@ -439,7 +589,8 @@ def _prediction_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
         result["forecast_summary"] = {
             "forecast_id": str(run.id), "status": run.status,
             "session_count": run.session_count, "forecast_horizons": run.requested_horizons,
-            "created_at": run.created_at.isoformat(),
+            "created_at": (run.created_at if run.created_at.tzinfo
+                           else run.created_at.replace(tzinfo=UTC)).isoformat(),
         }
     if "model_information" in item.visible_sections:
         result["model_information"] = {
@@ -461,7 +612,10 @@ def _prediction_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
             "historical": [
                 {"session_id": snapshot["session_id"],
                  "session_name": snapshot.get("original_filename") or snapshot_names.get(snapshot["session_id"]),
-                 "points": snapshot["historical"]}
+                 "points": [
+                     {**point, "timestamp": _athens_iso(datetime.fromisoformat(point["timestamp"]))}
+                     for point in snapshot["historical"]
+                 ]}
                 for snapshot in run.session_snapshots[:DETAIL_PAGE_SIZE]
             ],
             "forecast": page_item_section(db, None, item, "forecast_chart", 1, DETAIL_PAGE_SIZE),

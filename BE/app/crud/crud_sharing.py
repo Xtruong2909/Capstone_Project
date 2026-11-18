@@ -9,16 +9,23 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.dataset import Dataset, DatasetVersion, DatasetVersionSession, RecordingSession
-from app.models.lag_feature import LagFeatureSplit
+from app.models.dataset import (
+    Dataset,
+    DatasetGroup,
+    DatasetVersion,
+    DatasetVersionSession,
+    RecordingSession,
+)
+from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
 from app.models.model_training import (
     ExperimentTrainedModel,
     ModelTrainingExperiment,
     ModelTrainingForecastResult,
+    ModelTrainingSplit,
 )
 from app.models.prediction import PredictionResult, PredictionRun
 from app.models.sharing import SharedReport, SharedReportItem
-from app.models.traffic import TrafficTimeSeries
+from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 from app.models.user import User
 
 
@@ -154,6 +161,42 @@ def get_dataset(db: Session, resource_id: UUID) -> Dataset | None:
     return db.get(Dataset, resource_id)
 
 
+def list_dataset_groups(db: Session) -> list[DatasetGroup]:
+    return list(db.scalars(select(DatasetGroup).order_by(DatasetGroup.created_at.desc())).all())
+
+
+def get_dataset_group(db: Session, group_id: UUID) -> DatasetGroup | None:
+    return db.get(DatasetGroup, group_id)
+
+
+def list_group_datasets(db: Session, group_id: UUID) -> list[Dataset]:
+    return list(db.scalars(
+        select(Dataset).where(Dataset.group_id == group_id)
+        .order_by(Dataset.recording_date, Dataset.id)
+    ).all())
+
+
+def experiment_group_id(db: Session, experiment: ModelTrainingExperiment) -> UUID | None:
+    if experiment.dataset_id:
+        return db.scalar(select(Dataset.group_id).where(Dataset.id == experiment.dataset_id))
+    if experiment.split_id:
+        return db.scalar(
+            select(Dataset.group_id)
+            .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+            .join(ModelTrainingSplit, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
+            .where(ModelTrainingSplit.id == experiment.split_id)
+        )
+    if experiment.lag_feature_split_id:
+        return db.scalar(
+            select(Dataset.group_id)
+            .join(TrafficAggregationJob, TrafficAggregationJob.dataset_id == Dataset.id)
+            .join(LagFeatureGeneration, LagFeatureGeneration.aggregation_id == TrafficAggregationJob.id)
+            .join(LagFeatureSplit, LagFeatureSplit.feature_generation_id == LagFeatureGeneration.id)
+            .where(LagFeatureSplit.id == experiment.lag_feature_split_id)
+        )
+    return None
+
+
 def get_latest_approved_version(db: Session, dataset_id: UUID) -> DatasetVersion | None:
     return db.scalars(
         select(DatasetVersion).where(
@@ -252,25 +295,27 @@ def create_resource_shares(
 def list_managed_resource_shares(
     db: Session, *, owner_id: UUID, resource_type: str | None,
     status: str | None, search: str | None, page: int, page_size: int,
-) -> tuple[list[tuple[SharedReport, SharedReportItem]], int, int, int]:
-    base = select(SharedReport, SharedReportItem).join(
-        SharedReportItem, SharedReportItem.share_id == SharedReport.id,
-    ).where(SharedReport.created_by == owner_id)
+) -> tuple[list[SharedReport], int, int, int]:
+    base = select(SharedReport).options(selectinload(SharedReport.items)).where(
+        SharedReport.created_by == owner_id,
+    )
     counts = db.execute(
-        select(SharedReport.status, func.count(SharedReportItem.id))
-        .join(SharedReportItem, SharedReportItem.share_id == SharedReport.id)
+        select(SharedReport.status, func.count(SharedReport.id))
         .where(SharedReport.created_by == owner_id)
         .group_by(SharedReport.status)
     ).all()
     count_map = dict(counts)
     if resource_type:
-        base = base.where(SharedReportItem.resource_type == resource_type)
+        base = base.where(select(SharedReportItem.id).where(
+            SharedReportItem.share_id == SharedReport.id,
+            SharedReportItem.resource_type == resource_type,
+        ).exists())
     if status:
         base = base.where(SharedReport.status == status)
     if search:
         base = base.where(SharedReport.title.ilike(f"%{search}%"))
-    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
-    rows = db.execute(
+    total = db.scalar(select(func.count()).select_from(base.order_by(None).subquery())) or 0
+    rows = db.scalars(
         base.order_by(SharedReport.created_at.desc(), SharedReport.id)
         .offset((page - 1) * page_size).limit(page_size)
     ).all()
