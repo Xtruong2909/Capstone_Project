@@ -195,7 +195,11 @@ export default function EngineerPipelineStudioPage() {
 
         if (!cols || cols.length === 0) {
           const previewRes = await datasetService
-            .getDatasetPreview(activeDatasetId, 1, 5, "raw")
+            .previewDataset(activeDatasetId, {
+              page: 1,
+              page_size: 5,
+              representation: "raw",
+            })
             .catch(() => null);
           if (previewRes?.columns && Array.isArray(previewRes.columns)) {
             cols = previewRes.columns.map((c, idx) => ({
@@ -352,71 +356,24 @@ export default function EngineerPipelineStudioPage() {
       {/* =========================================================================
           TOP HEADER & DATASET SELECTOR CARD
          ========================================================================= */}
-      <div className="admin-card" style={{ marginBottom: "1.25rem" }}>
-        <div
-          className="admin-card__header"
-          style={{ alignItems: "flex-start" }}
-        >
-          <div className="admin-card__header-left">
-            <div
-              className="admin-card__icon-box"
-              style={{
-                background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-                color: "#2563eb",
-                border: "1px solid #bfdbfe",
-              }}
-            >
-              <Workflow size={22} />
+      <section className="adm-panel" style={{ marginBottom: "1.25rem" }}>
+        <div className="adm-panel__header">
+          <div className="adm-panel__title-group">
+            <div className="adm-panel__icon adm-tone--blue">
+              <Workflow size={18} />
             </div>
             <div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}
-              >
-                <h3
-                  className="admin-card__title"
-                  style={{ fontSize: "1.2rem", margin: 0 }}
-                >
-                  Data Pipeline Studio
-                </h3>
-                <span
-                  style={{
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    padding: "0.15rem 0.55rem",
-                    borderRadius: "999px",
-                    background: "#eff6ff",
-                    color: "#1d4ed8",
-                    border: "1px solid #bfdbfe",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  pNEUMA UAV Pipeline
-                </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", flexWrap: "wrap" }}>
+                <h2 className="adm-panel__title">Data Pipeline Studio</h2>
+                <span className="adm-badge adm-badge--blue">pNEUMA UAV</span>
               </div>
-              <p
-                style={{
-                  margin: "0.25rem 0 0",
-                  fontSize: "0.82rem",
-                  color: "#64748b",
-                  lineHeight: 1.4,
-                }}
-              ></p>
             </div>
           </div>
 
-          {/* Quick Header Navigation Actions */}
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
             <button
               type="button"
-              className="btn-secondary"
+              className="adm-btn adm-btn--ghost adm-btn--sm"
               onClick={() => {
                 fetchCatalogAndHealth?.();
                 if (activeDatasetId) {
@@ -431,7 +388,6 @@ export default function EngineerPipelineStudioPage() {
                 }
               }}
               title="Refresh dataset metadata & columns"
-              style={{ padding: "0.42rem 0.75rem", fontSize: "0.8rem" }}
             >
               <RefreshCw
                 size={14}
@@ -444,15 +400,8 @@ export default function EngineerPipelineStudioPage() {
 
             <button
               type="button"
-              className="btn-action"
+              className="adm-btn adm-btn--ghost adm-btn--sm"
               onClick={() => navigate("/engineer/datasets")}
-              style={{
-                background: "#f8fafc",
-                color: "#334155",
-                border: "1px solid #cbd5e1",
-                padding: "0.42rem 0.75rem",
-                fontSize: "0.8rem",
-              }}
             >
               <FileSpreadsheet size={14} />
               <span>Catalog</span>
@@ -460,170 +409,130 @@ export default function EngineerPipelineStudioPage() {
           </div>
         </div>
 
-        {/* Dataset Selector Control Bar */}
-        <div
-          style={{
-            marginTop: "0.75rem",
-            padding: "0.85rem 1rem",
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0",
-            borderRadius: "12px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "1rem",
-          }}
-        >
+        <div className="adm-panel__body">
           <div
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
               gap: "0.85rem",
-              flex: "1 1 340px",
-              minWidth: "280px",
             }}
           >
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "0.4rem",
-                fontSize: "0.84rem",
-                fontWeight: 700,
-                color: "#1e293b",
-                whiteSpace: "nowrap",
+                gap: "0.75rem",
+                flex: "1 1 320px",
+                minWidth: 0,
               }}
             >
-              <Database size={16} color="#2563eb" />
-              <span>Target Dataset:</span>
-            </div>
-
-            <select
-              className="admin-select"
-              value={activeDatasetId}
-              onChange={(e) => handleDatasetChange(e.target.value)}
-              disabled={isLoadingCatalog || uniqueDatasets.length === 0}
-              style={{
-                flex: 1,
-                fontSize: "0.84rem",
-                fontWeight: 600,
-                padding: "0.45rem 0.8rem",
-                background: "#ffffff",
-                borderColor: "#cbd5e1",
-              }}
-            >
-              {uniqueDatasets.length === 0 ? (
-                <option value="">No datasets available</option>
-              ) : (
-                uniqueDatasets.map((d) => (
-                  <option key={d.dataset_id} value={d.dataset_id}>
-                    {d.name} ({d.file_format || "CSV"}) — [{d.approval_status}] ({resolveEffectiveVersionTag(d, versionLineageMap)})
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
-          {/* Active Dataset Metadata Badges */}
-          {activeDataset && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.6rem",
-                flexWrap: "wrap",
-                fontSize: "0.78rem",
-              }}
-            >
-              <span
+              <label
+                htmlFor="pipeline-target-dataset"
                 style={{
-                  background: "#f1f5f9",
-                  color: "#475569",
-                  padding: "0.22rem 0.55rem",
-                  borderRadius: "6px",
-                  fontWeight: 600,
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                Code: <code>{activeDataset.code}</code>
-              </span>
-
-              <span
-                style={{
-                  background: "#eff6ff",
-                  color: "#1d4ed8",
-                  padding: "0.22rem 0.55rem",
-                  borderRadius: "6px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  fontSize: "0.84rem",
                   fontWeight: 700,
-                  border: "1px solid #bfdbfe",
+                  color: "#1e293b",
+                  whiteSpace: "nowrap",
                 }}
               >
-                Version: {effectiveVersion}
-              </span>
+                <Database size={15} style={{ color: "#2563eb" }} />
+                <span>Dataset</span>
+              </label>
 
-              <span
-                style={{
-                  background: "#f8fafc",
-                  color: "#334155",
-                  padding: "0.22rem 0.55rem",
-                  borderRadius: "6px",
-                  fontWeight: 600,
-                  border: "1px solid #e2e8f0",
-                }}
+              <select
+                id="pipeline-target-dataset"
+                aria-label="Target dataset"
+                className="adm-select"
+                value={activeDatasetId}
+                onChange={(e) => handleDatasetChange(e.target.value)}
+                disabled={isLoadingCatalog || uniqueDatasets.length === 0}
+                style={{ flex: 1, minWidth: 0, fontWeight: 600 }}
               >
-                {activeDataset.file_format} (
-                {formatBytes(activeDataset.file_size_bytes)})
-              </span>
-
-              <DatasetStatusBadge status={activeDataset.approval_status} />
+                {uniqueDatasets.length === 0 ? (
+                  <option value="">No datasets available</option>
+                ) : (
+                  uniqueDatasets.map((d) => (
+                    <option key={d.dataset_id} value={d.dataset_id}>
+                      {d.name} ({d.file_format || "CSV"}) — [{d.approval_status}] ({resolveEffectiveVersionTag(d, versionLineageMap)})
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
-          )}
+
+            {activeDataset && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.55rem",
+                  flexWrap: "wrap",
+                  fontSize: "0.8rem",
+                  color: "#475569",
+                }}
+              >
+                <span className="adm-code-tag">{effectiveVersion}</span>
+                <span>
+                  {activeDataset.file_format} • {formatBytes(activeDataset.file_size_bytes)}
+                </span>
+                <DatasetStatusBadge status={activeDataset.approval_status} />
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* =========================================================================
           ERROR / EMPTY STATES
          ========================================================================= */}
       {catalogError && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.65rem",
-            padding: "0.9rem 1.15rem",
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: "12px",
-            color: "#b91c1c",
-            marginBottom: "1.25rem",
-            fontSize: "0.86rem",
-            fontWeight: 600,
-          }}
-        >
-          <AlertCircle size={18} />
-          <span>{catalogError}</span>
+        <div className="eng-alert eng-alert--error">
+          <div className="eng-alert__content">
+            <AlertCircle size={17} style={{ flexShrink: 0, marginTop: "2px" }} />
+            <span>{catalogError}</span>
+          </div>
+          <div className="eng-alert__actions">
+            <button
+              type="button"
+              className="adm-btn adm-btn--ghost adm-btn--sm"
+              onClick={() => fetchCatalogAndHealth?.()}
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 
       {columnsFetchError && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.65rem",
-            padding: "0.9rem 1.15rem",
-            background: "#fffbeb",
-            border: "1px solid #fde68a",
-            borderRadius: "12px",
-            color: "#92400e",
-            marginBottom: "1.25rem",
-            fontSize: "0.86rem",
-            fontWeight: 600,
-          }}
-        >
-          <AlertCircle size={18} />
-          <span>{columnsFetchError}</span>
+        <div className="eng-alert eng-alert--warning">
+          <div className="eng-alert__content">
+            <AlertCircle size={17} style={{ flexShrink: 0, marginTop: "2px" }} />
+            <span>{columnsFetchError}</span>
+          </div>
+          <div className="eng-alert__actions">
+            <button
+              type="button"
+              className="adm-btn adm-btn--ghost adm-btn--sm"
+              onClick={() => {
+                if (activeDatasetId) {
+                  setWizardStateByDataset((prev) => ({
+                    ...prev,
+                    [activeDatasetId]: {
+                      ...(prev[activeDatasetId] || createDefaultDatasetWizardState()),
+                      columnsLoaded: false,
+                    },
+                  }));
+                }
+              }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 
