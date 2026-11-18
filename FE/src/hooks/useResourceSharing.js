@@ -50,3 +50,20 @@ export function useAvailableShareResources({ resourceType, search, page, enabled
 
   return { ...result, loading, error }
 }
+
+export function useManagedShareDetail(shareId) {
+  const [detail, setDetail] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    sharingService.getManaged(shareId)
+      .then((value) => { if (!cancelled) setDetail(value) })
+      .catch((err) => {
+        if (!cancelled) setError(extractErrorMessage(err, 'Không tải được chi tiết chia sẻ.'))
+      })
+    return () => { cancelled = true }
+  }, [shareId])
+
+  return { detail, error, loading: !detail && !error }
+}

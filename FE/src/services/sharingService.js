@@ -4,6 +4,14 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/ap
   .replace(/\/v1\/?$/, '')
 
 export const sharingService = {
+  async getCatalog() {
+    const { data } = await apiClient.get('/shares/catalog', { baseURL: API_BASE })
+    return data
+  },
+  async shareSelection(payload) {
+    const { data } = await apiClient.post('/shares/selection', payload, { baseURL: API_BASE })
+    return data
+  },
   async listAvailableResources(params) {
     const { data } = await apiClient.get('/shares/available-resources', { baseURL: API_BASE, params })
     return data

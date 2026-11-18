@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  BarChart3, Building2, ChevronLeft, ChevronRight,
+  ArrowLeft, BarChart3, Building2, ChevronLeft, ChevronRight, Database,
   Eye, FileSpreadsheet, FlaskConical, LogOut, Search, Share2, TrendingUp, UserCheck,
 } from 'lucide-react'
 
@@ -118,7 +118,10 @@ export default function BusinessSharedResultsPage() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const { data, total_records: total, loading, error } = useSharedResults({ search, resourceType, page })
   const visibleShares = data.filter((share) => share.available_sections.includes(resourceType))
-  const selectedShareId = visibleShares.some((share) => share.share_id === shareId) ? shareId : visibleShares[0]?.share_id || ''
+  const isDatasetReview = resourceType === 'DATASET'
+  const selectedShareId = visibleShares.some((share) => share.share_id === shareId)
+    ? shareId : isDatasetReview ? '' : visibleShares[0]?.share_id || ''
+  const showDatasetDetail = isDatasetReview && Boolean(selectedShareId)
   const { detail, loading: detailLoading, error: detailError } = useSharedResultDetail(selectedShareId)
 
   const displayName = user?.full_name?.replace(/\s*\(business\s+user\)\s*$/i, '').trim() || 'Business User'
@@ -237,7 +240,7 @@ export default function BusinessSharedResultsPage() {
             </nav>
 
             {/* Search & Filter bar */}
-            <div className="admin-card biz-toolbar-card">
+            {!showDatasetDetail && <div className="admin-card biz-toolbar-card">
               <form
                 className="biz-toolbar"
                 onSubmit={(event) => { event.preventDefault(); setPage(1); setSearch(searchInput.trim()) }}
@@ -257,14 +260,14 @@ export default function BusinessSharedResultsPage() {
                   </button>
                 </div>
               </form>
-            </div>
+            </div>}
 
             {/* Two-column layout */}
-            <div className="biz-layout">
+            <div className={`biz-layout${isDatasetReview ? ' biz-layout--dataset' : ''}`}>
               {/* Left sidebar: list */}
-              <aside className="biz-list admin-card">
+              {(!isDatasetReview || !showDatasetDetail) && <aside className={`biz-list admin-card${isDatasetReview ? ' biz-list--dataset' : ''}`}>
                 <div className="biz-list__header">
-                  <span className="biz-list__title">Danh sách</span>
+                  <span className="biz-list__title">{isDatasetReview ? 'Dataset được chia sẻ' : 'Danh sách'}</span>
                   <span className="biz-list__count">{total} kết quả</span>
                 </div>
 
@@ -286,16 +289,21 @@ export default function BusinessSharedResultsPage() {
                     <button
                       type="button"
                       key={share.share_id}
-                      className={`biz-list__item${selectedShareId === share.share_id ? ' biz-list__item--active' : ''}`}
+                      className={`biz-list__item${isDatasetReview ? ' biz-list__item--dataset' : ''}${selectedShareId === share.share_id ? ' biz-list__item--active' : ''}`}
                       onClick={() => setShareId(share.share_id)}
                     >
-                      <div className="biz-list__item-top">
-                        <strong className="biz-list__item-title">{share.title}</strong>
-                      </div>
-                      <span className="biz-list__item-sections">{share.available_sections.map(sectionLabel).join(' · ')}</span>
-                      <small className="biz-list__item-date">
-                        {share.published_at ? new Date(share.published_at).toLocaleString('vi-VN') : ''}
-                      </small>
+                      {isDatasetReview ? <>
+                        <span className="biz-dataset-list__icon"><Database size={21} /></span>
+                        <span className="biz-dataset-list__info">
+                          <strong className="biz-list__item-title">{share.title}</strong>
+                          <small className="biz-list__item-date">Chia sẻ {share.published_at ? new Date(share.published_at).toLocaleString('vi-VN') : ''}</small>
+                        </span>
+                        <span className="biz-dataset-list__action">Xem chi tiết <ChevronRight size={16} /></span>
+                      </> : <>
+                        <div className="biz-list__item-top"><strong className="biz-list__item-title">{share.title}</strong></div>
+                        <span className="biz-list__item-sections">{share.available_sections.map(sectionLabel).join(' · ')}</span>
+                        <small className="biz-list__item-date">{share.published_at ? new Date(share.published_at).toLocaleString('vi-VN') : ''}</small>
+                      </>}
                     </button>
                   ))}
                 </div>
@@ -309,10 +317,10 @@ export default function BusinessSharedResultsPage() {
                     Sau <ChevronRight size={15} />
                   </button>
                 </div>
-              </aside>
+              </aside>}
 
               {/* Right: detail panel */}
-              <article className="biz-detail admin-card" style={{ minWidth: 0, padding: 0 }}>
+              {(!isDatasetReview || showDatasetDetail) && <article className={`biz-detail admin-card${showDatasetDetail && detail?.share_id === selectedShareId && !detailLoading && !detailError ? ' biz-detail--dataset' : ''}`} style={{ minWidth: 0, padding: 0 }}>
                 {!selectedShareId ? (
                   <div className="sci-state" style={{ margin: '3rem 1rem' }}>
                     <Eye size={32} style={{ margin: '0 auto 0.75rem', display: 'block', color: '#94a3b8' }} />
@@ -326,16 +334,20 @@ export default function BusinessSharedResultsPage() {
                 ) : detail?.share_id === selectedShareId && (
                   <div className="biz-detail__inner">
                     <div className="biz-detail__heading">
+                      {showDatasetDetail && <button type="button" className="sci-back biz-dataset-back" onClick={() => setShareId('')}><ArrowLeft size={16} /> Danh sách dataset</button>}
                       <h2 className="biz-detail__title">{detail.title}</h2>
                     </div>
                     <div className="biz-detail__body">
                       {detail.resources.filter((resource) => resource.resource_type === resourceType).map((resource) => (
-                        <div key={resource.item_id} className="biz-resource">
-                          <div className="biz-resource__header">
+                        <div key={resource.item_id} className={`biz-resource${resource.resource_type === 'DATASET' ? ' biz-resource--dataset' : ''}`}>
+                          {(resource.resource_type !== 'DATASET' || detail.resources.filter((item) => item.resource_type === resourceType).length > 1) && <div className="biz-resource__header">
                             <ResourceTypeBadge type={resource.resource_type} />
-                            <h3 className="biz-resource__title">{RESOURCE_TYPE_LABELS[resource.resource_type] || resource.resource_type}</h3>
-                          </div>
-                          {resource.visible_sections.map((section) => (
+                            <h3 className="biz-resource__title">{resource.resource_type === 'DATASET' ? resource.data?.metadata?.dataset_name || RESOURCE_TYPE_LABELS.DATASET : RESOURCE_TYPE_LABELS[resource.resource_type] || resource.resource_type}</h3>
+                          </div>}
+                          {(resource.resource_type === 'EXPERIMENT'
+                            ? resource.visible_sections.filter((s) => s === 'prediction_rows')
+                            : resource.visible_sections
+                          ).map((section) => (
                             <SharedSection
                               key={`${resource.item_id}:${section}`}
                               shareId={detail.share_id}
@@ -349,7 +361,7 @@ export default function BusinessSharedResultsPage() {
                     </div>
                   </div>
                 )}
-              </article>
+              </article>}
             </div>
 
           </div>

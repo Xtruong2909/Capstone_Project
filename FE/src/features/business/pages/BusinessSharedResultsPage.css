@@ -91,6 +91,31 @@
   align-items: start;
 }
 
+.biz-layout--dataset { grid-template-columns: minmax(0, 1fr); }
+.biz-list--dataset { position: static; }
+.biz-list--dataset .biz-list__body { max-height: none; overflow: visible; }
+.biz-list__item--dataset {
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  min-height: 88px;
+  padding: 1rem 1.35rem;
+}
+.biz-list__item--dataset:last-child { border-bottom: 0; }
+.biz-dataset-list__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #e7f2ff;
+  color: #1668d4;
+}
+.biz-dataset-list__info { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 0.25rem; }
+.biz-list__item--dataset .biz-list__item-title { font-size: 1rem; }
+.biz-dataset-list__action { display: inline-flex; flex: none; align-items: center; gap: 0.3rem; color: #1668d4; font-size: 0.82rem; font-weight: 700; }
+
 @media (max-width: 860px) {
   .biz-layout {
     grid-template-columns: 1fr;
@@ -105,6 +130,8 @@
   .biz-toolbar { align-items: stretch; }
   .biz-search { max-width: none; flex-basis: 100%; }
   .biz-toolbar__right { margin-left: 0; width: 100%; }
+  .biz-list__item--dataset { flex-wrap: wrap; }
+  .biz-dataset-list__action { margin-left: 60px; }
 }
 
 /* ── Share list (left panel) ── */
@@ -338,6 +365,59 @@
   font-size: 0.78rem;
   font-weight: 700;
   color: #0ea5e9;
+}
+
+/* Dataset review uses separate cards, matching the Data Scientist pages. */
+.biz-detail--dataset {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.biz-detail--dataset .biz-detail__inner,
+.biz-resource--dataset {
+  gap: 1rem;
+}
+
+.biz-detail--dataset .biz-detail__heading,
+.biz-resource--dataset .biz-resource__header,
+.biz-resource--dataset .biz-section {
+  border: 1px solid #d8e4f1;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 45, 80, 0.06);
+}
+
+.biz-detail--dataset .biz-detail__heading {
+  padding: 1.15rem 1.4rem;
+}
+.biz-dataset-back { margin-bottom: 0.9rem; font-family: inherit; }
+.biz-detail--dataset .biz-detail__title { font-size: 1.35rem; }
+
+.biz-detail--dataset .biz-detail__body {
+  padding: 0;
+}
+
+.biz-resource--dataset {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  overflow: visible;
+}
+
+.biz-resource--dataset .biz-resource__header {
+  padding: 0.85rem 1.15rem;
+}
+
+.biz-resource--dataset .biz-section {
+  padding: 1.15rem 1.25rem;
+  gap: 0.85rem;
+}
+
+.biz-resource--dataset .biz-section__title {
+  font-size: 1rem;
+  color: #123d63;
 }
 
 /* ── Type badge ── */

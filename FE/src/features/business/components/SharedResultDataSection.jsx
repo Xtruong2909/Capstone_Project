@@ -29,9 +29,9 @@ const LABELS = {
   n_estimators: 'Số cây', max_depth: 'Độ sâu tối đa', min_samples_split: 'Mẫu tối thiểu để tách',
   min_samples_leaf: 'Mẫu tối thiểu ở lá', max_features: 'Số đặc trưng xét',
   random_state: 'Giá trị khởi tạo ngẫu nhiên',
-  RANDOM_FOREST: 'Random Forest', PERSISTENCE: 'Dự báo giữ nguyên',
-  HISTORICAL_AVERAGE: 'Trung bình lịch sử', random_forest: 'Random Forest',
-  persistence: 'Dự báo giữ nguyên', historical_average: 'Trung bình lịch sử',
+  RANDOM_FOREST: 'Random Forest', PERSISTENCE: 'Persistence',
+  HISTORICAL_AVERAGE: 'Historical Average', random_forest: 'Random Forest',
+  persistence: 'Persistence', historical_average: 'Historical Average',
 }
 
 const COLUMN_ORDER = {
