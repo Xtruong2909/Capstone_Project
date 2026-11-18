@@ -310,8 +310,13 @@ export default function AdminDatasetsPage() {
             <div className="adm-panel__icon adm-tone--amber">
               <Clock size={20} />
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Awaiting Approval')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {reviewQueue.length}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Awaiting Approval')}
+              </div>
             </div>
           </div>
         </div>
@@ -326,7 +331,7 @@ export default function AdminDatasetsPage() {
                 {new Set(reviewQueue.map((d) => d.dataset_id || d.dataset_name).filter(Boolean)).size}
               </div>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginTop: '0.2rem' }}>
-                Pending UAV Datasets
+                {t('Pending UAV Datasets')}
               </div>
             </div>
           </div>
@@ -337,8 +342,13 @@ export default function AdminDatasetsPage() {
             <div className="adm-panel__icon adm-tone--purple">
               <Layers size={20} />
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Total Trajectory Points in Queue')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {reviewQueue.reduce((acc, d) => acc + (d.total_records || 0), 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Total Trajectory Points in Queue')}
+              </div>
             </div>
           </div>
         </div>
@@ -423,49 +433,7 @@ export default function AdminDatasetsPage() {
               <h3 className="adm-panel__title">
                 UAV Trajectory Versions Awaiting Decision ({filteredDatasets.length})
               </h3>
-              <p className="adm-panel__subtitle">
-                Inspect normalized 10-field pNEUMA schema records before authorizing ML training access
-              </p>
             </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-            {/* Search Input */}
-            <div style={{ position: 'relative', minWidth: '220px' }}>
-              <Search
-                size={14}
-                style={{
-                  position: 'absolute',
-                  left: '0.7rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#94a3b8',
-                }}
-              />
-              <input
-                type="text"
-                className="admin-input"
-                placeholder={t('Search dataset or version...')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  padding: '0.42rem 0.75rem 0.42rem 2rem',
-                  fontSize: '0.8rem',
-                  borderRadius: '8px',
-                  width: '100%',
-                }}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="btn-action btn-action--primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-              onClick={fetchDatasets}
-            >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-              <span>{t('Refresh')}</span>
-            </button>
           </div>
         </div>
 
@@ -630,12 +598,9 @@ export default function AdminDatasetsPage() {
                           </button>
                           <button
                             type="button"
-                            className="btn-action btn-action--danger"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.45rem',
-                            }}
+                            className="adm-btn adm-btn--danger adm-btn--sm"
+                            disabled={isRowLoading}
+                            onClick={() => handleOpenReviewModal(item, 'REJECTED')}
                           >
                             <XCircle size={13} />
                             <span>{t('Reject')}</span>
@@ -1106,9 +1071,8 @@ export default function AdminDatasetsPage() {
               )}
             </div>
 
-            {/* Embedded Review Action Bar inside Preview Modal */}
+            {/* Embedded Representation Switcher & Review Action Bar inside Preview Modal */}
             <div
-              className="modal-actions"
               style={{
                 padding: '0.85rem 1.5rem',
                 background: '#f8fafc',
@@ -1116,28 +1080,17 @@ export default function AdminDatasetsPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '1rem',
+                gap: '0.85rem',
                 flexWrap: 'wrap',
               }}
             >
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleClosePreview}
-              >
-                {t('Close Preview')}
-              </button>
-
-              {isAwaitingReview(previewState.item.approval_status) && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    flex: '1 1 420px',
-                    justifyContent: 'flex-end',
-                    flexWrap: 'wrap',
-                  }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`adm-filter-pill ${
+                    previewState.representation === 'normalized' ? 'active' : ''
+                  }`}
+                  onClick={() => handleToggleRepresentation('normalized')}
                 >
                   Normalized Schema (Parquet)
                 </button>
@@ -1152,18 +1105,19 @@ export default function AdminDatasetsPage() {
                 </button>
               </div>
 
-              {previewState.item && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, maxWidth: '560px' }}>
+              {previewState.item && isAwaitingReview(previewState.item.approval_status) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, maxWidth: '580px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <MessageSquare size={15} style={{ color: '#64748b', flexShrink: 0 }} />
                   <input
                     type="text"
+                    aria-label={t('Audit note')}
                     value={previewState.inlineNote}
                     onChange={(e) =>
                       setPreviewState((prev) => ({ ...prev, inlineNote: e.target.value }))
                     }
-                    placeholder="Audit note..."
+                    placeholder={t('Audit note...')}
                     className="adm-input"
-                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem' }}
+                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', flex: '1 1 180px' }}
                   />
                   <button
                     type="button"
@@ -1177,8 +1131,8 @@ export default function AdminDatasetsPage() {
                       )
                     }
                   >
-                    <XCircle size={14} />
-                    <span>{t('Reject Version')}</span>
+                    <CheckCircle2 size={14} />
+                    <span>{t('Approve Version')}</span>
                   </button>
                   <button
                     type="button"
@@ -1192,8 +1146,8 @@ export default function AdminDatasetsPage() {
                       )
                     }
                   >
-                    <CheckCircle2 size={14} />
-                    <span>{t('Approve Version')}</span>
+                    <XCircle size={14} />
+                    <span>{t('Reject Version')}</span>
                   </button>
                 </div>
               )}

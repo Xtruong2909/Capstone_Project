@@ -11,6 +11,7 @@ import {
   Layers,
   Search,
   FolderCheck,
+  MessageSquare,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import { useLanguage } from '../../../hooks/useLanguage'
@@ -162,8 +163,13 @@ export default function AdminAvailableDatasetsPage() {
             <div className="adm-panel__icon adm-tone--emerald">
               <CheckCircle2 size={20} />
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Approved Dataset Versions')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {datasets.length}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Approved Dataset Versions')}
+              </div>
             </div>
           </div>
         </div>
@@ -173,8 +179,13 @@ export default function AdminAvailableDatasetsPage() {
             <div className="adm-panel__icon adm-tone--blue">
               <Database size={20} />
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Active Traffic Datasets')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {new Set(datasets.map((d) => d.dataset_id || d.dataset_name).filter(Boolean)).size}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Active Traffic Datasets')}
+              </div>
             </div>
           </div>
         </div>
@@ -184,8 +195,13 @@ export default function AdminAvailableDatasetsPage() {
             <div className="adm-panel__icon adm-tone--purple">
               <Layers size={20} />
             </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
-              {t('Approved Trajectory Records')}
+            <div>
+              <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {datasets.reduce((acc, d) => acc + (d.total_records || 0), 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+                {t('Approved Trajectory Records')}
+              </div>
             </div>
           </div>
         </div>
@@ -197,7 +213,8 @@ export default function AdminAvailableDatasetsPage() {
           <Search size={16} className="adm-search-box__icon" />
           <input
             type="text"
-            placeholder="Search verified datasets by name, version, format, or note..."
+            aria-label={t('Search verified datasets')}
+            placeholder={t('Search verified datasets by name, version, format, or note...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="adm-input adm-input--search"
@@ -208,9 +225,10 @@ export default function AdminAvailableDatasetsPage() {
           type="button"
           className="adm-btn adm-btn--primary"
           onClick={fetchApprovedDatasets}
+          disabled={isLoading}
         >
           <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-          <span>Refresh Catalog</span>
+          <span>{t('Refresh Catalog')}</span>
         </button>
       </div>
 
@@ -222,57 +240,14 @@ export default function AdminAvailableDatasetsPage() {
               <FolderCheck size={18} />
             </div>
             <div>
-              <h3 className="admin-card__title">
+              <h3 className="adm-panel__title">
                 {t('Dataset Available')} ({filteredDatasets.length})
               </h3>
-              <p
-                className="admin-card__subtitle"
-                style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: '#64748b' }}
-              >
-                {t('Catalog of standardized dataset versions officially approved for analytics and AI/ML forecasting.')}
-              </p>
             </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', minWidth: '240px' }}>
-              <Search
-                size={14}
-                style={{
-                  position: 'absolute',
-                  left: '0.7rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#94a3b8',
-                }}
-              />
-              <input
-                type="text"
-                className="admin-input"
-                placeholder={t('Search approved dataset or version...')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  padding: '0.42rem 0.75rem 0.42rem 2rem',
-                  fontSize: '0.8rem',
-                  borderRadius: '8px',
-                  width: '100%',
-                }}
-              />
-            </div>
-
-            <button
-              type="button"
-              className="btn-action btn-action--primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-              onClick={fetchApprovedDatasets}
-            >
-              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-              <span>{t('Refresh')}</span>
-            </button>
           </div>
         </div>
 
+        <div className="adm-panel__body--flush">
         {isLoading ? (
           <div className="empty-state">
             <RefreshCw
@@ -399,7 +374,8 @@ export default function AdminAvailableDatasetsPage() {
                           <Eye size={13} />
                           <span>{t('Preview')}</span>
                         </button>
-                      </td>
+                      )}
+                    </td>
                     </tr>
                   ))}
                 </tbody>
@@ -410,36 +386,42 @@ export default function AdminAvailableDatasetsPage() {
       </div>
 
       {/* Preview Modal */}
-      {previewState.isOpen && (
+      {previewState.isOpen && previewState.item && (
         <div
           className="adm-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="available-preview-modal-title"
           onClick={(e) => {
             if (e.target === e.currentTarget) handleClosePreview()
           }}
         >
-          <div className="modal-dialog" style={{ maxWidth: '1020px', width: '94%' }}>
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <div className="admin-card__icon-box admin-card__icon-box--green">
+          <div className="adm-modal adm-modal--xl">
+            <div className="adm-modal__header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div className="adm-panel__icon adm-tone--emerald">
                   <Layers size={18} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>
+                  <h3 id="available-preview-modal-title" className="adm-modal__title">
                     {previewState.item.dataset_name}{' '}
-                    <span style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600 }}>
+                    <span style={{ fontSize: '0.85rem', color: '#059669', fontWeight: 700 }}>
                       ({previewState.item.version_tag})
                     </span>
                   </h3>
                   <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
-                    {t('Status:')} <strong style={{ color: '#15803d' }}>{t('Approved')}</strong> • {t('Format')}:{' '}
-                    <strong>{previewState.item.file_format}</strong> • Records:{' '}
-                    <strong>
-                      {Number(previewState.item.total_records || 0).toLocaleString()}
-                    </strong>
+                    {t('Status:')} <strong style={{ color: '#059669' }}>{t('Approved')}</strong> • {t('Format')}:{' '}
+                    <strong>{previewState.item.file_format}</strong> • {t('Records')}:{' '}
+                    <strong>{Number(previewState.item.total_records || 0).toLocaleString()}</strong>
                   </div>
                 </div>
               </div>
-              <button type="button" className="adm-modal__close" onClick={handleClosePreview}>
+              <button
+                type="button"
+                className="adm-modal__close"
+                aria-label={t('Close modal')}
+                onClick={handleClosePreview}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -453,6 +435,7 @@ export default function AdminAvailableDatasetsPage() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '1rem',
+                flexWrap: 'wrap',
               }}
             >
               <div className="adm-filter-pills">
@@ -463,53 +446,16 @@ export default function AdminAvailableDatasetsPage() {
                   }`}
                   onClick={() => handleToggleRepresentation('normalized')}
                 >
-                  <button
-                    type="button"
-                    style={{
-                      padding: '0.3rem 0.75rem',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background:
-                        previewState.representation === 'normalized' ? '#ffffff' : 'transparent',
-                      color:
-                        previewState.representation === 'normalized' ? '#1d4ed8' : '#64748b',
-                      boxShadow:
-                        previewState.representation === 'normalized'
-                          ? '0 1px 3px rgba(0,0,0,0.08)'
-                          : 'none',
-                    }}
-                    onClick={() => handleToggleRepresentation('normalized')}
-                  >
-                    Normalized (pNEUMA)
-                  </button>
-                  <button
-                    type="button"
-                    style={{
-                      padding: '0.3rem 0.75rem',
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background:
-                        previewState.representation === 'raw' ? '#ffffff' : 'transparent',
-                      color: previewState.representation === 'raw' ? '#1d4ed8' : '#64748b',
-                      boxShadow:
-                        previewState.representation === 'raw'
-                          ? '0 1px 3px rgba(0,0,0,0.08)'
-                          : 'none',
-                    }}
-                    onClick={() => handleToggleRepresentation('raw')}
-                  >
-                    {t('Raw Source')}
-                  </button>
-                </div>
-
-                <button type="button" className="modal-close-btn" onClick={handleClosePreview}>
-                  <X size={20} />
+                  Normalized (pNEUMA)
+                </button>
+                <button
+                  type="button"
+                  className={`adm-filter-pill ${
+                    previewState.representation === 'raw' ? 'active' : ''
+                  }`}
+                  onClick={() => handleToggleRepresentation('raw')}
+                >
+                  {t('Raw Source')}
                 </button>
               </div>
               <span className="adm-badge adm-badge--emerald">
@@ -520,103 +466,49 @@ export default function AdminAvailableDatasetsPage() {
 
             <div className="adm-modal__body" style={{ padding: 0 }}>
               {previewState.isLoading ? (
-                <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
-                  <RefreshCw
-                    size={26}
-                    className="animate-spin"
-                    style={{ margin: '0 auto 0.75rem', color: '#2563eb' }}
-                  />
-                  <p>{t(`Loading ${previewState.representation} preview data...`)}</p>
+                <div className="adm-empty">
+                  <RefreshCw size={24} className="animate-spin" style={{ color: '#2563eb' }} />
+                  <h4 className="adm-empty__title">{t(`Loading ${previewState.representation} preview data...`)}</h4>
                 </div>
               ) : previewState.error ? (
-                <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
-                  <AlertCircle
-                    size={26}
-                    style={{ margin: '0 auto 0.75rem', color: '#dc2626' }}
-                  />
-                  <p style={{ color: '#dc2626' }}>{t(previewState.error)}</p>
+                <div className="adm-empty">
+                  <AlertCircle size={24} style={{ color: '#e11d48' }} />
+                  <h4 className="adm-empty__title">{t(previewState.error)}</h4>
                 </div>
-              ) : !previewState.data ||
-                !previewState.data.rows ||
-                previewState.data.rows.length === 0 ? (
-                <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
-                  <Database
-                    size={26}
-                    style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }}
-                  />
-                  <p>{t('No preview rows available for this representation.')}</p>
+              ) : !previewState.data?.rows?.length ? (
+                <div className="adm-empty">
+                  <Database size={24} style={{ color: '#64748b' }} />
+                  <h4 className="adm-empty__title">{t('No preview rows available for this representation.')}</h4>
                 </div>
               ) : (
-                <div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '0.75rem',
-                      fontSize: '0.8rem',
-                      color: '#64748b',
-                    }}
-                  >
-                    <span>
-                      {t('Showing page')} <strong>{previewState.page}</strong> •{' '}
-                      {previewState.data.columns?.length || 0} columns
-                    </span>
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        disabled={previewState.page <= 1 || previewState.isLoading}
-                        style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }}
-                        onClick={() => handlePageChange(previewState.page - 1)}
-                      >
-                        <ChevronLeft size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        disabled={
-                          previewState.data.rows.length < previewState.pageSize ||
-                          previewState.isLoading
-                        }
-                        style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }}
-                        onClick={() => handlePageChange(previewState.page + 1)}
-                      >
-                        <ChevronRight size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      overflowX: 'auto',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                    }}
-                  >
-                    <table
-                      className="admin-table"
-                      style={{ margin: 0, fontSize: '0.82rem' }}
-                    >
-                      <thead>
-                        <tr>
-                          {previewState.data.columns?.map((col) => (
-                            <th key={col.name || col} style={{ whiteSpace: 'nowrap' }}>
-                              {col.name || col}
-                              {col.type && (
-                                <span
-                                  style={{
-                                    display: 'block',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 500,
-                                    color: '#94a3b8',
-                                  }}
-                                >
-                                  {col.type}
-                                </span>
-                              )}
-                            </th>
-                          ))}
+                <div className="adm-table-wrap" style={{ maxHeight: '460px' }}>
+                  <table className="adm-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        {previewState.data.columns?.map((col) => (
+                          <th key={col.name || col} style={{ whiteSpace: 'nowrap' }}>
+                            {col.name || col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewState.data.rows.map((row, idx) => (
+                        <tr key={idx}>
+                          <td style={{ color: '#64748b', fontWeight: 700 }}>
+                            {(previewState.page - 1) * previewState.pageSize + idx + 1}
+                          </td>
+                          {previewState.data.columns?.map((col) => {
+                            const colKey = col.name || col
+                            return (
+                              <td key={colKey} style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
+                                {row[colKey] !== null && row[colKey] !== undefined
+                                  ? String(row[colKey])
+                                  : 'null'}
+                              </td>
+                            )
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -625,24 +517,48 @@ export default function AdminAvailableDatasetsPage() {
               )}
             </div>
 
-            <div
-              className="modal-actions"
-              style={{
-                padding: '0.9rem 1.25rem',
-                borderTop: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-              }}
-            >
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleClosePreview}
-              >
-                {t('Close Preview')}
-              </button>
+            <div className="adm-modal__footer" style={{ justifyContent: 'space-between' }}>
+              {previewState.data ? (
+                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
+                  {t('Showing page')} <strong>{previewState.page}</strong> • {previewState.data.columns?.length || 0} columns
+                </span>
+              ) : (
+                <span />
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {previewState.data && (
+                  <>
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn--ghost adm-btn--sm"
+                      aria-label={t('Previous page')}
+                      disabled={previewState.page <= 1 || previewState.isLoading}
+                      onClick={() => handlePageChange(previewState.page - 1)}
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn--ghost adm-btn--sm"
+                      aria-label={t('Next page')}
+                      disabled={
+                        (previewState.data.rows?.length || 0) < previewState.pageSize ||
+                        previewState.isLoading
+                      }
+                      onClick={() => handlePageChange(previewState.page + 1)}
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="adm-btn adm-btn--primary adm-btn--sm"
+                  onClick={handleClosePreview}
+                >
+                  {t('Close Preview')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -6,16 +6,17 @@
 .adm-shell {
   display: flex;
   min-height: 100vh;
-  background-color: #f1f5f9;
+  background-color: #f4f6fa;
   color: #0f172a;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Manrope', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ==========================================================================
-   1. DARK OBSIDIAN COMMAND SIDEBAR
+   1. DARK OBSIDIAN COMMAND SIDEBAR (AUTO-EXPANDING RAIL ON HOVER & FOCUS)
    ========================================================================== */
 .adm-sidebar {
-  width: 268px;
+  width: 80px;
   background: linear-gradient(180deg, #0b1120 0%, #0f172a 60%, #111827 100%);
   color: #f8fafc;
   display: flex;
@@ -24,55 +25,25 @@
   top: 0;
   left: 0;
   bottom: 0;
-  z-index: 40;
-  border-right: 1px solid #1e293b;
-  box-shadow: 8px 0 32px rgba(2, 6, 23, 0.25);
-  transition: width 0.26s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.adm-sidebar--collapsed {
-  width: 80px;
-}
-
-/* Squircle/Pill Toggle Button on Header Rail Edge */
-.adm-sidebar__toggle {
-  position: absolute;
-  top: 20px;
-  right: -15px;
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-  color: #cbd5e1;
-  border: 1.5px solid #334155;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   z-index: 50;
-  box-shadow:
-    0 4px 12px rgba(2, 6, 23, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  border-right: 1px solid #1e293b;
+  box-shadow: 4px 0 24px rgba(2, 6, 23, 0.28);
+  overflow-x: hidden;
+  overflow-y: hidden;
+  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: width, box-shadow;
 }
 
-.adm-sidebar__toggle:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-  color: #ffffff;
-  border-color: #60a5fa;
-  transform: scale(1.08);
-  box-shadow:
-    0 6px 18px rgba(37, 99, 235, 0.55),
-    0 0 0 3px rgba(59, 130, 246, 0.2);
+.adm-sidebar:hover,
+.adm-sidebar:focus-within {
+  width: 268px;
+  box-shadow: 16px 0 48px rgba(2, 6, 23, 0.55);
+  overflow-y: auto;
 }
 
-.adm-sidebar__toggle:active {
-  transform: scale(0.95);
-}
-
-.adm-sidebar__toggle:focus-visible {
-  outline: 2px solid #60a5fa;
-  outline-offset: 2px;
+/* Legacy toggle button hidden (distill: auto-expanding rail on hover/focus) */
+.adm-sidebar__toggle {
+  display: none !important;
 }
 
 /* Brand Header */
@@ -80,13 +51,12 @@
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  padding: 1.35rem 1.25rem;
+  padding: 1.35rem 1.18rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-}
-
-.adm-sidebar--collapsed .adm-sidebar__brand {
-  justify-content: center;
-  padding: 1.35rem 0.75rem;
+  min-height: 74px;
+  box-sizing: border-box;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .adm-sidebar__logo {
@@ -106,7 +76,19 @@
 
 .adm-sidebar__brand-info {
   min-width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  white-space: nowrap;
   overflow: hidden;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s;
+}
+
+.adm-sidebar:hover .adm-sidebar__brand-info,
+.adm-sidebar:focus-within .adm-sidebar__brand-info {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 .adm-sidebar__brand-title {
@@ -126,13 +108,15 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #60a5fa;
+  white-space: nowrap;
 }
 
 /* Navigation Sections */
 .adm-sidebar__nav {
   flex: 1;
-  padding: 1.1rem 0.85rem;
+  padding: 1.1rem 0.65rem;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -141,7 +125,7 @@
 .adm-nav-group {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.35rem;
 }
 
 .adm-nav-group__label {
@@ -150,42 +134,73 @@
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: #64748b;
-  padding: 0 0.75rem 0.25rem;
+  padding: 0 0.85rem 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.22s ease, transform 0.2s ease, margin 0.2s ease;
 }
 
-.adm-sidebar--collapsed .adm-nav-group__label {
-  display: none;
+.adm-sidebar:hover .adm-nav-group__label,
+.adm-sidebar:focus-within .adm-nav-group__label {
+  opacity: 1;
+  max-height: 24px;
+  transform: translateY(0);
+  pointer-events: auto;
+  margin-bottom: 0.15rem;
 }
 
 .adm-nav-link {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  padding: 0.72rem 0.85rem;
+  gap: 0.85rem;
+  padding: 0.72rem 1.25rem;
   border-radius: 12px;
   color: #94a3b8;
   text-decoration: none;
   font-size: 0.86rem;
   font-weight: 600;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
   position: relative;
   min-height: 44px;
   box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
-.adm-sidebar--collapsed .adm-nav-link {
-  justify-content: center;
-  padding: 0.72rem;
+.adm-nav-link svg {
+  flex-shrink: 0;
+  min-width: 18px;
 }
 
-.adm-sidebar--collapsed .adm-nav-link__text,
-.adm-sidebar--collapsed .adm-nav-link__badge {
-  display: none;
+.adm-nav-link__text {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s;
+}
+
+.adm-sidebar:hover .adm-nav-link__text,
+.adm-sidebar:focus-within .adm-nav-link__text {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 .adm-nav-link:hover {
   color: #f8fafc;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.adm-nav-link:active {
+  transform: scale(0.98);
 }
 
 .adm-nav-link.active {
@@ -193,6 +208,11 @@
   background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
   font-weight: 700;
   box-shadow: 0 6px 18px -4px rgba(37, 99, 235, 0.5);
+}
+
+.adm-nav-link:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 .adm-nav-link__badge {
@@ -225,33 +245,33 @@
 }
 
 .adm-sidebar__footer {
-  padding: 0.95rem 0.8rem 1.05rem;
+  padding: 0.95rem 0.65rem 1.05rem;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(2, 6, 23, 0.45);
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .adm-user-card {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.68rem 0.75rem;
+  padding: 0.55rem 0.65rem;
   border-radius: 12px;
   background: rgba(30, 41, 59, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.16);
+  min-height: 52px;
+  box-sizing: border-box;
+  overflow: hidden;
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .adm-user-card:hover {
   background: rgba(30, 41, 59, 0.75);
   border-color: rgba(148, 163, 184, 0.28);
-}
-
-.adm-sidebar--collapsed .adm-user-card {
-  justify-content: center;
-  padding: 0.55rem;
 }
 
 .adm-user-card__avatar-wrap {
@@ -287,6 +307,19 @@
 .adm-user-card__meta {
   min-width: 0;
   flex: 1;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s;
+}
+
+.adm-sidebar:hover .adm-user-card__meta,
+.adm-sidebar:focus-within .adm-user-card__meta {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 .adm-user-card__name-row {
@@ -336,12 +369,12 @@
 
 .adm-logout-btn {
   width: 100%;
-  min-height: 40px;
+  min-height: 42px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.85rem;
+  justify-content: flex-start;
+  gap: 0.65rem;
+  padding: 0.55rem 1.35rem;
   border-radius: 10px;
   background: rgba(159, 18, 57, 0.18);
   color: #fda4af;
@@ -349,7 +382,31 @@
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
   transition: all 0.18s ease;
+  box-sizing: border-box;
+}
+
+.adm-logout-btn svg {
+  flex-shrink: 0;
+  min-width: 16px;
+}
+
+.adm-logout-btn__text {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1) 0.04s;
+}
+
+.adm-sidebar:hover .adm-logout-btn__text,
+.adm-sidebar:focus-within .adm-logout-btn__text {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 .adm-logout-btn:hover {
@@ -358,7 +415,20 @@
   border-color: #e11d48;
 }
 
+.adm-logout-btn:focus-visible {
+  outline: 2px solid #f43f5e;
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .adm-sidebar,
+  .adm-sidebar__brand-info,
+  .adm-nav-group__label,
+  .adm-nav-link__text,
+  .adm-user-card__meta,
+  .adm-logout-btn__text {
+    transition: none !important;
+  }
   .adm-user-card__role-pill {
     animation: none !important;
   }
@@ -369,15 +439,10 @@
    ========================================================================== */
 .adm-workspace {
   flex: 1;
-  margin-left: 268px;
+  margin-left: 80px;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  transition: margin-left 0.26s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.adm-sidebar--collapsed ~ .adm-workspace {
-  margin-left: 80px;
 }
 
 .adm-topbar {
@@ -631,13 +696,16 @@
 .adm-panel {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  box-shadow:
-    0 4px 16px -4px rgba(15, 23, 42, 0.05),
-    0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.adm-panel:hover {
+  border-color: #cbd5e1;
 }
 
 .adm-panel__header {
@@ -1328,5 +1396,29 @@
   }
   .adm-col-3 {
     grid-column: span 12;
+  }
+}
+
+/* Focus & Accessibility Polish */
+.adm-btn:focus-visible,
+.adm-input:focus-visible,
+.adm-select:focus-visible,
+.adm-filter-pill:focus-visible,
+.adm-nav-link:focus-visible,
+.adm-modal__close:focus-visible,
+.adm-logout-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-sidebar,
+  .adm-workspace,
+  .adm-sidebar__toggle,
+  .adm-panel,
+  .adm-queue-item,
+  .adm-user-card__role-pill {
+    transition: none !important;
+    animation: none !important;
   }
 }

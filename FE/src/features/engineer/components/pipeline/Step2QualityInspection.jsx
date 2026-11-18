@@ -250,7 +250,9 @@ export default function Step2QualityInspection({
           issuesTotal: total,
         })
       } catch (err) {
-        console.error('Failed to load quality issues:', err)
+        updateQualityState({
+          errorMessage: err?.response?.data?.detail || 'Failed to load quality issues.',
+        })
       } finally {
         setIsIssuesLoading(false)
       }
@@ -431,9 +433,6 @@ export default function Step2QualityInspection({
             </div>
             <div>
               <h3 className="admin-card__title">Step 2: Data Quality Inspection</h3>
-              <p className="admin-card__subtitle">
-                Validate pNEUMA UAV trajectory records, inspect coordinates, speeds, timestamps, and outlier bounds.
-              </p>
             </div>
           </div>
 
@@ -980,9 +979,6 @@ export default function Step2QualityInspection({
                 </div>
                 <div>
                   <h3 className="admin-card__title">Anomaly Distribution & Outlier Breakdown</h3>
-                  <p className="admin-card__subtitle">
-                    Disaggregated view of fatal error types, missing coordinates, and kinematic threshold violations.
-                  </p>
                 </div>
               </div>
             </div>
@@ -1025,47 +1021,7 @@ export default function Step2QualityInspection({
                       </span>
                     </div>
                   ))
-                ) : (
-                  <>
-                    <div
-                      style={{
-                        padding: '0.85rem 1rem',
-                        background: '#f8fafc',
-                        borderRadius: '10px',
-                        border: '1px solid #e2e8f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Missing Values</div>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>0</div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>0 rows affected</div>
-                      </div>
-                      <span className="badge badge--active">missing_value</span>
-                    </div>
-
-                    <div
-                      style={{
-                        padding: '0.85rem 1rem',
-                        background: '#f8fafc',
-                        borderRadius: '10px',
-                        border: '1px solid #e2e8f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Invalid Coordinates</div>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>0</div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>GPS in bounds</div>
-                      </div>
-                      <span className="badge badge--active">GPS Valid</span>
-                    </div>
-                  </>
-                )}
+                ) : null}
 
                 {/* Dynamic Warning Type Cards from Backend Report */}
                 {warningTypeBreakdown.length > 0 ? (
@@ -1094,26 +1050,22 @@ export default function Step2QualityInspection({
                       <span className="badge badge--pending">{item.key}</span>
                     </div>
                   ))
-                ) : (
+                ) : null}
+
+                {errorTypeBreakdown.length === 0 && warningTypeBreakdown.length === 0 && (
                   <div
                     style={{
+                      gridColumn: '1 / -1',
                       padding: '0.85rem 1rem',
-                      background: '#f8fafc',
+                      background: '#f0fdf4',
                       borderRadius: '10px',
-                      border: '1px solid #e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      border: '1px solid #bbf7d0',
+                      color: '#166534',
+                      fontSize: '0.84rem',
+                      fontWeight: 600,
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Outlier Warnings</div>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
-                        {report?.total_warnings || 0}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Within physical bounds</div>
-                    </div>
-                    <span className="badge badge--active">No Outliers</span>
+                    No schema errors or physical-constraint warnings detected in this scan.
                   </div>
                 )}
               </div>
@@ -1154,9 +1106,6 @@ export default function Step2QualityInspection({
                   <h3 className="admin-card__title">
                     Quality Issues Inspector ({issuesTotal.toLocaleString()} Total)
                   </h3>
-                  <p className="admin-card__subtitle">
-                    Row-by-row diagnostics showing offending values, schema constraints, and severity flags.
-                  </p>
                 </div>
               </div>
 
