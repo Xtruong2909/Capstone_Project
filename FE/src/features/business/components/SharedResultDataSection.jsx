@@ -38,8 +38,8 @@ const COLUMN_ORDER = {
   sessions: ['session_name', 'recording_date', 'scheduled_start', 'scheduled_end'],
   traffic_flow_chart: ['session_name', 'timestamp', 'vehicle_count'],
   prediction_rows: ['session_name', 'model', 'horizon', 'input_timestamp', 'forecast_timestamp', 'actual_vehicle_count', 'predicted_vehicle_count', 'absolute_error', 'squared_error'],
-  forecast_results: ['session_name', 'horizon', 'forecast_timestamp', 'predicted_vehicle_count', 'actual_vehicle_count'],
-  forecast_chart: ['session_name', 'horizon', 'forecast_timestamp', 'predicted_vehicle_count', 'actual_vehicle_count'],
+  forecast_results: ['session_name', 'horizon', 'forecast_timestamp', 'predicted_vehicle_count'],
+  forecast_chart: ['session_name', 'horizon', 'forecast_timestamp', 'predicted_vehicle_count'],
   session_distribution: ['session_name', 'recording_date', 'sample_count'],
   train_test_counts: ['horizon', 'train', 'test', 'total'],
   points: ['timestamp', 'traffic_flow'],
@@ -51,6 +51,7 @@ const RECORDING_TIMES = new Set(['timestamp', 'scheduled_start', 'scheduled_end'
 const TRAFFIC_FIELDS = new Set(['vehicle_count', 'traffic_flow', 'actual_vehicle_count', 'predicted_vehicle_count'])
 const METRIC_FIELDS = new Set(['mae', 'rmse', 'mse', 'mape', 'absolute_error', 'squared_error'])
 const COUNT_FIELDS = new Set(['total_records', 'session_count', 'total_sessions', 'total_samples', 'train_sample_count', 'test_sample_count', 'sample_count', 'train', 'test', 'total'])
+const FORECAST_SECTIONS = new Set(['forecast_results', 'forecast_chart'])
 
 function label(key) {
   if (LABELS[key]) return LABELS[key]
@@ -112,7 +113,8 @@ function DataTable({ rows, section = '', depth = 0 }) {
   if (!rows.length) return <p className="biz-empty-text">Chưa có dữ liệu.</p>
   const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))]
   const hasNames = keys.includes('session_name') && rows.some((row) => row.session_name)
-  const visibleKeys = keys.filter((key) => !(key === 'session_id' && hasNames))
+  const visibleKeys = keys.filter((key) => !(key === 'session_id' && hasNames)
+    && !(key === 'actual_vehicle_count' && FORECAST_SECTIONS.has(section)))
   const ordered = COLUMN_ORDER[section]
     ? [...COLUMN_ORDER[section].filter((key) => visibleKeys.includes(key)), ...visibleKeys.filter((key) => !COLUMN_ORDER[section].includes(key))]
     : visibleKeys

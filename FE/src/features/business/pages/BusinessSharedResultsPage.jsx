@@ -17,7 +17,7 @@ import '../../scientist/ScientistPages.css'
 import './BusinessSharedResultsPage.css'
 
 const PAGED_SECTIONS = new Set(['sessions', 'traffic_flow_chart', 'prediction_rows', 'forecast_results', 'forecast_chart'])
-const RESOURCE_TYPES = ['DATASET', 'TRAIN_TEST', 'EXPERIMENT', 'PREDICTION']
+const RESOURCE_TYPES = ['DATASET', 'EXPERIMENT', 'PREDICTION']
 
 const RESOURCE_TYPE_LABELS = {
   DATASET: 'Dataset',
@@ -342,7 +342,11 @@ export default function BusinessSharedResultsPage() {
                         <div key={resource.item_id} className={`biz-resource${resource.resource_type === 'DATASET' ? ' biz-resource--dataset' : ''}`}>
                           {(resource.resource_type !== 'DATASET' || detail.resources.filter((item) => item.resource_type === resourceType).length > 1) && <div className="biz-resource__header">
                             <ResourceTypeBadge type={resource.resource_type} />
-                            <h3 className="biz-resource__title">{resource.resource_type === 'DATASET' ? resource.data?.metadata?.dataset_name || RESOURCE_TYPE_LABELS.DATASET : RESOURCE_TYPE_LABELS[resource.resource_type] || resource.resource_type}</h3>
+                            <h3 className="biz-resource__title">{resource.resource_type === 'DATASET'
+                              ? resource.data?.metadata?.dataset_name || RESOURCE_TYPE_LABELS.DATASET
+                              : resource.resource_type === 'EXPERIMENT'
+                                ? resource.name || resource.data?.experiment_summary?.experiment_name || `Thí nghiệm ${resource.resource_id?.slice(0, 8) || ''}`
+                                : RESOURCE_TYPE_LABELS[resource.resource_type] || resource.resource_type}</h3>
                           </div>}
                           {(resource.resource_type === 'EXPERIMENT'
                             ? resource.visible_sections.filter((s) => s === 'prediction_rows')

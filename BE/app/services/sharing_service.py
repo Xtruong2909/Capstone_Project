@@ -638,6 +638,8 @@ def assemble_shared_result_detail(db: Session, share: SharedReport) -> dict[str,
             {
                 "item_id": item.id, "resource_type": item.resource_type,
                 "resource_id": item.resource_id,
+                "name": (managed_resource_name(db, item, f"Thí nghiệm {str(item.resource_id)[:8]}")
+                         if item.resource_type == "EXPERIMENT" else None),
                 "resource_version_id": item.resource_version_id,
                 "visible_sections": item.visible_sections,
                 "data": _ASSEMBLERS[item.resource_type](db, item),

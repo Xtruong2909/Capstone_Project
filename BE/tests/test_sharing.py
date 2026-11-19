@@ -191,6 +191,19 @@ def test_disabled_experiment_section_never_appears() -> None:
     assert "secret" not in str(data)
 
 
+def test_experiment_detail_has_name_without_summary_section() -> None:
+    selected = item(sections=["evaluation_metrics"])
+    exp = SimpleNamespace(
+        id=selected.resource_id, name="Ex-03", performance_by_model_and_horizon={},
+    )
+    published = share(user(), items=[selected])
+    with patch.object(crud_sharing, "get_experiment", return_value=exp):
+        resource = sharing_service.assemble_shared_result_detail(MagicMock(), published)["resources"][0]
+    assert resource["name"] == "Ex-03"
+    assert resource["visible_sections"] == ["evaluation_metrics"]
+    assert resource["data"] == {"evaluation_metrics": {}}
+
+
 def test_turning_section_off_removes_it_from_bu_response() -> None:
     selected = item(sections=["experiment_summary", "hyperparameters"])
     exp = SimpleNamespace(
