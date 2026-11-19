@@ -6,14 +6,18 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sklearn.ensemble import RandomForestRegressor
 
-from app.crud import crud_admin
+from app.api.v1.endpoints import model_training as training_endpoints
+from app.core.deps import get_current_user
+from app.database.database import get_db
 from app.main import app
 from app.models.model_training import ModelTrainingExperiment
-from app.schemas.admin import ExperimentsOverviewResponse
 from app.schemas.model_training import Hyperparameters, TrainingExperimentRequest, TrainingSplit
+from app.schemas.model_training_experiment import ExperimentPredictionListResponse
+from app.services import admin_monitoring_service
 from app.services import model_training_service as service
 from app.services.experiment_service import create_experiment_name
 
@@ -21,8 +25,9 @@ from app.services.experiment_service import create_experiment_name
 def make_split(count: int = 10, gap: int = 0) -> TrainingSplit:
     start = datetime(2018, 10, 24, 6, 30, tzinfo=UTC)
     n_train = count * 7 // 10
-    origins = [start + timedelta(minutes=4 + i + (gap if i >= n_train else 0))
-               for i in range(count)]
+    origins = [
+        start + timedelta(minutes=4 + i + (gap if i >= n_train else 0)) for i in range(count)
+    ]
 
     def flow(timestamp: datetime) -> float:
         minute = int((timestamp - start).total_seconds() // 60)
@@ -31,9 +36,15 @@ def make_split(count: int = 10, gap: int = 0) -> TrainingSplit:
     x = [[flow(t - timedelta(minutes=i)) for i in range(5)] for t in origins]
     y = [[flow(t + timedelta(minutes=h)) for h in (1, 3, 5)] for t in origins]
     return TrainingSplit(
-        dataset_version_id=uuid4(), roi_identifier="MAIN_ROI", recording_session_id="session-1",
-        X_train=x[:n_train], X_test=x[n_train:], y_train=y[:n_train], y_test=y[n_train:],
-        train_times=origins[:n_train], test_times=origins[n_train:],
+        dataset_version_id=uuid4(),
+        roi_identifier="MAIN_ROI",
+        recording_session_id="session-1",
+        X_train=x[:n_train],
+        X_test=x[n_train:],
+        y_train=y[:n_train],
+        y_test=y[n_train:],
+        train_times=origins[:n_train],
+        test_times=origins[n_train:],
     )
 
 
@@ -52,25 +63,36 @@ def test_real_forest_baselines_and_consistent_tables(count: int) -> None:
     assert result["prediction_time_sec"] > 0
     assert len(result["prediction_rows"]) == len(split.X_test) * 9
     for column, horizon in enumerate((1, 3, 5)):
-        expected_forest = RandomForestRegressor(**params.model_dump(), n_jobs=1).fit(
-            split.X_train, np.array(split.y_train)[:, column]
-        ).predict(split.X_test)
+        expected_forest = (
+            RandomForestRegressor(**params.model_dump(), n_jobs=1)
+            .fit(split.X_train, np.array(split.y_train)[:, column])
+            .predict(split.X_test)
+        )
         for model in ("random_forest", "persistence", "historical_average"):
-            rows = [r for r in result["prediction_rows"]
-                    if r["model"] == model.upper() and r["horizon_minutes"] == horizon]
+            rows = [
+                r
+                for r in result["prediction_rows"]
+                if r["model"] == model.upper() and r["horizon_minutes"] == horizon
+            ]
             for i, row in enumerate(rows):
                 assert datetime.fromisoformat(row["forecast_origin_time"]) == split.test_times[i]
-                assert datetime.fromisoformat(row["target_timestamp"]) == split.test_times[i] + timedelta(minutes=horizon)
+                assert datetime.fromisoformat(row["target_timestamp"]) == split.test_times[
+                    i
+                ] + timedelta(minutes=horizon)
                 assert row["actual_traffic_flow"] == split.y_test[i][column]
                 if model == "random_forest":
                     assert row["predicted_traffic_flow"] == expected_forest[i]
                 elif model == "persistence":
                     assert row["predicted_traffic_flow"] == split.X_test[i][0]
                 else:
-                    assert row["predicted_traffic_flow"] == np.mean(np.array(split.y_train)[:, column])
+                    assert row["predicted_traffic_flow"] == np.mean(
+                        np.array(split.y_train)[:, column]
+                    )
             metrics = result["performance_by_horizon"][str(horizon)][model]
             assert metrics["mae"] == pytest.approx(np.mean([r["absolute_error"] for r in rows]))
-            assert metrics["rmse"] == pytest.approx(np.sqrt(np.mean([r["squared_error"] for r in rows])))
+            assert metrics["rmse"] == pytest.approx(
+                np.sqrt(np.mean([r["squared_error"] for r in rows]))
+            )
 
 
 def test_test_labels_do_not_affect_predictions_and_reproducibility() -> None:
@@ -94,7 +116,9 @@ def test_three_result_tables_use_same_predictions_and_correct_metric_scope() -> 
     assert len(tables.model_summary) == 3
     for row in tables.horizon_forecasts:
         assert row.forecast_origin_time == split.test_times[-1]
-        assert row.target_timestamp == row.forecast_origin_time + timedelta(minutes=row.horizon_minutes)
+        assert row.target_timestamp == row.forecast_origin_time + timedelta(
+            minutes=row.horizon_minutes
+        )
         metrics = result["performance_by_horizon"][str(row.horizon_minutes)]["random_forest"]
         assert row.sample_count == 3
         assert row.rmse == pytest.approx(metrics["rmse"])
@@ -104,10 +128,12 @@ def test_three_result_tables_use_same_predictions_and_correct_metric_scope() -> 
         assert summary.sample_count == 9
         expected_mse = sum(row.squared_error for row in matching) / 9
         assert summary.mse == pytest.approx(expected_mse)
-        assert summary.rmse == pytest.approx(expected_mse ** 0.5)
+        assert summary.rmse == pytest.approx(expected_mse**0.5)
         assert summary.mae == pytest.approx(sum(row.absolute_error for row in matching) / 9)
     assert service.build_result_tables([]).model_dump() == {
-        "horizon_forecasts": [], "prediction_details": [], "model_summary": [],
+        "horizon_forecasts": [],
+        "prediction_details": [],
+        "model_summary": [],
     }
 
 
@@ -123,31 +149,64 @@ def test_eligibility_is_recomputed_not_client_flag() -> None:
         service.evaluate_validity(split, "official")
     assert error.value.status_code == 422
     assert "warnings" not in error.value.detail
-    assert service.evaluate_validity(make_split(40, gap=20), "official")["official_evaluation_eligible"]
-    assert service.evaluate_validity(make_split(10, gap=20), "official")["official_evaluation_eligible"]
+    assert service.evaluate_validity(make_split(40, gap=20), "official")[
+        "official_evaluation_eligible"
+    ]
+    assert service.evaluate_validity(make_split(10, gap=20), "official")[
+        "official_evaluation_eligible"
+    ]
 
 
-def test_old_experiment_hides_warnings_without_promoting_eligibility() -> None:
+def test_legacy_experiment_hides_saved_warnings_without_promoting_eligibility() -> None:
     split = make_split()
-    request = TrainingExperimentRequest(dataset_version_id=split.dataset_version_id, split_result=split)
+    request = TrainingExperimentRequest(
+        dataset_version_id=split.dataset_version_id, split_result=split
+    )
     experiment = SimpleNamespace(
-        id=uuid4(), name="Ex-001", split_id=uuid4(), configuration=request.model_dump(mode="json"),
-        status="COMPLETED", training_time_sec=0.1, prediction_time_sec=0.01, execution_time_sec=0.2,
-        evaluation={"evaluation_mode": "exploratory", "official_evaluation_eligible": False,
-                    "evaluation_policy": "traffic-v1:min-test=10", "warnings": ["Only 3 test samples"]},
-        performance_by_horizon={}, prediction_rows=[], library_versions={}, error=None,
+        id=uuid4(),
+        name="Ex-001",
+        split_id=uuid4(),
+        configuration=request.model_dump(mode="json"),
+        status="COMPLETED",
+        training_time_sec=0.1,
+        prediction_time_sec=0.01,
+        execution_time_sec=0.2,
+        evaluation={
+            "evaluation_mode": "exploratory",
+            "official_evaluation_eligible": False,
+            "evaluation_policy": "traffic-v1:min-test=10",
+            "warnings": ["Only 3 test samples"],
+        },
+        performance_by_horizon={},
+        prediction_rows=[],
+        library_versions={},
+        error=None,
         created_at=datetime.now(UTC),
     )
     result = service.serialize_experiment(experiment).model_dump()
-    assert "warnings" not in result
+    assert result["warnings"] == []
     assert result["official_evaluation_eligible"] is False
     assert result["evaluation_policy"] == experiment.evaluation["evaluation_policy"]
     assert "warnings" in experiment.evaluation  # No database rewrite.
     schema = app.openapi()["components"]["schemas"]["TrainingExperimentResponse"]
-    assert "warnings" not in schema["properties"]
+    assert "warnings" in schema["properties"]
 
 
-@pytest.mark.parametrize("mutation", ["length", "width", "order", "nan", "negative", "time", "target", "history", "conflict", "ratio"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "length",
+        "width",
+        "order",
+        "nan",
+        "negative",
+        "time",
+        "target",
+        "history",
+        "conflict",
+        "ratio",
+    ],
+)
 def test_split_validation(mutation: str) -> None:
     data = make_split().model_dump(mode="json")
     if mutation == "length":
@@ -186,7 +245,9 @@ def test_request_and_fingerprint() -> None:
         TrainingExperimentRequest(dataset_version_id=uuid4(), split_result=split)
     payload = split.model_dump(mode="json")
     payload["warnings"] = ["untrusted"]
-    assert service.split_fingerprint(split) == service.split_fingerprint(TrainingSplit.model_validate(payload))
+    assert service.split_fingerprint(split) == service.split_fingerprint(
+        TrainingSplit.model_validate(payload)
+    )
 
 
 def test_query_supplies_dataset_id_and_rejects_mismatched_pasted_id() -> None:
@@ -196,15 +257,22 @@ def test_query_supplies_dataset_id_and_rejects_mismatched_pasted_id() -> None:
     data = split.model_dump(exclude={"dataset_version_id"})
     body = TrainingSplitInput.model_validate(data)
     request = service.build_parameter_request(
-        split.dataset_version_id, None, body, {"max_features": "1.0"}, "exploratory",
+        split.dataset_version_id,
+        None,
+        body,
+        {"max_features": "1.0"},
+        "exploratory",
     )
     assert request.split_result == split
     assert "dataset_version_id" not in TrainingSplitInput.model_json_schema()["properties"]
     data["dataset_version_id"] = uuid4()
     with pytest.raises(HTTPException) as error:
         service.build_parameter_request(
-            split.dataset_version_id, None, TrainingSplitInput.model_validate(data),
-            {"max_features": "1.0"}, "exploratory",
+            split.dataset_version_id,
+            None,
+            TrainingSplitInput.model_validate(data),
+            {"max_features": "1.0"},
+            "exploratory",
         )
     assert error.value.status_code == 422
 
@@ -217,23 +285,34 @@ def test_body_without_id_still_checks_alignment() -> None:
     data["y_test"].pop()
     with pytest.raises(HTTPException) as error:
         service.build_parameter_request(
-            split.dataset_version_id, None, TrainingSplitInput.model_validate(data),
-            {"max_features": "1.0"}, "exploratory",
+            split.dataset_version_id,
+            None,
+            TrainingSplitInput.model_validate(data),
+            {"max_features": "1.0"},
+            "exploratory",
         )
     assert error.value.status_code == 422
 
 
-@pytest.mark.parametrize("features,expected", [("1.0", 1.0), ("3", 3), ("sqrt", "sqrt"), ("null", None)])
+@pytest.mark.parametrize(
+    "features,expected", [("1.0", 1.0), ("3", 3), ("sqrt", "sqrt"), ("null", None)]
+)
 def test_query_parameters_and_reused_split(features: str, expected: object) -> None:
     split = make_split()
     params = {**Hyperparameters().model_dump(), "max_features": features}
     request = service.build_parameter_request(
-        split.dataset_version_id, None, split, params, "exploratory",
+        split.dataset_version_id,
+        None,
+        split,
+        params,
+        "exploratory",
     )
     assert request.split_result == split
     assert request.hyperparameters.max_features == expected
     saved_id = uuid4()
-    reused = service.build_parameter_request(split.dataset_version_id, saved_id, None, params, "exploratory")
+    reused = service.build_parameter_request(
+        split.dataset_version_id, saved_id, None, params, "exploratory"
+    )
     assert reused.split_id == saved_id
     assert reused.split_result is None
 
@@ -242,26 +321,22 @@ def test_parameters_require_exactly_one_source_and_valid_configuration() -> None
     split = make_split()
     for split_id, content in [(None, None), (uuid4(), split)]:
         with pytest.raises(HTTPException) as error:
-            service.build_parameter_request(split.dataset_version_id, split_id, content, {"max_features": "1.0"}, "exploratory")
+            service.build_parameter_request(
+                split.dataset_version_id, split_id, content, {"max_features": "1.0"}, "exploratory"
+            )
         assert error.value.status_code == 422
     for features in ["invalid", "true", "0", "1.5"]:
         with pytest.raises(HTTPException) as error:
-            service.build_parameter_request(split.dataset_version_id, uuid4(), None, {"max_features": features}, "exploratory")
+            service.build_parameter_request(
+                split.dataset_version_id, uuid4(), None, {"max_features": features}, "exploratory"
+            )
         assert error.value.status_code == 422
 
 
-def test_swagger_has_query_inputs_and_no_upload_endpoint() -> None:
-    document = app.openapi()
-    assert "/api/model-training/experiment/form" not in document["paths"]
-    operation = document["paths"]["/api/model-training/experiment"]["post"]
-    fields = {p["name"]: p for p in operation["parameters"]}
-    assert {"split_id", "n_estimators", "max_depth", "max_features",
-            "min_samples_split", "min_samples_leaf", "bootstrap", "random_state", "evaluation_mode"} == fields.keys()
-    assert all(p["in"] == "query" for p in fields.values())
-    assert fields["max_depth"]["schema"]["minimum"] == 0
-    assert fields["split_id"]["required"]
-    assert "requestBody" not in operation
-    assert operation["security"]
+def test_legacy_training_routes_are_not_in_swagger() -> None:
+    paths = app.openapi()["paths"]
+    assert "/api/model-training/experiment" not in paths
+    assert "/api/model-training/lag-features" not in paths
 
 
 def test_training_by_id_resolves_dataset_and_missing_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -292,9 +367,14 @@ def test_failed_training_is_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(service.repository, "update_experiment", update)
     monkeypatch.setattr(service, "train_models", MagicMock(side_effect=RuntimeError("failure")))
     monkeypatch.setattr(service, "serialize_experiment", lambda exp: exp)
-    service.create_and_run(MagicMock(), TrainingExperimentRequest(
-        dataset_version_id=split.dataset_version_id, split_result=split,
-    ), SimpleNamespace(id=uuid4()))
+    service.create_and_run(
+        MagicMock(),
+        TrainingExperimentRequest(
+            dataset_version_id=split.dataset_version_id,
+            split_result=split,
+        ),
+        SimpleNamespace(id=uuid4()),
+    )
     assert update.call_args_list[0].kwargs["status"] == "RUNNING"
     assert update.call_args_list[1].kwargs["status"] == "FAILED"
     assert update.call_args_list[1].kwargs["execution_time_sec"] > 0
@@ -314,10 +394,12 @@ def test_training_logs_are_persisted_with_status_transitions(
     monkeypatch.setattr(
         service.repository,
         "update_experiment",
-        lambda _db, _experiment, **values: updates.append({
-            **values,
-            "logs": list(values["logs"]) if "logs" in values else None,
-        }),
+        lambda _db, _experiment, **values: updates.append(
+            {
+                **values,
+                "logs": list(values["logs"]) if "logs" in values else None,
+            }
+        ),
     )
 
     def fake_train(_split, _parameters, progress):
@@ -360,22 +442,36 @@ def test_training_logs_are_persisted_with_status_transitions(
 def test_admin_experiment_overview_includes_training_status_and_logs() -> None:
     experiment_id = uuid4()
     created_at = datetime.now(UTC)
-    persisted_logs = [{
-        "timestamp": created_at.isoformat(),
-        "level": "INFO",
-        "message": "Training started.",
-    }]
+    persisted_logs = [
+        {
+            "timestamp": created_at.isoformat(),
+            "level": "INFO",
+            "message": "Training started.",
+        }
+    ]
     training = SimpleNamespace(
         id=experiment_id,
         name="Ex-001",
-        configuration={"model": "RANDOM_FOREST", "hyperparameters": {"n_estimators": 25}},
+        configuration={
+            "model": "RANDOM_FOREST",
+            "hyperparameters": {"n_estimators": 25},
+            "forecast_horizons": [1, 3, 5],
+            "train_samples": 88,
+            "test_samples": 34,
+        },
         status="RUNNING",
         execution_time_sec=None,
         performance_by_horizon={},
+        performance_by_model_and_horizon={
+            "RANDOM_FOREST": {"1": {"mae": 2.0, "mse": 9.0, "rmse": 3.0}},
+        },
         created_at=created_at,
         split_id=uuid4(),
+        lag_feature_split_id=uuid4(),
         evaluation={"evaluation_mode": "official"},
         logs=persisted_logs,
+        error=None,
+        completed_at=None,
     )
 
     class QueryStub:
@@ -407,21 +503,28 @@ def test_admin_experiment_overview_includes_training_status_and_logs() -> None:
 
         def all(self):
             if self.entities[0] is ModelTrainingExperiment and len(self.entities) > 1:
-                return [(training, "Data Scientist", "v2", "Traffic"),]
+                return [
+                    (training, "Data Scientist", None, None, uuid4(), uuid4(),
+                     60, uuid4(), "Traffic Group"),
+                ]
             return []
 
     class DbStub:
         def query(self, *entities):
             return QueryStub(entities)
 
-    data = crud_admin.get_experiments_overview_data(DbStub())
-    response = ExperimentsOverviewResponse.model_validate(data)
+    response = admin_monitoring_service.get_experiments_overview(DbStub(), limit=10)
 
     assert response.stats.total_experiments == 1
     assert response.stats.running_count == 1
     assert response.experiments[0].experiment_type == "MODEL_TRAINING"
     assert response.experiments[0].logs[0].message == "Training started."
     assert response.experiments[0].hyperparameters == {"n_estimators": 25}
+    assert response.experiments[0].target_variable == "vehicle_count"
+    assert response.experiments[0].group_name == "Traffic Group"
+    assert response.experiments[0].train_samples == 88
+    assert response.experiments[0].test_samples == 34
+    assert response.experiments[0].metrics_by_model_and_horizon["RANDOM_FOREST"]["1"]["mse"] == 9.0
 
 
 def test_access_denied_prevents_training(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -431,24 +534,89 @@ def test_access_denied_prevents_training(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(service, "train_models", train)
     split = make_split()
     with pytest.raises(HTTPException):
-        service.create_and_run(MagicMock(), TrainingExperimentRequest(
-            dataset_version_id=split.dataset_version_id, split_result=split,
-        ), SimpleNamespace(id=uuid4()))
+        service.create_and_run(
+            MagicMock(),
+            TrainingExperimentRequest(
+                dataset_version_id=split.dataset_version_id,
+                split_result=split,
+            ),
+            SimpleNamespace(id=uuid4()),
+        )
     train.assert_not_called()
 
 
 def test_model_training_routes_replace_legacy_routes() -> None:
     paths = app.openapi()["paths"]
-    for path in ("/api/model-training/experiment", "/api/model-training/experiments",
-                 "/api/model-training/experiments/compare", "/api/model-training/experiments/{experiment_id}"):
-        assert next(iter(paths[path].values()))["security"]
+    expected_methods = {
+        "/api/model-training/experiments": {"get", "post"},
+        "/api/model-training/experiments/compare": {"post"},
+        "/api/model-training/experiments/{experiment_id}": {"get"},
+        "/api/model-training/experiments/{experiment_id}/predictions": {"get"},
+        "/api/model-training/experiments/{experiment_id}/models": {"get"},
+    }
+    for path, methods in expected_methods.items():
+        assert methods <= paths[path].keys()
+        assert all(paths[path][method]["security"] for method in methods)
+    assert "/api/model-training/batches" not in paths
+    assert "/api/model-training/batches/{batch_id}" not in paths
+    training_schema = app.openapi()["components"]["schemas"]["TrainingExperimentCreateRequest"]
+    assert training_schema["required"] == ["split_id"]
+    properties = training_schema["properties"]
+    assert "name" not in properties and "batch_id" not in properties
     assert not any(path.startswith("/api/v1/experiments") for path in paths)
 
 
-@pytest.mark.parametrize("field", ["split_id", "dataset_version_id", "evaluation_policy", "evaluation_mode", "status"])
+def test_prediction_horizon_query_accepts_integer_strings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    experiment_id = uuid4()
+    user = SimpleNamespace(id=uuid4(), role_id="admin")
+    response = ExperimentPredictionListResponse(
+        experiment_id=experiment_id,
+        horizon=1,
+        session_id=None,
+        page=1,
+        page_size=50,
+        total_records=0,
+        total_pages=0,
+        data=[],
+    )
+    get_predictions = MagicMock(return_value=response)
+    monkeypatch.setattr(
+        training_endpoints.experiment_service,
+        "get_experiment_predictions",
+        get_predictions,
+    )
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = lambda: object()
+    try:
+        with TestClient(app) as client:
+            result = client.get(
+                f"/api/model-training/experiments/{experiment_id}/predictions?horizon=1",
+            )
+            invalid = client.get(
+                f"/api/model-training/experiments/{experiment_id}/predictions?horizon=2",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert result.status_code == 200
+    assert get_predictions.call_args.kwargs["horizon"] == 1
+    assert invalid.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "field", ["split_id", "dataset_version_id", "evaluation_policy", "evaluation_mode", "status"]
+)
 def test_incompatible_comparisons_rejected(monkeypatch: pytest.MonkeyPatch, field: str) -> None:
-    common = {"dataset_version_id": uuid4(), "split_id": uuid4(), "evaluation_policy": "v1",
-              "evaluation_mode": "exploratory", "forecast_horizons": [1, 3, 5], "status": "COMPLETED"}
+    common = {
+        "dataset_version_id": uuid4(),
+        "split_id": uuid4(),
+        "evaluation_policy": "v1",
+        "evaluation_mode": "exploratory",
+        "forecast_horizons": [1, 3, 5],
+        "status": "COMPLETED",
+    }
     first = SimpleNamespace(**common)
     second = SimpleNamespace(**common)
     setattr(second, field, uuid4() if field.endswith("id") else "different")
@@ -457,20 +625,29 @@ def test_incompatible_comparisons_rejected(monkeypatch: pytest.MonkeyPatch, fiel
         service.compare_results(MagicMock(), [uuid4(), uuid4()], MagicMock())
 
 
-def test_compare_saved_metrics_winners_ties_and_test_alignment(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compare_saved_metrics_and_test_alignment(monkeypatch: pytest.MonkeyPatch) -> None:
     from copy import deepcopy
 
     split = make_split()
     trained = service.train_models(split, Hyperparameters(n_estimators=3))
     from app.schemas.model_training import Metric, Prediction
+
     first = SimpleNamespace(
-        experiment_id=uuid4(), experiment_name="Ex-004", dataset_version_id=split.dataset_version_id,
-        split_id=uuid4(), evaluation_policy=service.EVALUATION_POLICY, evaluation_mode="exploratory",
-        forecast_horizons=[1, 3, 5], status="COMPLETED", hyperparameters=Hyperparameters(),
-        training_time_sec=0.2, prediction_time_sec=0.01,
+        experiment_id=uuid4(),
+        experiment_name="Ex-004",
+        dataset_version_id=split.dataset_version_id,
+        split_id=uuid4(),
+        evaluation_policy=service.EVALUATION_POLICY,
+        evaluation_mode="exploratory",
+        forecast_horizons=[1, 3, 5],
+        status="COMPLETED",
+        hyperparameters=Hyperparameters(),
+        training_time_sec=0.2,
+        prediction_time_sec=0.01,
         prediction_rows=[Prediction.model_validate(row) for row in trained["prediction_rows"]],
-        performance_by_horizon={str(h): {"random_forest": Metric(mae=1, rmse=2, sample_count=3)}
-                                for h in (1, 3, 5)},
+        performance_by_horizon={
+            str(h): {"random_forest": Metric(mae=1, rmse=2, sample_count=3)} for h in (1, 3, 5)
+        },
     )
     second = deepcopy(first)
     second.experiment_id, second.experiment_name = uuid4(), "Ex-005"
@@ -482,13 +659,17 @@ def test_compare_saved_metrics_winners_ties_and_test_alignment(monkeypatch: pyte
     monkeypatch.setattr(service, "train_models", train)
     db = MagicMock()
     result = service.compare_results(db, list(saved), MagicMock())
-    assert result["best_by_horizon"]["1"] == "Ex-005"
-    assert result["best_by_horizon"]["5"] == "Ex-004"
-    assert set(result["tied_experiment_ids_by_horizon"]["3"]) == set(saved)
+    assert result["forecast_horizons"] == [1, 3, 5]
+    assert "best_by_horizon" not in result
     assert result["experiments"][0]["performance"]["1"] == {"mae": 1, "rmse": 2}
     assert set(Hyperparameters.model_fields) <= result["experiments"][0].keys()
     assert "warnings" not in result
-    assert service.compare_results(db, list(reversed(saved)), MagicMock())["best_by_horizon"] == result["best_by_horizon"]
+    assert (
+        service.compare_results(db, list(reversed(saved)), MagicMock())["experiments"][0][
+            "performance"
+        ]
+        == (result["experiments"][1]["performance"])
+    )
     train.assert_not_called()
     db.commit.assert_not_called()
     second.prediction_rows[0].actual_traffic_flow += 1

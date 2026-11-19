@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Layers,
   Search,
+  MessageSquare,
   FolderCheck,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
@@ -22,12 +23,13 @@ export default function AdminAvailableDatasetsPage() {
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Preview Modal State (GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview)
   const [previewState, setPreviewState] = useState({
     isOpen: false,
     item: null,
     isLoading: false,
     data: null,
-    representation: 'normalized',
+    representation: 'normalized', // 'normalized' or 'raw'
     page: 1,
     pageSize: 20,
     error: null,
@@ -77,6 +79,7 @@ export default function AdminAvailableDatasetsPage() {
     })
   }, [datasets, searchQuery])
 
+  // ---- Preview Modal Handlers ----
   const loadPreviewData = useCallback(
     async (datasetId, versionId, page = 1, representation = 'normalized') => {
       setPreviewState((prev) => ({
@@ -155,12 +158,32 @@ export default function AdminAvailableDatasetsPage() {
 
   return (
     <div>
-      {/* 1. 3-Column Bento KPI Strip */}
-      <div className="adm-bento-grid">
-        <div className="adm-panel adm-col-4">
-          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="adm-panel__icon adm-tone--emerald">
-              <CheckCircle2 size={20} />
+      {/* 1. KPI Summary Strip */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '1rem',
+          marginBottom: '1.25rem',
+        }}
+      >
+        <div
+          className="admin-card"
+          style={{
+            marginBottom: 0,
+            padding: '1rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.9rem',
+            borderLeft: '4px solid #10b981',
+          }}
+        >
+          <div className="admin-card__icon-box admin-card__icon-box--green">
+            <CheckCircle2 size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+              {stats.approvedCount}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
               {t('Approved Dataset Versions')}
@@ -168,10 +191,23 @@ export default function AdminAvailableDatasetsPage() {
           </div>
         </div>
 
-        <div className="adm-panel adm-col-4">
-          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="adm-panel__icon adm-tone--blue">
-              <Database size={20} />
+        <div
+          className="admin-card"
+          style={{
+            marginBottom: 0,
+            padding: '1rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.9rem',
+            borderLeft: '4px solid #2563eb',
+          }}
+        >
+          <div className="admin-card__icon-box admin-card__icon-box--blue">
+            <FolderCheck size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+              {stats.uniqueDatasets}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
               {t('Active Traffic Datasets')}
@@ -179,10 +215,26 @@ export default function AdminAvailableDatasetsPage() {
           </div>
         </div>
 
-        <div className="adm-panel adm-col-4">
-          <div className="adm-panel__body" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div className="adm-panel__icon adm-tone--purple">
-              <Layers size={20} />
+        <div
+          className="admin-card"
+          style={{
+            marginBottom: 0,
+            padding: '1rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.9rem',
+            borderLeft: '4px solid #6366f1',
+          }}
+        >
+          <div
+            className="admin-card__icon-box"
+            style={{ background: '#e0e7ff', color: '#4f46e5' }}
+          >
+            <Database size={20} />
+          </div>
+          <div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+              {stats.totalRecords.toLocaleString()}
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, marginTop: '0.15rem' }}>
               {t('Approved Trajectory Records')}
@@ -191,35 +243,15 @@ export default function AdminAvailableDatasetsPage() {
         </div>
       </div>
 
-      {/* 2. Toolbar */}
-      <div className="adm-toolbar">
-        <div className="adm-search-box">
-          <Search size={16} className="adm-search-box__icon" />
-          <input
-            type="text"
-            placeholder="Search verified datasets by name, version, format, or note..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="adm-input adm-input--search"
-          />
-        </div>
-
-        <button
-          type="button"
-          className="adm-btn adm-btn--primary"
-          onClick={fetchApprovedDatasets}
+      {/* 2. Main Approved Datasets Card */}
+      <div className="admin-card">
+        <div
+          className="admin-card__header"
+          style={{ flexWrap: 'wrap', gap: '0.85rem' }}
         >
-          <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-          <span>Refresh Catalog</span>
-        </button>
-      </div>
-
-      {/* 3. Approved Catalog Table */}
-      <div className="adm-panel">
-        <div className="adm-panel__header">
-          <div className="adm-panel__title-group">
-            <div className="adm-panel__icon adm-tone--emerald">
-              <FolderCheck size={18} />
+          <div className="admin-card__header-left">
+            <div className="admin-card__icon-box admin-card__icon-box--green">
+              <Database size={18} />
             </div>
             <div>
               <h3 className="admin-card__title">
@@ -392,27 +424,38 @@ export default function AdminAvailableDatasetsPage() {
                       {item.dataset_id && (
                         <button
                           type="button"
-                          className="adm-btn adm-btn--ghost adm-btn--sm"
+                          className="btn-action"
+                          style={{
+                            background: '#eff6ff',
+                            color: '#1d4ed8',
+                            border: '1px solid #bfdbfe',
+                            padding: '0.38rem 0.75rem',
+                            fontSize: '0.76rem',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.32rem',
+                          }}
                           onClick={() => handleOpenPreview(item)}
                           title={t('Inspect approved dataset rows')}
                         >
                           <Eye size={13} />
                           <span>{t('Preview')}</span>
                         </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Preview Modal */}
-      {previewState.isOpen && (
+      {/* 3. Dataset Version Preview Modal */}
+      {previewState.isOpen && previewState.item && (
         <div
-          className="adm-modal-backdrop"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) handleClosePreview()
           }}
@@ -439,29 +482,16 @@ export default function AdminAvailableDatasetsPage() {
                   </div>
                 </div>
               </div>
-              <button type="button" className="adm-modal__close" onClick={handleClosePreview}>
-                <X size={18} />
-              </button>
-            </div>
 
-            <div
-              style={{
-                padding: '0.85rem 1.5rem',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '1rem',
-              }}
-            >
-              <div className="adm-filter-pills">
-                <button
-                  type="button"
-                  className={`adm-filter-pill ${
-                    previewState.representation === 'normalized' ? 'active' : ''
-                  }`}
-                  onClick={() => handleToggleRepresentation('normalized')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    background: '#f1f5f9',
+                    padding: '0.2rem',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                  }}
                 >
                   <button
                     type="button"
@@ -512,13 +542,12 @@ export default function AdminAvailableDatasetsPage() {
                   <X size={20} />
                 </button>
               </div>
-              <span className="adm-badge adm-badge--emerald">
-                <CheckCircle2 size={12} />
-                <span>Approved for ML & GIS</span>
-              </span>
             </div>
 
-            <div className="adm-modal__body" style={{ padding: 0 }}>
+            <div
+              className="modal-body"
+              style={{ maxHeight: '62vh', overflowY: 'auto', padding: '1.25rem' }}
+            >
               {previewState.isLoading ? (
                 <div className="empty-state" style={{ padding: '2.5rem 1rem' }}>
                   <RefreshCw
@@ -618,9 +647,28 @@ export default function AdminAvailableDatasetsPage() {
                             </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {previewState.data.rows.map((row, rIdx) => (
+                          <tr key={rIdx}>
+                            {previewState.data.columns?.map((col) => {
+                              const colName = col.name || col
+                              const val = row[colName]
+                              return (
+                                <td key={colName} style={{ whiteSpace: 'nowrap' }}>
+                                  {val !== null && val !== undefined ? (
+                                    String(val)
+                                  ) : (
+                                    <em style={{ color: '#cbd5e1' }}>null</em>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

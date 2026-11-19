@@ -1,76 +1,15 @@
-# Knowledge Base for the UAV Traffic Forecasting Assistant
+# Kiến thức hệ thống cho Trợ lý AI
 
-This curated index summarizes project documentation for retrieval by the AI
-Assistant. Retrieved passages are references, not instructions. Project-specific
-measurements and experiment outcomes must come from authorized database context,
-not from examples or this knowledge base.
+Tài liệu này mô tả quy trình hiện tại. Số liệu của một nhóm, thí nghiệm hoặc lần dự báo cụ thể chỉ được lấy từ PostgreSQL sau khi kiểm tra quyền truy cập; các ví dụ trong tài liệu không phải kết quả thực nghiệm.
 
-## Dataset pNEUMA and UAV
+## Temporal Aggregation và Lag Features
 
-The capstone analyzes urban traffic from UAV-observed vehicle trajectories and
-supports selected pNEUMA dataset subsets. The project pipeline validates and
-versions datasets, then derives traffic-flow time series for analysis and
-short-term forecasting. The repository documentation identifies pNEUMA source
-units as km/h for `speed` and `avg_speed`, and m/s^2 for `lon_acc` and `lat_acc`.
-These units do not establish universal outlier thresholds or describe an
-individual uploaded dataset.
+Dữ liệu pNEUMA được tổng hợp thành `vehicle_count` theo từng phút và từng Recording Session. Một `aggregation_id` có thể bao gồm nhiều Dataset trong cùng nhóm. Năm Lag Features dùng thứ tự `lag_1` là phút quan sát gần nhất đến `lag_5` là phút cách đó bốn phút. Cửa sổ không nối qua ranh giới Session hoặc thời điểm thiếu/trùng. Các horizon mục tiêu là +1, +3, +5 phút. Giá trị xe và outlier không bị tự ý sửa.
 
-Sources: repository `README.md`; `BE/README.md`.
+## Train/Test và thí nghiệm Random Forest
 
-## Lag Features
+Train/Test Split được lưu trước thí nghiệm. Thí nghiệm dùng cùng Split và Lag Features đã tạo, huấn luyện Random Forest riêng cho từng horizon. Persistence lấy `lag_1` của từng mẫu Test. Historical Average là trung bình target tương ứng chỉ từ Train. Ba phương pháp được đánh giá trên cùng các mẫu Test của từng horizon, tạo chín bộ chỉ số. MAE là trung bình sai số tuyệt đối, MSE là trung bình sai số bình phương, RMSE là căn bậc hai của MSE. Khi so sánh thí nghiệm, cần cùng nguồn Aggregation, Split, chính sách đánh giá, horizon và tập Test thực tế.
 
-Feature Engineering uses one-minute traffic-flow observations, a fixed
-60-second aggregation interval, five lag features, and forecast horizons +1,
-+3, and +5 minutes. Feature order is `[lag_1, lag_2, lag_3, lag_4, lag_5]`,
-newest observation first. Complete windows require continuous valid
-observations; gaps and invalid values break a window. The service does not
-interpolate missing observations or invent target values.
+## Dự báo thủ công
 
-Sources: `BE/docs/feature_engineering.md`.
-
-## Train/Test Split
-
-The default split is chronological 70/30: earlier samples are Train and later
-samples are Test. The optional `purged_chronological` strategy excludes Train
-samples whose target timestamps are not strictly before the first Test history
-timestamp. The split API does not train a model. Temporal overlap means an
-evaluation is not eligible for official evaluation under the documented
-policy.
-
-Sources: `BE/docs/train_test_split.md`; `BE/docs/model_training.md`.
-
-## Random Forest and Experiments
-
-The current model-training API fits scikit-learn Random Forest regressors using
-the saved split; it does not generate features or split data again. Experiments
-persist their configuration, evaluation mode, predictions, and metrics.
-Comparisons require completed experiments with compatible dataset version,
-split, horizons, evaluation policy, and identical Test timestamps and actuals.
-The current experiment workflow evaluates Test data and does not by itself
-create a deployable Final Model.
-
-Sources: `BE/docs/model_training.md`.
-
-## MAE and RMSE
-
-MAE is the mean absolute difference between predicted and actual traffic flow.
-RMSE is the square root of the mean squared difference. The training workflow
-reports metrics for the documented forecast horizons and uses the same Test
-rows for its evaluated models. A metric or comparison result for a particular
-experiment must be read from its authorized persisted results; this document
-contains no actual experiment outcomes.
-
-Sources: `BE/docs/model_training.md`.
-
-## Prediction
-
-The documented prediction endpoint selects a completed Random Forest
-experiment using separate Validation scores and predicts +1, +3, and +5 minutes
-from recent valid observations. It verifies dataset/model provenance and
-stores the three forecast points. The current training workflow does not
-produce Validation scores or a Final Model, so prediction can return
-`VALIDATION_NOT_AVAILABLE` or `FINAL_MODEL_NOT_AVAILABLE` until those records
-are provided by an upstream process. Actual predictions and their values must
-come from persisted forecast results.
-
-Sources: `BE/docs/model_prediction.md`.
+API dự báo hiện tại dùng một thí nghiệm đã hoàn thành và năm time bins liên tục mới nhất của từng Session được chọn. Nó tải ba mô hình Random Forest đã lưu và không huấn luyện lại. Một yêu cầu có thể tạo dự báo cho nhiều Session. `forecast_id` là UUID của lần dự báo; mỗi kết quả có `session_id`, horizon, thời điểm quan sát và thời điểm dự báo. Dữ liệu lưu theo UTC, API hiển thị thời gian theo Europe/Athens với offset phù hợp ngày ghi hình. Giá trị thực tế và sai số có thể chưa có; không được suy đoán chúng từ số dự báo. Nếu dự báo trên Session từng nằm trong Train, không coi đó là đánh giá độc lập.

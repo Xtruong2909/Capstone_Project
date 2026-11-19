@@ -178,8 +178,8 @@ export const trafficForecastService = {
    * GET /api/model-training/experiments
    * Lists persisted training experiments, optionally filtered by dataset_version_id.
    */
-  async listTrainingExperiments({ datasetVersionId, skip = 0, limit = 100 } = {}) {
-    const params = { skip, limit }
+  async listTrainingExperiments({ datasetVersionId, page = 1, pageSize = 100 } = {}) {
+    const params = { page, page_size: pageSize }
     if (datasetVersionId) {
       params.dataset_version_id = datasetVersionId
     }
@@ -239,24 +239,34 @@ export const trafficForecastService = {
   async askAiAssistant({
     action = 'CHAT',
     message,
+    conversation,
     experimentIds,
     predictionId,
+      forecastId,
     modelId,
     datasetVersionId,
+      groupId,
+    aggregationId,
   } = {}) {
     const payload = { action }
+    if (Array.isArray(conversation) && conversation.length > 0) {
+      payload.conversation = conversation
+    }
     if (Array.isArray(experimentIds) && experimentIds.length > 0) {
       payload.experiment_ids = experimentIds
     }
     if (predictionId != null && String(predictionId).trim() !== '') {
       payload.prediction_id = Number(predictionId)
     }
+      if (forecastId) payload.forecast_id = String(forecastId)
     if (modelId && String(modelId).trim() !== '') {
       payload.model_id = String(modelId).trim()
     }
     if (datasetVersionId && String(datasetVersionId).trim() !== '') {
       payload.dataset_version_id = String(datasetVersionId).trim()
     }
+      if (groupId) payload.group_id = String(groupId).trim()
+    if (aggregationId) payload.aggregation_id = String(aggregationId).trim()
     if (message != null && String(message).trim() !== '') {
       payload.message = String(message).trim()
     }

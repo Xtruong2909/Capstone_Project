@@ -476,13 +476,14 @@ export function useModelTrainingExperiments(versionId) {
     setIsLoadingList(true)
     setListError(null)
     try {
-      const data = await trafficForecastService.listTrainingExperiments({
-        datasetVersionId: versionId,
-        skip: 0,
-        limit: 100,
-      })
+      const data = await trafficForecastService.listTrainingExperiments({ page: 1, pageSize: 100 })
       if (reqId !== listReqRef.current) return []
-      const items = Array.isArray(data) ? data : []
+      const items = [...data.data]
+      for (let page = 2; page <= data.total_pages; page += 1) {
+        const next = await trafficForecastService.listTrainingExperiments({ page, pageSize: 100 })
+        if (reqId !== listReqRef.current) return []
+        items.push(...next.data)
+      }
       setExperiments(items)
       return items
     } catch (err) {
@@ -798,7 +799,11 @@ export function useTrafficPrediction(datasetId, versionId) {
 /**
  * POST /api/ai/assistant hook for the floating Gemini AI Assistant chat box.
  */
-export function useAiAssistant(defaultVersionId) {
+export function useAiAssistant(defaultVersionId, defaultGroupId, defaultAggregationId) {
+  const lastGroupIdRef = useRef(defaultGroupId)
+  useEffect(() => {
+    if (defaultGroupId) lastGroupIdRef.current = defaultGroupId
+  }, [defaultGroupId])
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -811,6 +816,10 @@ export function useAiAssistant(defaultVersionId) {
       },
     },
   ])
+  const messagesRef = useRef(messages)
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
   const [isSending, setIsSending] = useState(false)
   const [assistantError, setAssistantError] = useState(null)
 
@@ -820,8 +829,11 @@ export function useAiAssistant(defaultVersionId) {
       message,
       experimentIds,
       predictionId,
+      forecastId,
       modelId,
       datasetVersionId,
+      groupId,
+      aggregationId,
       userDisplayLabel,
     } = {}) => {
       const userText =
@@ -842,6 +854,16 @@ export function useAiAssistant(defaultVersionId) {
         timestamp: new Date().toISOString(),
         text: userText,
       }
+      const conversation = messagesRef.current
+        .filter((item) => item.id !== 'welcome' && !item.isError)
+        .slice(-6)
+        .map((item) => ({
+          role: item.role,
+          content: String(item.role === 'user'
+            ? item.text || ''
+            : item.result?.message || item.result?.summary || item.result?.explanation || '').slice(0, 1000),
+        }))
+        .filter((item) => item.content.trim())
       setMessages((prev) => [...prev, userMsg])
       setIsSending(true)
       setAssistantError(null)
@@ -850,10 +872,15 @@ export function useAiAssistant(defaultVersionId) {
         const res = await trafficForecastService.askAiAssistant({
           action,
           message,
+            conversation,
           experimentIds,
           predictionId,
+          forecastId,
           modelId,
           datasetVersionId: datasetVersionId ?? defaultVersionId,
+          groupId: groupId ?? defaultGroupId ??
+            ((datasetVersionId ?? defaultVersionId) ? undefined : lastGroupIdRef.current),
+          aggregationId: aggregationId ?? defaultAggregationId,
         })
         const aiMsg = {
           id: `ai-${Date.now()}`,
@@ -886,10 +913,12 @@ export function useAiAssistant(defaultVersionId) {
         setIsSending(false)
       }
     },
-    [defaultVersionId]
+    [defaultVersionId, defaultGroupId, defaultAggregationId]
   )
 
   const clearMessages = useCallback(() => {
+    lastGroupIdRef.current = null
+    messagesRef.current = []
     setAssistantError(null)
     setMessages([
       {

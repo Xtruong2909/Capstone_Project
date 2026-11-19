@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import IntEnum
 from typing import Literal
 from uuid import UUID
@@ -65,6 +65,7 @@ class AuditLogResponse(BaseModel):
     module: str
     status: Literal["SUCCESS", "FAILED"]
     description: str | None = None
+    resource_type: str
     resource_id: str | None = None
     details: dict | None = None
     ip_address: str | None = None
@@ -84,11 +85,30 @@ class DatasetApprovalResponse(BaseModel):
     id: UUID
     dataset_id: UUID
     dataset_name: str
+    recording_date: date | None = None
+    drone_id: str | None = None
     version_tag: str
     file_format: str
     total_records: int
     approval_status: str
     created_at: datetime
+
+
+class AdminGroupApprovalSummary(BaseModel):
+    group_id: UUID
+    group_name: str | None
+    drone_id: str
+    total_datasets: int
+    submitted_datasets: int
+    approved_datasets: int
+    rejected_datasets: int
+
+
+class AdminGroupReviewResponse(BaseModel):
+    group_id: UUID
+    status: Literal["APPROVED", "REJECTED", "MIXED"]
+    reviewed_versions: int
+    version_ids: list[UUID]
 
 
 class DatasetApprovalAction(BaseModel):
@@ -127,6 +147,16 @@ class ExperimentOverviewItem(BaseModel):
     created_at: datetime
     experiment_type: str = "FORECASTING"
     split_id: UUID | None = None
+    group_id: UUID | None = None
+    group_name: str | None = None
+    aggregation_id: UUID | None = None
+    feature_generation_id: UUID | None = None
+    train_samples: int | None = None
+    test_samples: int | None = None
+    forecast_horizons: list[int] = Field(default_factory=list)
+    metrics_by_model_and_horizon: dict[str, dict[str, dict]] = Field(default_factory=dict)
+    error: str | None = None
+    completed_at: datetime | None = None
     hyperparameters: dict | None = None
     evaluation_mode: str | None = None
     logs: list[TrainingLogEntry] = Field(default_factory=list)

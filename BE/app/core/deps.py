@@ -114,6 +114,13 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def require_not_business_user(current_user: User = Depends(get_current_user)) -> User:
+    """Business Users read research data only through published share projections."""
+    if current_user.role_id == "business_user":
+        raise HTTPException(status_code=403, detail="Hãy xem dữ liệu qua Kết quả được chia sẻ")
+    return current_user
+
+
 def require_data_engineer(current_user: User = Depends(get_current_user)) -> User:
     """Ensure that the authenticated user has the 'data_engineer' role."""
     if current_user.role_id != "data_engineer":

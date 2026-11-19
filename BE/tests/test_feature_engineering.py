@@ -8,7 +8,6 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.api.v1.endpoints.feature_engineering import prediction_features, training_features
 from app.main import app
 from app.schemas.feature_engineering import FeatureRequest, TrafficObservation
 from app.services import feature_engineering_service as service
@@ -135,7 +134,7 @@ def test_reject_duplicates_and_nonfixed_config() -> None:
         service.build_training_features([series()[0].model_copy(update={"time_bucket": START.replace(tzinfo=None)})])
 
 
-def test_api_and_repository_integration(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_service_and_repository_integration(monkeypatch: pytest.MonkeyPatch) -> None:
     version = SimpleNamespace(id=VERSION, dataset_id=uuid4(), original_filename="20181024_d1_0830_0900.csv")
     monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: version)
     access = MagicMock()
@@ -144,37 +143,35 @@ def test_api_and_repository_integration(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(service.crud_feature_engineering, "read_feature_series", read)
     request = FeatureRequest(dataset_version_id=VERSION)
     db, user = MagicMock(), SimpleNamespace(role_id="data_scientist")
-    training = training_features(request, db, user)
+    training = service.prepare_features(db, request, user, prediction=False)
     assert training.sample_count == 6
     assert read.call_args.kwargs["latest_only"] is False
-    prediction = prediction_features(request, db, user)
+    prediction = service.prepare_features(db, request, user, prediction=True)
     assert prediction.x == [197, 195, 208, 195, 172]
     assert read.call_args.kwargs["latest_only"] is True
     assert access.call_args.kwargs["dataset_id"] == version.dataset_id
     read.return_value = []
     with pytest.raises(HTTPException) as error:
-        prediction_features(request, db, user)
+        service.prepare_features(db, request, user, prediction=True)
     assert error.value.status_code == 422
     with pytest.raises(ValidationError):
         FeatureRequest(dataset_version_id=VERSION, lag_count=6)
     access.side_effect = HTTPException(403, "Dataset access has not been granted")
     read.reset_mock()
     with pytest.raises(HTTPException) as error:
-        training_features(request, db, user)
+        service.prepare_features(db, request, user, prediction=False)
     assert error.value.status_code == 403
     read.assert_not_called()
 
 
-def test_openapi_routes_require_authentication() -> None:
+def test_openapi_does_not_expose_removed_routes() -> None:
+    paths = app.openapi()["paths"]
     for mode in ("training", "prediction"):
-        operation = app.openapi()["paths"][f"/api/feature-engineering/{mode}"]["post"]
-        assert operation["security"]
-        assert operation["requestBody"]["required"]
-        assert "200" in operation["responses"]
+        assert f"/api/feature-engineering/{mode}" not in paths
 
 
 def test_roi_hidden_in_request_schema_but_defaults_and_compatibility_remain() -> None:
-    schema = app.openapi()["components"]["schemas"]["FeatureRequest"]
+    schema = FeatureRequest.model_json_schema()
     assert set(schema["properties"]) == {"dataset_version_id"}
     assert FeatureRequest(dataset_version_id=VERSION).roi_identifier == "MAIN_ROI"
     assert FeatureRequest(dataset_version_id=VERSION, roi_identifier="ROI-A").roi_identifier == "ROI-A"

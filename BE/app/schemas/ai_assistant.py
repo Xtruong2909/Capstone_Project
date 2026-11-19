@@ -1,7 +1,7 @@
 """Validated, bounded contract for the single AI Assistant endpoint."""
 
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -17,15 +17,30 @@ class AssistantAction(StrEnum):
     CHAT = "CHAT"
 
 
+class ConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
+
+
 class AssistantRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: AssistantAction = AssistantAction.CHAT
     experiment_ids: list[UUID] = Field(default_factory=list, max_length=20)
     prediction_id: int | None = Field(default=None, ge=1)
+    forecast_id: UUID | None = Field(
+        default=None, description="ID lần dự báo từ POST /api/prediction/forecasts",
+    )
     model_id: UUID | None = None
     dataset_version_id: UUID | None = None
+    aggregation_id: UUID | None = Field(
+        default=None, description="ID lượt tổng hợp thời gian của nhóm Dataset",
+    )
+    group_id: UUID | None = Field(
+        default=None, description="ID nhóm Dataset; dùng Aggregation đã hoàn thành mới nhất của nhóm",
+    )
     message: str | None = Field(default=None, max_length=2000)
+    conversation: list[ConversationTurn] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode="after")
     def validate_action(self) -> Self:
@@ -38,8 +53,11 @@ class AssistantRequest(BaseModel):
             raise ValueError("Đề xuất mô hình cần ít nhất một experiment_id")
         if self.action == AssistantAction.EXPERIMENT_COMPARISON and count < 2:
             raise ValueError("So sánh cần ít nhất hai experiment_id")
-        if self.action == AssistantAction.FORECAST_EXPLANATION and self.prediction_id is None:
-            raise ValueError("Giải thích dự báo cần prediction_id")
+        if self.prediction_id is not None and self.forecast_id is not None:
+            raise ValueError("Chỉ chọn một trong forecast_id hoặc prediction_id")
+        if (self.action == AssistantAction.FORECAST_EXPLANATION
+                and self.prediction_id is None and self.forecast_id is None):
+            raise ValueError("Giải thích dự báo cần forecast_id")
         if self.action == AssistantAction.CHAT and not (self.message and self.message.strip()):
             raise ValueError("Chat cần nội dung message")
         return self

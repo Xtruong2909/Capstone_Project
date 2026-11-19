@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ClipboardList,
   Eye,
@@ -16,7 +16,7 @@ import {
   Search,
   Rocket,
 } from 'lucide-react'
-import { formatDate, formatNumber, formatRecordingTimeAtSource } from '../utils/formatters'
+import { formatDate, formatNumber, formatRecordingTimeAtSource, formatTrafficFlow } from '../utils/formatters'
 
 const DETAIL_PAGE_SIZE = 15
 
@@ -26,15 +26,9 @@ const MODEL_LABELS = {
   HISTORICAL_AVERAGE: 'Historical Average',
 }
 
-function formatMetric(val, digits = 4) {
+function formatMetric(val, digits = 2) {
   if (val == null || Number.isNaN(Number(val))) return '—'
   return Number(val).toFixed(digits)
-}
-
-function formatFlow(val) {
-  if (val == null || Number.isNaN(Number(val))) return '—'
-  const num = Number(val)
-  return Number.isInteger(num) ? String(num) : num.toFixed(2)
 }
 
 function formatSec(sec) {
@@ -82,9 +76,21 @@ export default function ExperimentListDetailPanel({
   const [modelFilter, setModelFilter] = useState('ALL')
   const [horizonFilter, setHorizonFilter] = useState('ALL')
   const [detailPage, setDetailPage] = useState(1)
+  const pendingScrollPosition = useRef(null)
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [sortOrder, setSortOrder] = useState('newest')
+
+  useLayoutEffect(() => {
+    if (pendingScrollPosition.current == null) return
+    window.scrollTo({ top: pendingScrollPosition.current, left: window.scrollX, behavior: 'instant' })
+    pendingScrollPosition.current = null
+  }, [detailPage])
+
+  const changeDetailPage = (nextPage) => {
+    pendingScrollPosition.current = window.scrollY
+    setDetailPage(Math.max(1, Math.min(totalDetailPages, nextPage)))
+  }
 
   const visibleExperiments = useMemo(() => {
     const query = searchText.trim().toLocaleLowerCase()
@@ -398,15 +404,15 @@ export default function ExperimentListDetailPanel({
                                   <td style={{ fontWeight: 700 }}>
                                     {formatTimeOnly(row.target_timestamp)}
                                   </td>
-                                  <td>{formatFlow(row.actual_traffic_flow)}</td>
+                                  <td>{formatTrafficFlow(row.actual_traffic_flow)}</td>
                                   <td className="sci-td-x">
-                                    <strong>{formatMetric(row.predicted_traffic_flow, 2)}</strong>
+                                    <strong>{formatTrafficFlow(row.predicted_traffic_flow)}</strong>
                                   </td>
                                   <td>
-                                    <strong>{formatMetric(horizonMae, 4)}</strong>
+                                    <strong>{formatMetric(horizonMae)}</strong>
                                   </td>
                                   <td className="sci-td-y">
-                                    <strong>{formatMetric(row.rmse, 4)}</strong>
+                                    <strong>{formatMetric(row.rmse)}</strong>
                                   </td>
                                 </tr>
                               )
@@ -499,12 +505,12 @@ export default function ExperimentListDetailPanel({
                                   <td style={{ fontWeight: 700 }}>
                                     {formatTimeOnly(row.target_timestamp)}
                                   </td>
-                                  <td>{formatFlow(row.actual_traffic_flow)}</td>
+                                  <td>{formatTrafficFlow(row.actual_traffic_flow)}</td>
                                   <td className="sci-td-x">
-                                    <strong>{formatMetric(row.predicted_traffic_flow, 2)}</strong>
+                                    <strong>{formatTrafficFlow(row.predicted_traffic_flow)}</strong>
                                   </td>
-                                  <td><strong>{formatMetric(metrics?.mae, 4)}</strong></td>
-                                  <td className="sci-td-y"><strong>{formatMetric(metrics?.rmse, 4)}</strong></td>
+                                  <td><strong>{formatMetric(metrics?.mae)}</strong></td>
+                                  <td className="sci-td-y"><strong>{formatMetric(metrics?.rmse)}</strong></td>
                                 </tr>
                               )
                             })}
@@ -530,7 +536,7 @@ export default function ExperimentListDetailPanel({
                               type="button"
                               className="btn-secondary"
                               disabled={detailPage <= 1}
-                              onClick={() => setDetailPage((p) => Math.max(1, p - 1))}
+                              onClick={() => changeDetailPage(detailPage - 1)}
                             >
                               <ChevronLeft size={14} /> Trước
                             </button>
@@ -541,9 +547,7 @@ export default function ExperimentListDetailPanel({
                               type="button"
                               className="btn-secondary"
                               disabled={detailPage >= totalDetailPages}
-                              onClick={() =>
-                                setDetailPage((p) => Math.min(totalDetailPages, p + 1))
-                              }
+                              onClick={() => changeDetailPage(detailPage + 1)}
                             >
                               Sau <ChevronRight size={14} />
                             </button>
@@ -587,10 +591,10 @@ export default function ExperimentListDetailPanel({
                                 </td>
                                 <td>{formatNumber(row.sample_count)}</td>
                                 <td>
-                                  <strong>{formatMetric(row.mae, 4)}</strong>
+                                  <strong>{formatMetric(row.mae)}</strong>
                                 </td>
                                 <td className="sci-td-y">
-                                  <strong>{formatMetric(row.rmse, 4)}</strong>
+                                  <strong>{formatMetric(row.rmse)}</strong>
                                 </td>
                               </tr>
                             ))}

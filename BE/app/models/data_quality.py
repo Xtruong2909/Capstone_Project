@@ -41,6 +41,12 @@ class DataQualityCheck(Base):
         nullable=False,
         index=True,
     )
+    recording_session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("recording_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     started_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     status = Column(String(16), nullable=False, default="queued", index=True)
     progress_percent = Column(Integer, nullable=False, default=0)
@@ -68,6 +74,12 @@ class DataQualityIssue(Base):
     column_name = Column(String(512), nullable=True)
     message = Column(String(512), nullable=False)
     observed_value = Column(String(256), nullable=True)
+    recording_session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("recording_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     __table_args__ = (
         Index("ix_data_quality_issue_check_row", "check_id", "row_number"),
