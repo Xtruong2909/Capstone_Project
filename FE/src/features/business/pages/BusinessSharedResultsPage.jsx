@@ -12,6 +12,10 @@ import { useSharedResults, useSharedResultDetail, useSharedItemRows } from '../.
 import LanguageSwitcher from '../../../components/LanguageSwitcher'
 import ScientistProfileModal from '../../scientist/components/ScientistProfileModal'
 import SharedResultDataSection from '../components/SharedResultDataSection'
+import BusinessDatasetDetail from '../components/BusinessDatasetDetail'
+import BusinessResourceList from '../components/BusinessResourceList'
+import { useBusinessResourceNavigation } from '../../../hooks/useBusinessResourceNavigation'
+import { sharedResourceName } from '../utils/sharedResourceNames'
 import '../../admin/AdminLayout.css'
 import '../../scientist/ScientistPages.css'
 import './BusinessSharedResultsPage.css'
@@ -20,7 +24,7 @@ const PAGED_SECTIONS = new Set(['sessions', 'traffic_flow_chart', 'prediction_ro
 const RESOURCE_TYPES = ['DATASET', 'EXPERIMENT', 'PREDICTION']
 
 const RESOURCE_TYPE_LABELS = {
-  DATASET: 'Dataset',
+  DATASET: 'Tập dữ liệu',
   TRAIN_TEST: 'Train / Test',
   EXPERIMENT: 'Thí nghiệm',
   PREDICTION: 'Dự báo',
@@ -49,20 +53,16 @@ function sectionLabel(section) {
   return SECTION_LABELS[section] || RESOURCE_TYPE_LABELS[section] || section.replaceAll('_', ' ')
 }
 
-function ResourceTypeBadge({ type }) {
+function ResourceHeading({ resource }) {
+  const type = resource.resource_type
   const Icon = RESOURCE_TYPE_ICONS[type] || Share2
   const label = RESOURCE_TYPE_LABELS[type] || type
-  const colorMap = {
-    DATASET: 'biz-badge--dataset',
-    TRAIN_TEST: 'biz-badge--train',
-    EXPERIMENT: 'biz-badge--experiment',
-    PREDICTION: 'biz-badge--prediction',
-  }
+  const name = sharedResourceName(resource)
   return (
-    <span className={`biz-type-badge ${colorMap[type] || ''}`}>
-      <Icon size={11} />
-      {label}
-    </span>
+    <h3 className="biz-resource__title">
+      <Icon size={16} aria-hidden="true" />
+      <span>{name.startsWith(label) ? name : `${label} · ${name}`}</span>
+    </h3>
   )
 }
 
@@ -88,7 +88,8 @@ function SharedSection({ shareId, itemId, section, value }) {
         ? <div className="biz-loading"><div className="sci-spinner" />Đang tải dữ liệu…</div>
         : error
           ? <p role="alert" className="biz-error">{error}</p>
-          : <SharedResultDataSection section={section} value={shownValue} />}
+          : <SharedResultDataSection section={section} value={shownValue}
+            groupBySession={['traffic_flow_chart', 'prediction_rows', 'forecast_results', 'forecast_chart'].includes(section)} />}
       {isPaged && result && (
         <div className="biz-pager">
           <span className="biz-pager__info">{result.total_records} bản ghi · Trang {page}</span>
@@ -120,9 +121,22 @@ export default function BusinessSharedResultsPage() {
   const visibleShares = data.filter((share) => share.available_sections.includes(resourceType))
   const isDatasetReview = resourceType === 'DATASET'
   const selectedShareId = visibleShares.some((share) => share.share_id === shareId)
-    ? shareId : isDatasetReview ? '' : visibleShares[0]?.share_id || ''
-  const showDatasetDetail = isDatasetReview && Boolean(selectedShareId)
+    ? shareId : ''
   const { detail, loading: detailLoading, error: detailError } = useSharedResultDetail(selectedShareId)
+  const { resources, selectedResource, selectResource } = useBusinessResourceNavigation(detail, resourceType)
+  const showDatasetDetail = selectedResource?.resource_type === 'DATASET'
+  const ActiveResourceIcon = RESOURCE_TYPE_ICONS[resourceType]
+  const pageTitle = `${RESOURCE_TYPE_LABELS[resourceType]} được chia sẻ`
+
+  const handleResourceChange = (type) => {
+    if (type === resourceType) return
+    selectResource(null)
+    setResourceType(type)
+    setPage(1)
+    setShareId('')
+    setSearch('')
+    setSearchInput('')
+  }
 
   const displayName = user?.full_name?.replace(/\s*\(business\s+user\)\s*$/i, '').trim() || 'Business User'
 
@@ -144,7 +158,7 @@ export default function BusinessSharedResultsPage() {
   }
 
   return (
-    <div className="admin-shell">
+    <div className="admin-shell biz-portal" data-resource-type={resourceType}>
       {/* ── Sidebar ── */}
       <aside className={`admin-sidebar ${isCollapsed ? 'admin-sidebar--collapsed' : ''}`}>
         <div className="admin-sidebar__edge-zone">
@@ -172,11 +186,19 @@ export default function BusinessSharedResultsPage() {
           </div>
         </div>
 
-        <nav className="admin-sidebar__nav">
-          <button type="button" className="admin-nav-item active biz-nav-item" title="Kết quả chia sẻ">
-            <Share2 size={19} style={{ flexShrink: 0 }} />
-            {!isCollapsed && <span>Kết quả chia sẻ</span>}
-          </button>
+        <nav className="admin-sidebar__nav" aria-label="Tài nguyên được chia sẻ">
+          {RESOURCE_TYPES.map((type) => {
+            const Icon = RESOURCE_TYPE_ICONS[type]
+            return <button key={type} type="button"
+              className={`admin-nav-item biz-nav-item${resourceType === type ? ' active' : ''}`}
+              title={RESOURCE_TYPE_LABELS[type]}
+              aria-label={RESOURCE_TYPE_LABELS[type]}
+              aria-current={resourceType === type ? 'page' : undefined}
+              onClick={() => handleResourceChange(type)}>
+              <Icon size={19} style={{ flexShrink: 0 }} aria-hidden="true" />
+              {!isCollapsed && <span>{RESOURCE_TYPE_LABELS[type]}</span>}
+            </button>
+          })}
         </nav>
 
         <div className="admin-sidebar__footer">
@@ -206,7 +228,7 @@ export default function BusinessSharedResultsPage() {
       <div className="admin-main">
         <header className="admin-header">
           <div className="admin-header__title">
-            <h1>Kết quả được chia sẻ</h1>
+            <h1>{pageTitle}</h1>
           </div>
           <div className="admin-header__actions">
             <LanguageSwitcher />
@@ -220,27 +242,17 @@ export default function BusinessSharedResultsPage() {
           <div className="sci-page">
 
             <section className="biz-hero">
-              <div className="biz-hero__icon"><Share2 size={24} /></div>
+              <div className="biz-hero__icon"><ActiveResourceIcon size={24} /></div>
               <div>
                 <span>KHÔNG GIAN NGHIỆP VỤ</span>
-                <h2>Kết quả được chia sẻ</h2>
+                <h2>{pageTitle}</h2>
                 <p>Khám phá dữ liệu, thí nghiệm và dự báo đã được chia sẻ với bạn.</p>
               </div>
               <strong className="biz-hero__count">{total} kết quả</strong>
             </section>
 
-            <nav className="biz-resource-tabs" aria-label="Loại tài nguyên được chia sẻ">
-              {RESOURCE_TYPES.map((type) => {
-                const Icon = RESOURCE_TYPE_ICONS[type]
-                return <button key={type} type="button" className={resourceType === type ? 'active' : ''}
-                  onClick={() => { setResourceType(type); setPage(1); setShareId('') }}>
-                  <Icon size={17} /> {RESOURCE_TYPE_LABELS[type]}
-                </button>
-              })}
-            </nav>
-
             {/* Search & Filter bar */}
-            {!showDatasetDetail && <div className="admin-card biz-toolbar-card">
+            {!selectedShareId && <div className="admin-card biz-toolbar-card">
               <form
                 className="biz-toolbar"
                 onSubmit={(event) => { event.preventDefault(); setPage(1); setSearch(searchInput.trim()) }}
@@ -263,11 +275,11 @@ export default function BusinessSharedResultsPage() {
             </div>}
 
             {/* Two-column layout */}
-            <div className={`biz-layout${isDatasetReview ? ' biz-layout--dataset' : ''}`}>
+            <div className="biz-layout biz-layout--dataset">
               {/* Left sidebar: list */}
-              {(!isDatasetReview || !showDatasetDetail) && <aside className={`biz-list admin-card${isDatasetReview ? ' biz-list--dataset' : ''}`}>
+              {!selectedShareId && <aside className="biz-list admin-card biz-list--dataset">
                 <div className="biz-list__header">
-                  <span className="biz-list__title">{isDatasetReview ? 'Dataset được chia sẻ' : 'Danh sách'}</span>
+                  <span className="biz-list__title">Danh sách chia sẻ</span>
                   <span className="biz-list__count">{total} kết quả</span>
                 </div>
 
@@ -289,8 +301,8 @@ export default function BusinessSharedResultsPage() {
                     <button
                       type="button"
                       key={share.share_id}
-                      className={`biz-list__item${isDatasetReview ? ' biz-list__item--dataset' : ''}${selectedShareId === share.share_id ? ' biz-list__item--active' : ''}`}
-                      onClick={() => setShareId(share.share_id)}
+                      className="biz-list__item biz-list__item--dataset"
+                      onClick={() => { selectResource(null); setShareId(share.share_id) }}
                     >
                       {isDatasetReview ? <>
                         <span className="biz-dataset-list__icon"><Database size={21} /></span>
@@ -320,7 +332,8 @@ export default function BusinessSharedResultsPage() {
               </aside>}
 
               {/* Right: detail panel */}
-              {(!isDatasetReview || showDatasetDetail) && <article className={`biz-detail admin-card${showDatasetDetail && detail?.share_id === selectedShareId && !detailLoading && !detailError ? ' biz-detail--dataset' : ''}`} style={{ minWidth: 0, padding: 0 }}>
+              {selectedShareId && <article className={`biz-detail admin-card${showDatasetDetail && detail?.share_id === selectedShareId && !detailLoading && !detailError ? ' biz-detail--dataset' : ''}`} style={{ minWidth: 0, padding: 0 }}>
+                {(detailLoading || detailError) && <div className="biz-detail__heading"><button type="button" className="sci-back" onClick={() => { selectResource(null); setShareId('') }}><ArrowLeft size={16} /> Danh sách chia sẻ</button></div>}
                 {!selectedShareId ? (
                   <div className="sci-state" style={{ margin: '3rem 1rem' }}>
                     <Eye size={32} style={{ margin: '0 auto 0.75rem', display: 'block', color: '#94a3b8' }} />
@@ -334,23 +347,33 @@ export default function BusinessSharedResultsPage() {
                 ) : detail?.share_id === selectedShareId && (
                   <div className="biz-detail__inner">
                     <div className="biz-detail__heading">
-                      {showDatasetDetail && <button type="button" className="sci-back biz-dataset-back" onClick={() => setShareId('')}><ArrowLeft size={16} /> Danh sách dataset</button>}
+                      <button type="button" className="sci-back biz-dataset-back" onClick={() => {
+                        if (selectedResource) selectResource(null)
+                        else setShareId('')
+                      }}><ArrowLeft size={16} /> {selectedResource ? `Danh sách ${RESOURCE_TYPE_LABELS[resourceType].toLowerCase()}` : 'Danh sách chia sẻ'}</button>
                       <h2 className="biz-detail__title">{detail.title}</h2>
                     </div>
                     <div className="biz-detail__body">
-                      {detail.resources.filter((resource) => resource.resource_type === resourceType).map((resource) => (
+                      {!selectedResource && <BusinessResourceList resources={resources} label={RESOURCE_TYPE_LABELS[resourceType]} onSelect={selectResource} />}
+                      {(selectedResource ? [selectedResource] : []).map((resource) => (
+                        resource.resource_type === 'DATASET' ? <BusinessDatasetDetail
+                          key={resource.item_id}
+                          resource={resource}
+                          renderSection={(section) => <SharedSection
+                            key={`${resource.item_id}:${section}`}
+                            shareId={detail.share_id}
+                            itemId={resource.item_id}
+                            section={section}
+                            value={resource.data?.[section]}
+                          />}
+                        /> :
                         <div key={resource.item_id} className={`biz-resource${resource.resource_type === 'DATASET' ? ' biz-resource--dataset' : ''}`}>
                           {(resource.resource_type !== 'DATASET' || detail.resources.filter((item) => item.resource_type === resourceType).length > 1) && <div className="biz-resource__header">
-                            <ResourceTypeBadge type={resource.resource_type} />
-                            <h3 className="biz-resource__title">{resource.resource_type === 'DATASET'
-                              ? resource.data?.metadata?.dataset_name || RESOURCE_TYPE_LABELS.DATASET
-                              : resource.resource_type === 'EXPERIMENT'
-                                ? resource.name || resource.data?.experiment_summary?.experiment_name || `Thí nghiệm ${resource.resource_id?.slice(0, 8) || ''}`
-                                : RESOURCE_TYPE_LABELS[resource.resource_type] || resource.resource_type}</h3>
+                            <ResourceHeading resource={resource} />
                           </div>}
                           {(resource.resource_type === 'EXPERIMENT'
                             ? resource.visible_sections.filter((s) => s === 'prediction_rows')
-                            : resource.visible_sections
+                            : resource.visible_sections.filter((section) => !['model_information', 'forecast_results'].includes(section))
                           ).map((section) => (
                             <SharedSection
                               key={`${resource.item_id}:${section}`}
