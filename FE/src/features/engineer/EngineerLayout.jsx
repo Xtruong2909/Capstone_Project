@@ -1,11 +1,13 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
+  Database,
   LayoutDashboard,
   FileSpreadsheet,
   Upload,
   Table2,
   Workflow,
+  ClipboardList,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -13,15 +15,9 @@ import {
 import { useAuth } from '../../hooks/useAuth'
 import { useLanguage } from '../../hooks/useLanguage'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
-import { datasetService } from '../../services/datasetService'
-import apiClient from '../../services/apiClient'
-import {
-  LINEAGE_STORAGE_KEY,
-  RECORD_CACHE_STORAGE_KEY,
-  loadJsonStorage,
-  saveJsonStorage,
-} from './utils/engineerHelpers'
 import '../admin/AdminLayout.css'
+import '../admin/AdminData.css'
+import './EngineerData.css'
 
 export default function EngineerLayout() {
   const { t } = useLanguage()
@@ -48,95 +44,7 @@ export default function EngineerLayout() {
     })
   }
 
-  const [dbStatus, setDbStatus] = useState(null)
-  const [datasets, setDatasets] = useState([])
-  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true)
-  const [catalogError, setCatalogError] = useState(null)
-
-  const [versionLineageMap, setVersionLineageMap] = useState(() =>
-    loadJsonStorage(LINEAGE_STORAGE_KEY, {})
-  )
-  const [recordCountsMap, setRecordCountsMap] = useState(() =>
-    loadJsonStorage(RECORD_CACHE_STORAGE_KEY, {})
-  )
-
-  const fetchCatalogAndHealth = useCallback(async () => {
-    setIsLoadingCatalog(true)
-    setCatalogError(null)
-    try {
-      const [listResult, healthResult] = await Promise.all([
-        datasetService.listDatasets({ limit: 100 }),
-        apiClient.get('/health/db').catch(() => ({ data: { status: 'disconnected' } })),
-      ])
-      setDatasets(listResult)
-      setDbStatus(healthResult.data)
-    } catch (err) {
-      setCatalogError(
-        err.response?.data?.detail || 'Failed to load dataset catalog from the server.'
-      )
-    } finally {
-      setIsLoadingCatalog(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchCatalogAndHealth()
-  }, [fetchCatalogAndHealth])
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
-
-  const registerVersionLineage = (datasetId, lineageEntry) => {
-    setVersionLineageMap((prev) => {
-      const updated = { ...prev, [datasetId]: lineageEntry }
-      saveJsonStorage(LINEAGE_STORAGE_KEY, updated)
-      return updated
-    })
-  }
-
-  const registerRecordCount = (datasetId, rowCount) => {
-    if (rowCount == null) return
-    setRecordCountsMap((prev) => {
-      const updated = { ...prev, [datasetId]: rowCount }
-      saveJsonStorage(RECORD_CACHE_STORAGE_KEY, updated)
-      return updated
-    })
-  }
-
-  const prependUploadedDataset = (uploadedItem) => {
-    setDatasets((prev) => [uploadedItem, ...prev])
-  }
-
-  const openPreviewForDataset = (datasetId) => {
-    if (datasetId) {
-      navigate(`/engineer/preview?datasetId=${encodeURIComponent(datasetId)}`)
-    } else {
-      navigate('/engineer/preview')
-    }
-  }
-
-  const startNewVersionIteration = (baseDataset) => {
-    if (baseDataset?.dataset_id) {
-      navigate(
-        `/engineer/upload?mode=iteration&parentId=${encodeURIComponent(baseDataset.dataset_id)}`,
-        { state: { baseDataset } }
-      )
-    } else {
-      navigate('/engineer/upload?mode=iteration')
-    }
-  }
-
-  const openPipelineStudioForDataset = (datasetId, step = 1) => {
-    if (datasetId) {
-      navigate(
-        `/engineer/pipeline-studio?datasetId=${encodeURIComponent(datasetId)}&step=${step}`
-      )
-    } else {
-      navigate('/engineer/pipeline-studio')
-    }
-  }
+  const handleLogout = () => { logout(); navigate('/login') }
 
   return (
     <div className="admin-shell">
@@ -144,10 +52,12 @@ export default function EngineerLayout() {
       <aside
         className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
       >
+        <div className="admin-sidebar__edge-zone">
         <button
           type="button"
-          className="admin-sidebar__squircle-toggle"
+          className="admin-sidebar__floating-toggle"
           onClick={toggleSidebar}
+          aria-expanded={!isSidebarCollapsed}
           aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
           title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
         >
@@ -157,6 +67,7 @@ export default function EngineerLayout() {
             <ChevronLeft size={15} strokeWidth={2.4} />
           )}
         </button>
+        </div>
 
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
@@ -217,6 +128,14 @@ export default function EngineerLayout() {
           >
             <Table2 size={19} style={{ flexShrink: 0 }} />
             <span>{t('Schema & Data Preview')}</span>
+          </NavLink>
+          <NavLink
+            to="/engineer/submissions"
+            title={t('Submitted Datasets & Status')}
+            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
+          >
+            <ClipboardList size={19} style={{ flexShrink: 0 }} />
+            <span>{t('Submitted Datasets & Status')}</span>
           </NavLink>
         </nav>
 
@@ -313,23 +232,7 @@ export default function EngineerLayout() {
         </header>
 
         <main className="admin-content">
-          <Outlet
-            context={{
-              dbStatus,
-              datasets,
-              isLoadingCatalog,
-              catalogError,
-              versionLineageMap,
-              recordCountsMap,
-              fetchCatalogAndHealth,
-              registerVersionLineage,
-              registerRecordCount,
-              prependUploadedDataset,
-              openPreviewForDataset,
-              openPipelineStudioForDataset,
-              startNewVersionIteration,
-            }}
-          />
+          <Outlet />
         </main>
       </div>
     </div>

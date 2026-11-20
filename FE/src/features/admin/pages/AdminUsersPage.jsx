@@ -1,343 +1,55 @@
-import { useEffect, useState } from 'react'
-import {
-  Users,
-  UserPlus,
-  Search,
-  AlertCircle,
-  RefreshCw,
-  X,
-} from 'lucide-react'
+import { useState } from 'react'
+import { UserPlus } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
+import { useAdminMutation, useAdminPage, useAdminResource } from '../../../hooks/useAdminData'
 import { useLanguage } from '../../../hooks/useLanguage'
+import { useAuth } from '../../../hooks/useAuth'
+import { AdminBadge, AdminFeedback, AdminModal, AdminPagination, AdminState, AdminToolbar } from '../components/AdminUi'
 
 export default function AdminUsersPage() {
   const { t, language } = useLanguage()
-  const [users, setUsers] = useState([])
-  const [roles, setRoles] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { user: currentUser } = useAuth()
+  const [search, setSearch] = useState('')
+  const [role, setRole] = useState('')
+  const [status, setStatus] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [statusUser, setStatusUser] = useState(null)
+  const [form, setForm] = useState({ email: '', full_name: '', role_id: 'data_engineer' })
+  const users = useAdminPage(adminService.getUsers, { search: search || undefined, role: role || undefined, is_active: status || undefined })
+  const roles = useAdminResource(adminService.getRoles)
+  const mutation = useAdminMutation()
+  const reload = () => { users.reload(); roles.reload() }
 
-  // Search & Filter
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedRole, setSelectedRole] = useState('ALL')
-
-  // Modal create user
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    email: '',
-    full_name: '',
-    role_id: 'data_engineer',
-    password: '',
-  })
-  const [formSubmitting, setFormSubmitting] = useState(false)
-  const [formError, setFormError] = useState(null)
-
-  const fetchUsersAndRoles = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const [usersData, rolesData] = await Promise.all([
-        adminService.getUsers(),
-        adminService.getRoles(),
-      ])
-      setUsers(usersData)
-      setRoles(rolesData)
-    } catch (err) {
-      setError(t('Failed to load user list from the server.'))
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchUsersAndRoles()
-  }, [])
-
-  const handleToggleStatus = async (user) => {
-    try {
-      const updated = await adminService.updateUserStatus(user.id, !user.is_active)
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)))
-    } catch (err) {
-      alert(err.response?.data?.detail || t('Failed to update user status.'))
-    }
-  }
-
-  const handleCreateSubmit = async (e) => {
-    e.preventDefault()
-    setFormSubmitting(true)
-    setFormError(null)
-    try {
-      const newUser = await adminService.createUser(formData)
-      setUsers((prev) => [newUser, ...prev])
-      setIsModalOpen(false)
-      setFormData({
-        email: '',
-        full_name: '',
-        role_id: 'data_engineer',
-        password: '',
-      })
-    } catch (err) {
-      setFormError(err.response?.data?.detail || t('Failed to create new user.'))
-    } finally {
-      setFormSubmitting(false)
-    }
-  }
-
-  const filteredUsers = users.filter((u) => {
-    const matchesSearch =
-      u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesRole = selectedRole === 'ALL' || u.role_id === selectedRole
-    return matchesSearch && matchesRole
-  })
-
-  const getRoleBadgeClass = (roleId) => {
-    switch (roleId) {
-      case 'admin': return 'badge--admin'
-      case 'data_engineer': return 'badge--engineer'
-      case 'data_scientist': return 'badge--scientist'
-      case 'business_user': return 'badge--business'
-      default: return 'badge--inactive'
-    }
-  }
-
-  return (
-    <div>
-      {/* Top action bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '280px', maxWidth: '500px' }}>
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-            <input
-              type="text"
-              placeholder={t('Search by name or email...')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="admin-input"
-              style={{ width: '100%', paddingLeft: '2.25rem' }}
-            />
-          </div>
-
-          <select
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
-            className="admin-select"
-          >
-            <option value="ALL">{t('All Roles')}</option>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="button"
-          className="btn-action btn-action--primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.1rem' }}
-          onClick={() => setIsModalOpen(true)}
-        >
-          <UserPlus size={16} />
-          <span>{t('Add User')}</span>
-        </button>
-      </div>
-
-      {/* Users Table */}
-      <div className="admin-card">
-        <div className="admin-card__header">
-          <h3 className="admin-card__title">
-            {t('User Accounts')} ({filteredUsers.length})
-          </h3>
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            onClick={fetchUsersAndRoles}
-          >
-            <RefreshCw size={14} />
-            <span>{t('Refresh')}</span>
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div className="empty-state">
-            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>{t('Loading user accounts...')}</p>
-          </div>
-        ) : error ? (
-          <div className="empty-state">
-            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{t(error)}</p>
-          </div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="empty-state">
-            <Users size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>{t('No matching user accounts found.')}</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>{t('Full Name')}</th>
-                  <th>{t('Email')}</th>
-                  <th>{t('Role')}</th>
-                  <th>{t('Status')}</th>
-                  <th>{t('Created Date')}</th>
-                  <th>{t('Action')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <strong style={{ color: '#0f172a' }}>{user.full_name}</strong>
-                    </td>
-                    <td style={{ color: '#475569' }}>{user.email}</td>
-                    <td>
-                      <span className={`badge ${getRoleBadgeClass(user.role_id)}`}>
-                        {t(roles.find((r) => r.id === user.role_id)?.name || user.role_id)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge ${user.is_active ? 'badge--active' : 'badge--inactive'}`}>
-                        {t(user.is_active ? 'Active' : 'Suspended')}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US') : '—'}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={`btn-action ${user.is_active ? 'btn-action--danger' : 'btn-action--success'}`}
-                        onClick={() => handleToggleStatus(user)}
-                      >
-                        {t(user.is_active ? 'Deactivate' : 'Activate')}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Create New User Modal */}
-      {isModalOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsModalOpen(false)
-          }}
-        >
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <h3>{t('Create New User')}</h3>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setIsModalOpen(false)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSubmit} className="modal-body">
-              {formError && (
-                <div style={{
-                  padding: '0.75rem',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '6px',
-                  color: '#dc2626',
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem',
-                }}>
-                  {t(formError)}
-                </div>
-              )}
-
-              <div className="form-field">
-                <label className="form-label">{t('Full Name')}</label>
-                <input
-                  type="text"
-                  required
-                  placeholder={t('e.g. Alex Morgan')}
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">{t('Email Address')}</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="user@metroflow.ai"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">{t('Role')}</label>
-                <select
-                  value={formData.role_id}
-                  onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  {roles
-                    .filter((r) => r.id !== 'admin')
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {t(r.name)}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">{t('Initial Password')}</label>
-                <input
-                  type="password"
-                  required
-                  placeholder={t('Enter initial password...')}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setIsModalOpen(false)}
-                >
-                  {t('Cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="btn-action btn-action--primary"
-                  style={{ padding: '0.55rem 1.25rem' }}
-                >
-                  {t(formSubmitting ? 'Creating...' : 'Create Account')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  return <section className="admin-card">
+    <AdminToolbar title={`${t('User Management')} (${users.total})`} onRefresh={reload}
+      action={<button type="button" className="btn-action btn-action--primary" onClick={() => { mutation.clear(); setCreateOpen(true) }}><UserPlus size={16} /> {t('Add User')}</button>}>
+      <input type="search" className="admin-input" value={search} onChange={(event) => setSearch(event.target.value)} aria-label={t('Search by name or email...')} placeholder={t('Search by name or email...')} />
+      <select className="admin-select" aria-label={t('Role')} value={role} onChange={(event) => setRole(event.target.value)}><option value="">{t('All Roles')}</option>{(roles.data || []).map((item) => <option key={item.id} value={item.id}>{t(item.name)}</option>)}</select>
+      <select className="admin-select" aria-label={t('Status')} value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{t('All Statuses')}</option><option value="true">{t('Active')}</option><option value="false">{t('Suspended')}</option></select>
+    </AdminToolbar>
+    {!createOpen && !statusUser && <AdminFeedback mutation={mutation} />}
+    {roles.error && <p role="alert" className="admin-notice admin-notice--error">{roles.error}</p>}
+    <AdminState resource={users}><div className="admin-table-scroll"><table className="admin-table"><thead><tr>
+      {['Full Name', 'Email', 'Role', 'Status', 'Created Date', 'Action'].map((label) => <th key={label}>{t(label)}</th>)}
+    </tr></thead><tbody>{users.items.map((user) => <tr key={user.id}>
+      <td><strong>{user.full_name}</strong></td><td>{user.email}</td><td>{t(roles.data?.find((item) => item.id === user.role_id)?.name || user.role_id)}</td>
+      <td><AdminBadge value={user.is_active ? 'ACTIVE' : 'INACTIVE'} /></td><td>{user.created_at ? new Date(user.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US') : '—'}</td>
+      <td><button type="button" disabled={mutation.busy || user.id === currentUser?.id} className={`btn-action ${user.is_active ? 'btn-action--danger' : 'btn-action--success'}`} onClick={() => { mutation.clear(); setStatusUser(user) }}>{t(user.is_active ? 'Deactivate' : 'Activate')}</button></td>
+    </tr>)}</tbody></table></div></AdminState>
+    <AdminPagination {...users} />
+    {createOpen && <AdminModal title={t('Create New User')} busy={mutation.busy} onClose={() => setCreateOpen(false)}>
+      <form onSubmit={(event) => { event.preventDefault(); mutation.run(() => adminService.createUser(form), () => { setCreateOpen(false); setForm({ email: '', full_name: '', role_id: 'data_engineer' }); users.reload() }, 'Đã tạo tài khoản và gửi mật khẩu tạm qua email.') }}>
+        <AdminFeedback mutation={mutation} />
+        <label className="form-field">{t('Full Name')}<input className="admin-input" required value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} /></label>
+        <label className="form-field">{t('Email')}<input className="admin-input" type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+        <label className="form-field">{t('Role')}<select className="admin-select" value={form.role_id} onChange={(event) => setForm({ ...form, role_id: event.target.value })}>{(roles.data || []).filter((item) => item.id !== 'admin').map((item) => <option key={item.id} value={item.id}>{t(item.name)}</option>)}</select></label>
+        <p className="admin-help">Mật khẩu tạm được máy chủ tạo và gửi qua email. Người dùng đổi mật khẩu khi đăng nhập lần đầu.</p>
+        <div className="modal-actions"><button type="button" className="btn-secondary" disabled={mutation.busy} onClick={() => setCreateOpen(false)}>{t('Cancel')}</button><button className="btn-action btn-action--primary" disabled={mutation.busy || roles.loading || Boolean(roles.error)}>{t(mutation.busy ? 'Creating...' : 'Create Account')}</button></div>
+      </form>
+    </AdminModal>}
+    {statusUser && <AdminModal title={t(statusUser.is_active ? 'Deactivate' : 'Activate')} busy={mutation.busy} onClose={() => setStatusUser(null)}>
+      <p>{statusUser.full_name} · {statusUser.email}</p><AdminFeedback mutation={mutation} />
+      <div className="modal-actions"><button className="btn-secondary" disabled={mutation.busy} onClick={() => setStatusUser(null)}>{t('Cancel')}</button><button className="btn-action btn-action--primary" disabled={mutation.busy} onClick={() => mutation.run(() => adminService.updateUserStatus(statusUser.id, !statusUser.is_active), () => { setStatusUser(null); users.reload() })}>{t('Confirm')}</button></div>
+    </AdminModal>}
+  </section>
 }

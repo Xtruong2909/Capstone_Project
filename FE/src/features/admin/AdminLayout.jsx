@@ -15,6 +15,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useLanguage } from '../../hooks/useLanguage'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
 import './AdminLayout.css'
+import './AdminData.css'
 
 export default function AdminLayout() {
   const { t } = useLanguage()
