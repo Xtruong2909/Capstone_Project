@@ -8,6 +8,7 @@ import math
 from collections import deque
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from itertools import islice
 from pathlib import Path
 from typing import Any
@@ -400,15 +401,23 @@ def aggregate_normalized_rows(
     """Return observed bins only; track IDs are unique within each session/bin."""
     bins: dict[datetime, dict[str, Any]] = {}
     records_read = 0
+
+    @lru_cache(maxsize=65_536, typed=True)
+    def time_bucket(time_value: Any) -> datetime:
+        # pNEUMA repeats the same observation times across thousands of vehicles.
+        timestamp = _timestamp(time_value, recording_start)
+        epoch = math.floor(timestamp.timestamp() / aggregation_interval) * aggregation_interval
+        return datetime.fromtimestamp(epoch, tz=UTC)
+
     for values in rows:
         track_value, time_value, *optional_speed = values
         records_read += 1
         if track_value is None or str(track_value).strip() == "":
             raise SessionAggregationError(f"Missing track_id at normalized row {records_read}")
-        timestamp = _timestamp(time_value, recording_start)
-        bin_epoch = math.floor(timestamp.timestamp() / aggregation_interval) * aggregation_interval
-        bucket = datetime.fromtimestamp(bin_epoch, tz=UTC)
-        group = bins.setdefault(bucket, {"track_ids": set(), "speeds_kmh": []})
+        bucket = time_bucket(time_value)
+        group = bins.get(bucket)
+        if group is None:
+            group = bins[bucket] = {"track_ids": set(), "speed_sum": 0.0, "speed_count": 0}
         group["track_ids"].add(str(track_value))
         if optional_speed and optional_speed[0] is not None:
             try:
@@ -416,7 +425,8 @@ def aggregate_normalized_rows(
             except (TypeError, ValueError):
                 speed = math.nan
             if math.isfinite(speed) and speed >= 0:
-                group["speeds_kmh"].append(speed * METERS_PER_SECOND_TO_KMH)
+                group["speed_sum"] += speed * METERS_PER_SECOND_TO_KMH
+                group["speed_count"] += 1
     if not bins:
         raise SessionAggregationError("Recording Session contains no normalized observations")
     return [
@@ -427,8 +437,8 @@ def aggregate_normalized_rows(
                 len(group["track_ids"]) / (aggregation_interval / 60.0), 2,
             ),
             "mean_speed": round(
-                sum(group["speeds_kmh"]) / len(group["speeds_kmh"]), 2,
-            ) if group["speeds_kmh"] else None,
+                group["speed_sum"] / group["speed_count"], 2,
+            ) if group["speed_count"] else None,
         }
         for timestamp, group in sorted(bins.items())
     ], records_read
@@ -488,8 +498,10 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
         job = repo.get_aggregation_job(db, aggregation_id)
         if job is None or (job.job_metadata or {}).get("workflow") != WORKFLOW_KEY:
             return
+        if job.status in ("COMPLETED", "PARTIAL_SUCCESS", "FAILED"):
+            return
         job.status = "RUNNING"
-        job.started_at = datetime.now(UTC)
+        job.started_at = job.started_at or datetime.now(UTC)
         db.commit()
         pair = repo.get_dataset_version(db, job.dataset_version_id)
         if pair is None:
@@ -505,6 +517,11 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
         results_by_id = {
             result.session_id: result for result in repo.list_temporal_session_results(db, job.id)
         }
+        # Completed session rows and their result are committed together. Rebuild
+        # counters in case the worker stopped before committing job progress.
+        job.completed_sessions = sum(result.status == "COMPLETED" for result in results_by_id.values())
+        job.failed_sessions = sum(result.status == "FAILED" for result in results_by_id.values())
+        job.records_created = sum(result.time_bins for result in results_by_id.values() if result.status == "COMPLETED")
         path = _normalized_path(version)
         with pq.ParquetFile(path) as parquet_file:
             counts = _session_row_counts(
@@ -516,9 +533,12 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
             )
             for session, row_count in zip(selected_sessions, counts):
                 result = results_by_id[session.id]
+                session_rows = islice(normalized_rows, row_count)
+                if result.status in ("COMPLETED", "FAILED"):
+                    deque(session_rows, maxlen=0)
+                    continue
                 result.status = "RUNNING"
                 db.commit()
-                session_rows = islice(normalized_rows, row_count)
                 try:
                     buckets, records_read = aggregate_normalized_rows(
                         session_rows,

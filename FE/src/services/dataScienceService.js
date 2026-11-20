@@ -15,7 +15,10 @@ export const dataScienceService = {
   },
   async getAggregation(aggregationId, page = 1, pageSize = 20, sessionId = null) {
     const { data } = await apiClient.get(`/v1/ds/aggregations/${aggregationId}/results`, { ...config, params: { page, page_size: pageSize, ...(sessionId ? { session_id: sessionId } : {}) } })
-    return data
+    return { ...data,
+      completed_sessions: (data.sessions || []).filter((session) => session.status === 'COMPLETED').length,
+      failed_sessions: (data.sessions || []).filter((session) => session.status === 'FAILED').length,
+    }
   },
   async generateFeatures(aggregationId) {
     const { data } = await apiClient.post('/lag-features/generate', { aggregation_id: aggregationId }, config)

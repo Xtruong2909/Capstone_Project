@@ -102,6 +102,89 @@ def test_invalid_timestamp_fails_only_its_session() -> None:
         )
 
 
+def test_repeated_timestamps_are_parsed_once_per_session(monkeypatch) -> None:
+    original = service._timestamp
+    calls = []
+
+    def counted_timestamp(value: Any, start: datetime | None) -> datetime:
+        calls.append(value)
+        return original(value, start)
+
+    monkeypatch.setattr(service, "_timestamp", counted_timestamp)
+    rows = [(vehicle, second, 10.0) for vehicle in range(100) for second in (0.0, 60.0)]
+    first, count = service.aggregate_normalized_rows(
+        rows, aggregation_interval=60, recording_start=datetime(2018, 11, 1, 8, tzinfo=UTC),
+    )
+    assert count == 200
+    assert calls == [0.0, 60.0]
+    assert [bucket["vehicle_count"] for bucket in first] == [100, 100]
+    assert [bucket["mean_speed"] for bucket in first] == [36.0, 36.0]
+    second, _ = service.aggregate_normalized_rows(
+        rows, aggregation_interval=60, recording_start=datetime(2018, 11, 2, 8, tzinfo=UTC),
+    )
+    assert len(calls) == 4
+    assert second[0]["time_bucket"] - first[0]["time_bucket"] == timedelta(days=1)
+
+
+def test_speed_accumulator_ignores_invalid_observations() -> None:
+    bins, count = service.aggregate_normalized_rows(
+        [(1, 0, 10), (1, 0, 20), (2, 0, -1), (2, 0, float("nan")),
+         (3, 0, None), (3, 0, "bad"), (4, 60, None)],
+        aggregation_interval=60, recording_start=None,
+    )
+    assert count == 7
+    assert [bucket["vehicle_count"] for bucket in bins] == [3, 1]
+    assert [bucket["mean_speed"] for bucket in bins] == [54.0, None]
+
+
+def test_timestamp_cache_does_not_confuse_bool_with_number() -> None:
+    with pytest.raises(service.SessionAggregationError, match="Invalid normalized timestamp"):
+        service.aggregate_normalized_rows(
+            [(1, 0), (2, False)], aggregation_interval=60, recording_start=None,
+        )
+
+
+def test_interrupted_run_resumes_without_rewriting_completed_session(tmp_path, monkeypatch) -> None:
+    ids = [uuid4(), uuid4()]
+    job = SimpleNamespace(
+        id=uuid4(), dataset_version_id=uuid4(), status="RUNNING", started_at=None,
+        job_metadata={"workflow": service.WORKFLOW_KEY, "session_ids": list(map(str, ids))},
+        completed_sessions=0, failed_sessions=0, records_created=0,
+        aggregation_interval=60, total_sessions=2,
+    )
+    results = [SimpleNamespace(session_id=ids[0], status="COMPLETED", time_bins=1),
+               SimpleNamespace(session_id=ids[1], status="RUNNING", time_bins=0)]
+    sessions = [SimpleNamespace(id=id_, original_filename="20181101_d1_0800_0830.csv") for id_ in ids]
+    path = tmp_path / "normalized.parquet"
+    pq.write_table(pa.table({"track_id": [99, 1, 2], "time": [0., 60., 60.]}), path)
+
+    class Db:
+        def commit(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    saved = []
+    monkeypatch.setattr(service.repo, "get_aggregation_job", lambda *args: job)
+    monkeypatch.setattr(service.repo, "get_dataset_version", lambda *args: (SimpleNamespace(id=uuid4()), SimpleNamespace(id=job.dataset_version_id)))
+    monkeypatch.setattr(service.repo, "get_cleaning_history", lambda *args: object())
+    monkeypatch.setattr(service.repo, "list_temporal_session_results", lambda *args: results)
+    monkeypatch.setattr(service.repo, "save_temporal_session_result", lambda db, result, rows: saved.extend(rows))
+    monkeypatch.setattr(service, "_source_sessions", lambda *args: sessions)
+    monkeypatch.setattr(service, "_normalized_path", lambda *args: path)
+    monkeypatch.setattr(service, "_session_row_counts", lambda *args: [1, 2])
+    monkeypatch.setattr(service, "_update_progress", lambda *args: None)
+    service.run_temporal_aggregation(db_session_factory=Db, aggregation_id=job.id)
+    assert job.status == "COMPLETED"
+    assert job.completed_sessions == 2 and job.records_created == 2
+    assert len(saved) == 1
+    assert saved[0].recording_session_id == str(ids[1])
+    assert saved[0].vehicle_count == 2
+    service.run_temporal_aggregation(db_session_factory=Db, aggregation_id=job.id)
+    assert len(saved) == 1
+
+
 def test_legacy_version_uses_saved_session_counts_when_source_csv_is_missing(monkeypatch) -> None:
     version_id = uuid4()
     session_ids = [uuid4(), uuid4()]
