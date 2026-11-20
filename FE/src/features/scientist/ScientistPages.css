@@ -3325,3 +3325,9 @@
   .sci-experiment-chart-canvas { height: 280px; }
   .sci-experiment-session-chart__title { align-items: flex-start; flex-direction: column; }
 }
+.sci-aggregation-progress { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid #dce9fa; border-radius: 10px; background: #f5f9ff; color: #607a99; font-size: 12px; }
+.sci-aggregation-progress > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.sci-aggregation-progress strong { color: #2464b3; }
+.sci-aggregation-progress progress { width: 100%; height: 8px; accent-color: #2677e0; }
+.sci-training-status--partial { color: #a46611; background: #fff4dc; }
+.sci-training-step--partial { border-color: #efd5a7; }

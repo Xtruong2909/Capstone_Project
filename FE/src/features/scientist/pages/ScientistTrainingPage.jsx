@@ -9,12 +9,14 @@ const RUNNING_STATUSES = ['PROCESSING', 'PENDING', 'QUEUED', 'RUNNING']
 
 function getStepState(result, ready) {
   if (result?.status === 'COMPLETED') return 'complete'
+  if (result?.status === 'PARTIAL_SUCCESS') return 'partial'
   if (result && RUNNING_STATUSES.includes(result.status)) return 'processing'
   if (result?.status === 'FAILED') return 'failed'
   return ready ? 'ready' : 'waiting'
 }
 
 const STATE_LABELS = {
+  partial: 'Hoàn tất một phần',
   complete: 'Hoàn tất', processing: 'Đang xử lý', failed: 'Cần kiểm tra',
   ready: 'Sẵn sàng', waiting: 'Chưa mở',
 }
@@ -54,7 +56,7 @@ export default function ScientistTrainingPage() {
   const { aggregation, features, split, experiment } = workflow
   const aggregationTable = useAggregationResults(
     aggregation?.aggregation_id,
-    aggregation?.status === 'COMPLETED',
+    ['COMPLETED', 'PARTIAL_SUCCESS'].includes(aggregation?.status),
     selectedSessionId,
   )
   const selectAggregationSession = (sessionId) => {
@@ -103,7 +105,19 @@ export default function ScientistTrainingPage() {
         {aggregationState !== 'processing' && <button type="button" className={`sci-training-button${aggregation ? ' sci-training-button--secondary' : ''}`} disabled={busy} onClick={startAggregation}><Database size={16} /> {aggregation ? 'Tổng hợp lại' : 'Bắt đầu tổng hợp'}</button>}
         {aggregation && aggregationState !== 'complete' && <button type="button" className="sci-training-button sci-training-button--secondary" disabled={busy} onClick={refreshAggregation}><RefreshCw size={15} /> Cập nhật</button>}
       </div>}>
-        {aggregationState === 'complete' && <AggregationTimeTable {...aggregationTable} setSessionId={selectAggregationSession} aggregationId={aggregation.aggregation_id} groupId={activeGroupId} sessions={aggregation.sessions || []} sessionsById={sessionsById} />}
+        {aggregationState === 'processing' && <div className="sci-aggregation-progress" role="status">
+          <div><strong>{aggregation?.completed_sessions || 0}/{aggregation?.total_sessions || 0} phiên hoàn tất</strong><span>Tiến độ tự cập nhật sau mỗi 3 giây.</span></div>
+          <progress aria-label="Tiến độ tổng hợp phiên ghi hình" max={Math.max(1, aggregation?.total_sessions || 0)} value={(aggregation?.completed_sessions || 0) + (aggregation?.failed_sessions || 0)} />
+          {aggregation?.failed_sessions > 0 && <span>{aggregation.failed_sessions} phiên xử lý lỗi</span>}
+        </div>}
+        {['partial', 'failed'].includes(aggregationState) && <div className="sci-training-alert" role="alert">
+          <strong>{(aggregation.sessions || []).filter((session) => session.status === 'COMPLETED').length}/{aggregation.total_sessions} phiên đã hoàn tất.</strong>
+          <p>Các phiên thành công vẫn có thể xem bên dưới. Cần xử lý phiên lỗi và tổng hợp đầy đủ trước khi tạo đặc trưng.</p>
+          <ul>{(aggregation.sessions || []).filter((session) => session.status === 'FAILED').map((session) => <li key={session.session_id}>
+            <strong>{sessionsById[session.session_id]?.original_filename || session.session_id}</strong>: {session.error_message || 'Không xử lý được phiên ghi hình.'}
+          </li>)}</ul>
+        </div>}
+        {['complete', 'partial'].includes(aggregationState) && <AggregationTimeTable {...aggregationTable} setSessionId={selectAggregationSession} aggregationId={aggregation.aggregation_id} groupId={activeGroupId} sessions={(aggregation.sessions || []).filter((session) => session.status === 'COMPLETED')} sessionsById={sessionsById} />}
       </TrainingStep>
 
       <TrainingStep number={2} icon={Layers3} title="Tạo lag features" description={featuresState === 'complete' ? null : 'Tạo các đặc trưng từ dữ liệu đã tổng hợp để đưa vào mô hình.'} state={featuresState} compact headerActions={<div className="sci-training-step__actions">
