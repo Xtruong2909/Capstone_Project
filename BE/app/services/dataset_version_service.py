@@ -107,6 +107,8 @@ def build_dataset_version_item(
     return DatasetVersionListItem(
         dataset_id=version.dataset_id,
         dataset_name=version.dataset.name if version.dataset else None,
+        group_id=getattr(version.dataset, "group_id", None),
+        group_name=getattr(getattr(version.dataset, "group", None), "name", None),
         version_id=version.id,
         version_tag=version.version_tag,
         file_format=version.file_format,

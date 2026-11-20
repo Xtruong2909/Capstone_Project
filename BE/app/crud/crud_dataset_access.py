@@ -8,6 +8,7 @@ from app.models.dataset import Dataset, DatasetAccessGrant, DatasetGroup, Datase
 from app.models.user import User
 
 ACCESS_ROLES = ("data_scientist", "business_user")
+GRANT_ROLES = ("data_scientist",)
 
 
 def get_group(db: Session, group_id: UUID) -> DatasetGroup | None:
@@ -101,7 +102,7 @@ def list_group_grants(
 def list_eligible_group_users(
     db: Session, search: str | None, skip: int, limit: int,
 ) -> list[User]:
-    query = select(User).where(User.role_id.in_(ACCESS_ROLES))
+    query = select(User).where(User.role_id.in_(GRANT_ROLES))
     if search:
         pattern = f"%{search}%"
         query = query.where(or_(User.full_name.ilike(pattern), User.email.ilike(pattern)))
@@ -160,7 +161,7 @@ def eligible_users(
             DatasetAccessGrant.user_id == User.id,
         )
     )
-    query = select(User, granted).where(User.role_id.in_(ACCESS_ROLES))
+    query = select(User, granted).where(User.role_id.in_(GRANT_ROLES))
     if search:
         query = query.where(
             or_(User.full_name.ilike(f"%{search}%"), User.email.ilike(f"%{search}%"))

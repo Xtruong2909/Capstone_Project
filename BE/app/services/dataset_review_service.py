@@ -405,7 +405,7 @@ def preview_recording_session(
                 )
             preview = _read_csv(
                 path, offset=(page - 1) * limit,
-                page_size=limit, representation="normalized",
+                page_size=limit, representation="normalized", build_index=False,
             )
             if preview.representation != "normalized":
                 raise DatasetPreviewReadError(

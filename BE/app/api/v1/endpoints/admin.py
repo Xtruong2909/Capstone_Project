@@ -523,7 +523,8 @@ def review_dataset_legacy(
 )
 def get_experiments_overview(
     limit: int = Query(default=10, ge=1, le=100),
+    skip: int = Query(default=0, ge=0, le=100000),
     db: Session = Depends(get_db),
 ) -> ExperimentsOverviewResponse:
     """Giám sát trạng thái, metrics và nhật ký chạy thí nghiệm AI/ML."""
-    return monitoring.get_experiments_overview(db, limit=limit)
+    return monitoring.get_experiments_overview(db, limit=limit, skip=skip)

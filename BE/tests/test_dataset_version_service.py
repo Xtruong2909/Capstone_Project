@@ -25,6 +25,25 @@ class FakeQuery:
         return self.result
 
 
+def test_version_response_identifies_its_batch(monkeypatch) -> None:
+    group_id = uuid4()
+    version = SimpleNamespace(
+        id=uuid4(), dataset_id=uuid4(),
+        dataset=SimpleNamespace(name="20181101-d3", group_id=group_id, group=SimpleNamespace(name="Batch 3")),
+        version_tag="v1.2", file_format="PARQUET", file_size_bytes=100, total_records=20,
+        approval_status="APPROVED", submitted_by=None, submitted_at=None,
+        approved_by=None, approval_note="Ok", created_at=datetime.now(UTC),
+    )
+    monkeypatch.setattr(dataset_version_service.crud_dataset, "get_cleaning_history_by_version", lambda *args: None)
+    monkeypatch.setattr(dataset_version_service, "get_version_source_context", lambda *args, **kwargs: (None, None, []))
+    response = dataset_version_service.build_dataset_version_item(None, version)
+    assert response.group_id == group_id
+    assert response.group_name == "Batch 3"
+    version.dataset = SimpleNamespace(name="Legacy")
+    legacy = dataset_version_service.build_dataset_version_item(None, version)
+    assert legacy.group_id is None and legacy.group_name is None
+
+
 class FakeDb:
     def __init__(self, source_version: object, sessions: list[object]) -> None:
         self.source_version = source_version

@@ -59,7 +59,7 @@ def list_audit_logs(
     )
 
 
-def get_experiments_overview(db: Session, *, limit: int) -> ExperimentsOverviewResponse:
+def get_experiments_overview(db: Session, *, limit: int, skip: int = 0) -> ExperimentsOverviewResponse:
     """Expose the latest persisted experiments and evaluation metrics."""
     count = crud_admin.count_experiments
     stats = {
@@ -75,7 +75,7 @@ def get_experiments_overview(db: Session, *, limit: int) -> ExperimentsOverviewR
     }
 
     experiments: list[dict] = []
-    for exp in crud_admin.list_recent_legacy_experiments(db, limit):
+    for exp in crud_admin.list_recent_legacy_experiments(db, skip + limit):
         metrics = None
         if exp.evaluation_metric:
             metrics = {
@@ -101,7 +101,7 @@ def get_experiments_overview(db: Session, *, limit: int) -> ExperimentsOverviewR
 
     for (exp, creator_name, version_tag, dataset_name, feature_generation_id,
          aggregation_id, aggregation_interval, group_id, group_name) in (
-        crud_admin.list_recent_training_experiments(db, limit)
+        crud_admin.list_recent_training_experiments(db, skip + limit)
     ):
         configuration = exp.configuration or {}
         performance = exp.performance_by_model_and_horizon or {}
@@ -143,8 +143,8 @@ def get_experiments_overview(db: Session, *, limit: int) -> ExperimentsOverviewR
             "completed_at": exp.completed_at,
         })
 
-    experiments.sort(key=lambda item: item["created_at"], reverse=True)
+    experiments.sort(key=lambda item: (item["created_at"], str(item["id"])), reverse=True)
     return ExperimentsOverviewResponse.model_validate({
         "stats": stats,
-        "experiments": experiments[:limit],
+        "experiments": experiments[skip:skip + limit],
     })

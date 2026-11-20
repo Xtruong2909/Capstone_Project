@@ -84,9 +84,21 @@ def _dataset_schema(
             if [column["name"] for column in session_columns] != [
                 column["name"] for column in columns
             ]:
+                expected = [column["name"] for column in columns]
+                actual = [column["name"] for column in session_columns]
+                missing = sorted(set(expected) - set(actual))
+                extra = sorted(set(actual) - set(expected))
+                differences = []
+                if missing:
+                    differences.append("Thiếu cột: " + ", ".join(missing))
+                if extra:
+                    differences.append("Cột khác: " + ", ".join(extra))
+                if not differences:
+                    differences.append("Thứ tự cột khác nhau")
                 raise DatasetMappingReadError(
                     "Các session trong Dataset Version không cùng cấu trúc cột: "
                     f"{reference_filename} và {session.original_filename}. "
+                    + ". ".join(differences) + ". "
                     "Hãy kiểm tra file trước khi tạo mapping dùng chung."
                 )
         columns = columns or []
