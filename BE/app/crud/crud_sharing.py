@@ -361,11 +361,26 @@ def page_dataset_sessions(
 def page_traffic_bins(
     db: Session, version_id: UUID, page: int, page_size: int,
 ) -> tuple[int, list[TrafficTimeSeries]]:
-    condition = TrafficTimeSeries.dataset_version_id == version_id
-    total = db.scalar(select(func.count()).select_from(TrafficTimeSeries).where(condition)) or 0
+    # Repeated aggregation runs may contain the same observation. Select the
+    # newest saved value before counting/paging so duplicates cannot span pages.
+    ranked = select(
+        TrafficTimeSeries.id,
+        func.row_number().over(
+            partition_by=(
+                TrafficTimeSeries.recording_session_id, TrafficTimeSeries.time_bucket,
+                TrafficTimeSeries.roi_identifier, TrafficTimeSeries.aggregation_interval,
+            ),
+            order_by=(TrafficTimeSeries.created_at.desc().nulls_last(), TrafficTimeSeries.id.desc()),
+        ).label("observation_rank"),
+    ).where(TrafficTimeSeries.dataset_version_id == version_id).subquery()
+    latest = select(ranked.c.id).where(ranked.c.observation_rank == 1).subquery()
+    total = db.scalar(select(func.count()).select_from(latest)) or 0
     rows = db.scalars(
-        select(TrafficTimeSeries).where(condition)
-        .order_by(TrafficTimeSeries.time_bucket, TrafficTimeSeries.recording_session_id)
+        select(TrafficTimeSeries).join(latest, latest.c.id == TrafficTimeSeries.id)
+        .order_by(
+            TrafficTimeSeries.time_bucket, TrafficTimeSeries.recording_session_id,
+            TrafficTimeSeries.id,
+        )
         .offset((page - 1) * page_size).limit(page_size)
     ).all()
     return total, list(rows)
