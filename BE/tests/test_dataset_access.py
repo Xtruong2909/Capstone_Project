@@ -81,7 +81,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         lambda db, ds, search, skip, limit: [
             (u, (ds, u.id) in grants)
             for u in users.values()
-            if u.role_id in repo.ACCESS_ROLES and (not search or search in u.email)
+            if u.role_id in repo.GRANT_ROLES and (not search or search in u.email)
         ][skip : skip + limit],
     )
     monkeypatch.setattr(
@@ -157,7 +157,7 @@ def request(
     return asyncio.run(run())
 
 
-@pytest.mark.parametrize("role", ["scientist", "business"])
+@pytest.mark.parametrize("role", ["scientist"])
 def test_admin_grants_and_revokes_access(state: SimpleNamespace, role: str) -> None:
     target = getattr(state, role)
     ds = state.datasets[0]
@@ -175,6 +175,17 @@ def test_admin_grants_and_revokes_access(state: SimpleNamespace, role: str) -> N
         service.check_dataset_access(target, ds, state.db)
     assert exc.value.status_code == 403
     assert request(state.app, "DELETE", f"{path}/{target.id}")[0] == 404
+
+
+@pytest.mark.parametrize("role", ["business", "engineer", "admin"])
+def test_only_scientists_can_receive_dataset_access(state: SimpleNamespace, role: str) -> None:
+    target = getattr(state, role)
+    status, body = request(state.app, "POST", f"/admin/datasets/{state.datasets[0]}/access",
+                           {"user_id": str(target.id)})
+    assert status == 422
+    assert "Only Data Scientist" in body["detail"]
+    assert not state.grants
+    state.db.commit.assert_not_called()
 
 
 def test_admin_group_access_grants_all_datasets_atomically(
@@ -202,7 +213,7 @@ def test_admin_group_access_grants_all_datasets_atomically(
     )
     monkeypatch.setattr(
         repo, "list_eligible_group_users",
-        lambda db, search, skip, limit: [state.scientist, state.business][skip:skip + limit],
+        lambda db, search, skip, limit: [state.scientist][skip:skip + limit],
     )
     monkeypatch.setattr(
         repo, "list_groups",
@@ -210,6 +221,8 @@ def test_admin_group_access_grants_all_datasets_atomically(
         if user.role_id == "admin" or any(uid == user.id for _, uid in state.grants) else [],
     )
     path = f"/admin/datasets/groups/{group_id}/access"
+    assert request(state.app, "POST", path, {"user_id": str(state.business.id)})[0] == 422
+    assert not state.grants
     payload = {"user_id": str(state.scientist.id)}
     assert request(state.app, "POST", path, payload)[0] == 409
     assert not state.grants
@@ -223,6 +236,8 @@ def test_admin_group_access_grants_all_datasets_atomically(
     assert len(state.grants) == 2
     assert request(state.app, "GET", path)[1][0]["has_full_access"] is True
     assert request(state.app, "GET", f"/admin/datasets/groups/{group_id}/eligible-users")[1][0]["granted_datasets"] == 2
+    eligible = request(state.app, "GET", f"/admin/datasets/groups/{group_id}/eligible-users")[1]
+    assert {item["role"] for item in eligible} == {"data_scientist"}
     state.current = state.scientist
     assert request(state.app, "GET", "/datasets/accessible-groups")[1][0]["group_id"] == str(group_id)
     assert request(state.app, "DELETE", f"{path}/{state.scientist.id}")[0] == 403
@@ -234,7 +249,8 @@ def test_admin_group_access_grants_all_datasets_atomically(
 def test_many_users_many_datasets_revoke_is_scoped(state: SimpleNamespace) -> None:
     for ds in state.datasets:
         for target in (state.scientist, state.business):
-            service.grant_access(state.db, ds, target.id, state.admin)
+            # Keep legacy grants readable/revocable without authorizing new Business grants.
+            repo.add_grant(state.db, ds, target.id, state.admin.id)
     service.revoke_access(state.db, state.datasets[0], state.scientist.id, state.admin)
     assert len(state.grants) == 3
     assert service.check_dataset_access(state.scientist, state.datasets[1], state.db)
@@ -294,15 +310,15 @@ def test_validation_and_missing_resources(state: SimpleNamespace) -> None:
 
 def test_eligible_users_search_pagination_and_granted_flag(state: SimpleNamespace) -> None:
     ds = state.datasets[0]
-    service.grant_access(state.db, ds, state.business.id, state.admin)
+    service.grant_access(state.db, ds, state.scientist.id, state.admin)
     status, body = request(state.app, "GET", f"/admin/datasets/{ds}/eligible-users")
-    assert status == 200 and len(body) == 2
-    assert {r["role"] for r in body} == {"data_scientist", "business_user"}
-    assert next(r for r in body if r["user_id"] == str(state.business.id))["has_access"]
+    assert status == 200 and len(body) == 1
+    assert {r["role"] for r in body} == {"data_scientist"}
+    assert body[0]["has_access"]
     assert len(request(state.app, "GET", f"/admin/datasets/{ds}/eligible-users?limit=1")[1]) == 1
     assert (
         len(request(state.app, "GET", f"/admin/datasets/{ds}/eligible-users?search=business")[1])
-        == 1
+        == 0
     )
 
 
@@ -329,7 +345,7 @@ def test_accessible_only_current_user_and_empty_default(state: SimpleNamespace, 
         assert request(state.app, "GET", "/datasets/accessible")[0] == 403
     else:
         assert request(state.app, "GET", "/datasets/accessible")[1] == []
-    service.grant_access(state.db, state.datasets[0], target.id, state.admin)
+    repo.add_grant(state.db, state.datasets[0], target.id, state.admin.id)
     status, body = request(state.app, "GET", f"/datasets/accessible?user_id={state.admin.id}")
     if role == "business":
         assert status == 403
@@ -405,7 +421,7 @@ def test_unauthenticated_and_invalid_token(state: SimpleNamespace) -> None:
 
 def test_business_cannot_train_even_with_grant(state: SimpleNamespace) -> None:
     ds = state.datasets[0]
-    service.grant_access(state.db, ds, state.business.id, state.admin)
+    repo.add_grant(state.db, ds, state.business.id, state.admin.id)
     with pytest.raises(HTTPException) as exc:
         require_dataset_scientist(ds, state.business, state.db)
     assert exc.value.status_code == 403
@@ -500,7 +516,7 @@ def test_grant_does_not_allow_business_to_preprocess(state: SimpleNamespace, suf
     from app.main import app
 
     ds = state.datasets[0]
-    service.grant_access(state.db, ds, state.business.id, state.admin)
+    repo.add_grant(state.db, ds, state.business.id, state.admin.id)
     app.dependency_overrides[get_db] = lambda: state.db
     app.dependency_overrides[get_current_user] = lambda: state.business
     try:
@@ -625,7 +641,7 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
     engine.dispose()
 
 
-@pytest.mark.parametrize("role", ["scientist", "business"])
+@pytest.mark.parametrize("role", ["scientist"])
 def test_grant_requires_approval_before_writing(
     state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
 ) -> None:
@@ -657,7 +673,7 @@ def test_consumer_session_review_guards_and_response(
     session_id = uuid4()
     target = getattr(state, role)
     if role in ("scientist", "business"):
-        service.grant_access(state.db, ds, target.id, state.admin)
+        repo.add_grant(state.db, ds, target.id, state.admin.id)
     state.current = target
     version = SimpleNamespace(id=version_id, dataset_id=ds, approval_status=approval)
     monkeypatch.setattr(repo, "get_version", lambda db, vid: version)

@@ -8,9 +8,11 @@ import re
 import sys
 import tempfile
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any, BinaryIO
 from uuid import UUID
 
@@ -55,6 +57,9 @@ except OverflowError:
     # sys.maxsize is 64-bit, so csv.field_size_limit raises OverflowError when limit > 2**31 - 1.
     csv.field_size_limit(2147483647)
 logger = logging.getLogger(__name__)
+_INDEX_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="preview-index")
+_INDEX_BUILDS: set[Path] = set()
+_INDEX_LOCK = Lock()
 
 
 class DatasetPreviewNotFoundError(FileNotFoundError):
@@ -376,6 +381,59 @@ def _get_pneuma_index(path: Path, delimiter: str) -> dict[str, Any]:
     return _build_pneuma_index(path, delimiter)
 
 
+def _warm_pneuma_index(path: Path, delimiter: str) -> None:
+    """Bound background indexing to one worker and at most two files."""
+    with _INDEX_LOCK:
+        if path in _INDEX_BUILDS or len(_INDEX_BUILDS) >= 2:
+            return
+        _INDEX_BUILDS.add(path)
+
+    def build() -> None:
+        try:
+            _get_pneuma_index(path, delimiter)
+        except Exception:
+            logger.exception("Failed to warm preview index", extra={"path": str(path)})
+        finally:
+            with _INDEX_LOCK:
+                _INDEX_BUILDS.discard(path)
+
+    _INDEX_EXECUTOR.submit(build)
+
+
+def _read_pneuma_stream_page(
+    path: Path, delimiter: str, offset: int, page_size: int,
+) -> DatasetPreviewData:
+    """Return a cold preview without counting every point in the uploaded file."""
+    selected: list[dict[str, Any]] = []
+    points_seen = 0
+    with path.open("rb") as source:
+        source.readline()
+        for raw_line in source:
+            values = _parse_pneuma_line(raw_line, delimiter)
+            if not values or not _is_pneuma_record(values):
+                continue
+            values = _trim_pneuma_trailing_empty(values)
+            count = (len(values) - 4) // len(PNEUMA_POINT_FIELDS)
+            start = max(0, offset - points_seen)
+            stop = min(count, offset + page_size + 1 - points_seen)
+            if start < stop:
+                selected.extend(_pneuma_points(values, start=start, stop=stop))
+            points_seen += count
+            if len(selected) > page_size:
+                break
+        else:
+            return DatasetPreviewData(
+                columns=_pneuma_normalized_columns(), rows=selected, has_more=False,
+                detected_structure="pneuma_trajectory", representation="normalized",
+                warnings=[], total_rows=points_seen,
+            )
+    _warm_pneuma_index(path, delimiter)
+    return DatasetPreviewData(
+        columns=_pneuma_normalized_columns(), rows=selected[:page_size], has_more=True,
+        detected_structure="pneuma_trajectory", representation="normalized", warnings=[],
+    )
+
+
 def _read_pneuma_normalized_page(
     path: Path,
     *,
@@ -409,12 +467,7 @@ def _read_pneuma_normalized_page(
                 point_count,
                 page_end - (cumulative_ends[track_index] - point_count),
             )
-            all_points = _pneuma_points(values)
-            for point_index, point in enumerate(all_points):
-                if first_point <= point_index < last_point:
-                    points.append(point)
-                if point_index >= last_point:
-                    break
+            points.extend(_pneuma_points(values, start=first_point, stop=last_point))
             track_index += 1
     return points
 
@@ -425,13 +478,15 @@ def _read_csv(
     offset: int,
     page_size: int,
     representation: str,
+    build_index: bool = True,
 ) -> DatasetPreviewData:
     with path.open("r", encoding="utf-8-sig", newline="") as source:
         first_line = source.readline(64 * 1024)
         source.seek(0)
         dialect = _csv_dialect(first_line)
         reader = csv.reader(source, dialect)
-        sample_rows = [next(reader, []) for _ in range(6)]
+        first = next(reader, [])
+        sample_rows = [first] if representation == "normalized" and _is_pneuma_header(first) else [first] + [next(reader, []) for _ in range(5)]
         first_row = sample_rows[0] if sample_rows else []
         if not first_row:
             raise DatasetPreviewReadError("CSV không có hàng tiêu đề")
@@ -478,7 +533,9 @@ def _read_csv(
         extra_rows = 0
         selected: list[dict[str, Any]] = []
         if actual_representation == "normalized":
-            index = _get_pneuma_index(path, dialect.delimiter)
+            index = _get_pneuma_index(path, dialect.delimiter) if build_index else _load_pneuma_index(path)
+            if index is None or index.get("delimiter") != dialect.delimiter:
+                return _read_pneuma_stream_page(path, dialect.delimiter, offset, page_size)
             total_rows = index["total_points"]
             selected = _read_pneuma_normalized_page(
                 path,
@@ -607,19 +664,18 @@ def _is_pneuma_header(headers: list[str]) -> bool:
     return tuple(name.strip().lower() for name in headers) == PNEUMA_HEADERS
 
 
-def _pneuma_points(values: list[str]) -> Iterator[dict[str, Any]]:
+def _pneuma_points(
+    values: list[str], *, start: int = 0, stop: int | None = None,
+) -> Iterator[dict[str, Any]]:
     track = {
         "track_id": _csv_number(values[0], integer=True),
         "type": values[1].strip() or None,
         "traveled_d": _csv_number(values[2]),
         "avg_speed": _csv_number(values[3]),
     }
-    point_values = [values[4:10]]
-    point_values.extend(
-        values[index : index + len(PNEUMA_POINT_FIELDS)]
-        for index in range(len(PNEUMA_HEADERS), len(values), len(PNEUMA_POINT_FIELDS))
-    )
-    for coordinates in point_values:
+    end = len(values) if stop is None else min(len(values), 4 + stop * len(PNEUMA_POINT_FIELDS))
+    for index in range(4 + start * len(PNEUMA_POINT_FIELDS), end, len(PNEUMA_POINT_FIELDS)):
+        coordinates = values[index:index + len(PNEUMA_POINT_FIELDS)]
         yield {
             **track,
             **{

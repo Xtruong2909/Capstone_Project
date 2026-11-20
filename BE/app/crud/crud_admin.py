@@ -257,7 +257,7 @@ def list_recent_legacy_experiments(db: Session, limit: int) -> list[Experiment]:
     """Fetch recent legacy forecasting experiments."""
     return (
         db.query(Experiment)
-        .order_by(Experiment.created_at.desc())
+        .order_by(Experiment.created_at.desc(), Experiment.id.desc())
         .limit(limit)
         .all()
     )
@@ -288,7 +288,7 @@ def list_recent_training_experiments(db: Session, limit: int) -> list[tuple]:
             DatasetGroup.id == cast(TrafficAggregationJob.job_metadata["group_id"].as_string(), PGUUID),
         )
         .outerjoin(User, ModelTrainingExperiment.created_by == User.id)
-        .order_by(ModelTrainingExperiment.created_at.desc())
+        .order_by(ModelTrainingExperiment.created_at.desc(), ModelTrainingExperiment.id.desc())
         .limit(limit)
         .all()
     )

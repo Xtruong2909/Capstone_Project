@@ -69,15 +69,15 @@ def grant_access(
     user = repo.get_user(db, user_id)
     if user is None:
         raise HTTPException(404, "User not found")
-    if user.role_id not in repo.ACCESS_ROLES:
-        raise HTTPException(422, "Only Data Scientist and Business User can receive access")
+    if user.role_id not in repo.GRANT_ROLES:
+        raise HTTPException(422, "Only Data Scientist can receive dataset access")
     if repo.get_grant(db, dataset_id, user_id):
         raise HTTPException(409, "Dataset access already exists")
     if not repo.has_approved_version(db, dataset_id):
         raise HTTPException(
             409,
             "Dataset phải có ít nhất một phiên bản được Admin phê duyệt (APPROVED) "
-            "trước khi cấp quyền cho Data Scientist hoặc Business User",
+            "trước khi cấp quyền cho Data Scientist",
         )
     try:
         grant = repo.add_grant(db, dataset_id, user_id, admin.id)
@@ -250,8 +250,8 @@ def grant_group_access(
     user = repo.get_user(db, user_id)
     if user is None:
         raise HTTPException(404, "User not found")
-    if user.role_id not in repo.ACCESS_ROLES:
-        raise HTTPException(422, "Only Data Scientist and Business User can receive access")
+    if user.role_id not in repo.GRANT_ROLES:
+        raise HTTPException(422, "Only Data Scientist can receive dataset access")
     approved = repo.approved_group_dataset_ids(db, group_id)
     if approved != {dataset.id for dataset in datasets}:
         raise HTTPException(409, "Every Dataset in the group must have an APPROVED version")

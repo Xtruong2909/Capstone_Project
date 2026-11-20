@@ -167,6 +167,8 @@ class DatasetVersionResubmitResponse(BaseModel):
 class DatasetVersionListItem(BaseModel):
     dataset_id: UUID
     dataset_name: str | None = None
+    group_id: UUID | None = None
+    group_name: str | None = None
     version_id: UUID
     version_tag: str
     file_format: str | None = None

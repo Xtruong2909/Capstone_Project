@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -31,6 +32,35 @@ from app.services.dataset_mapping_service import (
 
 class FakeSession:
     pass
+
+
+@pytest.mark.parametrize("second_header, expected_error", [
+    ("ftrack_id;time", "Thiếu cột: track_id. Cột khác: ftrack_id"),
+    ("time;track_id", "Thứ tự cột khác nhau"),
+    ("track_id;time", None),
+])
+def test_session_schema_reports_actual_header_difference(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    second_header: str, expected_error: str | None,
+) -> None:
+    version = SimpleNamespace(id=uuid4())
+    sessions = []
+    for index, header in enumerate(["track_id;time", second_header]):
+        path = tmp_path / f"session_{index}.csv"
+        path.write_text(header + "\n1;2\n", encoding="utf-8")
+        sessions.append(SimpleNamespace(file_path=str(path), original_filename=path.name))
+    monkeypatch.setattr(crud_dataset, "get_dataset_latest_version", lambda *args: (object(), version))
+    monkeypatch.setattr(dataset_mapping_service, "get_version_recording_sessions", lambda *args: sessions)
+    monkeypatch.setattr(dataset_mapping_service, "resolve_stored_file_path", Path)
+    if expected_error:
+        with pytest.raises(DatasetMappingReadError) as exc:
+            dataset_mapping_service._dataset_schema(FakeSession(), uuid4())
+        assert expected_error in str(exc.value)
+        assert "session_0.csv" in str(exc.value) and "session_1.csv" in str(exc.value)
+    else:
+        _, columns, count = dataset_mapping_service._dataset_schema(FakeSession(), uuid4())
+        assert [column["name"] for column in columns] == ["track_id", "time"]
+        assert count == 2
 
 
 @pytest.fixture(autouse=True)
