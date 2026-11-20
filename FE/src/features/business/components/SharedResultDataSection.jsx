@@ -19,7 +19,7 @@ const LABELS = {
   horizon: 'Mốc dự báo', input_timestamp: 'Thời gian gốc (Athens)',
   forecast_timestamp: 'Thời điểm dự báo (Athens)', actual_timestamp: 'Thời điểm thực tế (Athens)',
   actual_vehicle_count: 'Thực tế (xe/phút)', predicted_vehicle_count: 'Dự báo (xe/phút)',
-  absolute_error: 'Sai số tuyệt đối', squared_error: 'Bình phương sai số',
+  absolute_error: 'MAE', squared_error: 'RMSE',
   forecast_id: 'Mã lượt dự báo', created_at: 'Thời gian tạo', model_ids: 'Mô hình theo mốc',
   lag_features: 'Giá trị đầu vào', points: 'Các mốc quan sát',
   traffic_flow: 'Lưu lượng (xe/phút)', sample_count: 'Số mẫu',
@@ -82,6 +82,8 @@ function valueText(value, key = '') {
   if (key === 'train_ratio_actual' || key === 'train_ratio_requested') return `${number(Number(value) * 100, 1)}%`
   if (TRAFFIC_FIELDS.has(key)) return formatTrafficFlow(value)
   if (/^(traffic_flow_)?lag_\d+$/.test(key)) return formatTrafficFlow(value)
+  // Each prediction row contains one observation, so its RMSE is sqrt(SE).
+  if (key === 'squared_error') return number(Math.sqrt(Number(value)), 2)
   if (METRIC_FIELDS.has(key)) return number(value, 2)
   if (COUNT_FIELDS.has(key)) return number(value)
   if (typeof value === 'number') return Number.isInteger(value) ? number(value) : number(value, 2)
@@ -109,23 +111,65 @@ function DataValue({ value, field = '', depth = 0 }) {
   return <span title={typeof value === 'string' && value.length > 24 ? value : undefined}>{valueText(value, field)}</span>
 }
 
-function DataTable({ rows, section = '', depth = 0 }) {
+function timestampParts(value, field) {
+  if (!value || !(ATHENS_TIMES.has(field) || RECORDING_TIMES.has(field))) return null
+  const [date, time] = valueText(value, field).split(/,\s*/)
+  return time ? { date, time } : null
+}
+
+function TableValue({ value, field, depth, dateContext }) {
+  const parts = dateContext && timestampParts(value, field)
+  if (parts && parts.date === dateContext) return <span title={valueText(value, field)}>{parts.time}</span>
+  return <DataValue value={value} field={field} depth={depth} />
+}
+
+function DataTable({ rows, section = '', depth = 0, hiddenFields = [], dateContext }) {
   if (!rows.length) return <p className="biz-empty-text">Chưa có dữ liệu.</p>
   const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))]
   const hasNames = keys.includes('session_name') && rows.some((row) => row.session_name)
   const visibleKeys = keys.filter((key) => !(key === 'session_id' && hasNames)
+    && !hiddenFields.includes(key)
     && !(key === 'actual_vehicle_count' && FORECAST_SECTIONS.has(section)))
   const ordered = COLUMN_ORDER[section]
     ? [...COLUMN_ORDER[section].filter((key) => visibleKeys.includes(key)), ...visibleKeys.filter((key) => !COLUMN_ORDER[section].includes(key))]
     : visibleKeys
   return <div className="sci-table-wrap biz-data-table-wrap"><table className="sci-table biz-data-table">
-    <thead><tr>{ordered.map((key) => <th key={key}>{label(key)}</th>)}</tr></thead>
+    <thead><tr>{ordered.map((key) => <th key={key} data-field={key}>{label(key)}</th>)}</tr></thead>
     <tbody>{rows.map((row, index) => <tr key={`${row.session_id || row.timestamp || 'row'}-${index}`}>{ordered.map((key) => (
-      <td key={key} title={key === 'session_name' ? row.session_id : undefined}>
-        <DataValue value={row[key]} field={key} depth={depth + 1} />
+      <td key={key} data-field={key} title={key === 'session_name' ? row.session_id : undefined}>
+        <TableValue value={row[key]} field={key} depth={depth + 1} dateContext={dateContext} />
       </td>
     ))}</tr>)}</tbody>
   </table></div>
+}
+
+function SessionDataTables({ rows, section }) {
+  if (!rows.length) return <p className="biz-empty-text">Chưa có dữ liệu.</p>
+  const groups = new Map()
+  for (const row of rows) {
+    const id = row.session_id || row.session_name || 'unknown'
+    const timeField = ['input_timestamp', 'timestamp', 'forecast_timestamp'].find((field) => row[field])
+    const date = timestampParts(row[timeField], timeField)?.date
+    const key = JSON.stringify([id, date])
+    if (!groups.has(key)) groups.set(key, {
+      sessionId: id, date, isAthens: ATHENS_TIMES.has(timeField),
+      name: row.session_name || row.session_id || 'Chưa xác định session', rows: [],
+    })
+    groups.get(key).rows.push(row)
+  }
+  return <div className="biz-session-traffic">{[...groups].map(([id, group]) => (
+    <section className="biz-session-traffic__group" key={id} aria-label={`Session ${group.name}`}>
+      <header className="biz-session-traffic__heading">
+        <div>
+          <span>Thông tin phiên ghi hình</span>
+          <h5 title={group.sessionId}>{group.name}</h5>
+          {group.date && <p className="biz-session-traffic__date">Ngày: <strong>{group.date}</strong>{group.isAthens ? ' · Giờ Athens' : ''}</p>}
+        </div>
+        <small>{group.rows.length} bản ghi trên trang này</small>
+      </header>
+      <DataTable rows={group.rows} section={section} hiddenFields={['session_id', 'session_name', 'actual_timestamp']} dateContext={group.date} />
+    </section>
+  ))}</div>
 }
 
 function SessionDistribution({ value }) {
@@ -176,13 +220,14 @@ function EvaluationMetrics({ section, value }) {
   return <DataTable rows={rows} section="evaluation_metrics" />
 }
 
-export default function SharedResultDataSection({ section, value }) {
+export default function SharedResultDataSection({ section, value, groupBySession = false }) {
   if (section === 'train_test_counts') return <SampleCounts value={value} />
   if (section === 'session_distribution') return <SessionDistribution value={value} />
   if (section === 'lag_features') return <SessionSnapshots rows={value} field="lag_features" />
   if (section === 'historical') return <SessionSnapshots rows={value} field="points" />
   if (['evaluation_metrics', 'baseline_comparison', 'horizon_comparison'].includes(section)) return <EvaluationMetrics section={section} value={value} />
   const rows = Array.isArray(value) ? value : Array.isArray(value?.data) ? value.data : null
+  if (rows && groupBySession) return <SessionDataTables rows={rows} section={section} />
   if (rows) return <DataTable rows={rows} section={section} />
   if (value && typeof value === 'object') {
     return <dl className="biz-facts">{Object.entries(value).map(([key, entry]) => <div key={key} className="biz-facts__item">

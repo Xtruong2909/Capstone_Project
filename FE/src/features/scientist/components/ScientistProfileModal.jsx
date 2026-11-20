@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import {
   X,
   User,
@@ -581,10 +580,7 @@ export default function ScientistProfileModal({ isOpen, onClose, roleLabel = 'Da
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <Link to="/forgot-password" onClick={onClose} style={{ color: '#1668e3', fontSize: '0.82rem', fontWeight: 700 }}>
-                  Quên mật khẩu?
-                </Link>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button type="button" className="btn-secondary" onClick={onClose} disabled={isSubmittingPassword}>
                   {t('Cancel')}
