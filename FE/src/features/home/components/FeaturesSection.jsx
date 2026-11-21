@@ -1,15 +1,16 @@
 import { FEATURES } from '../homeContent'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 export default function FeaturesSection() {
+  const { t } = useLanguage()
   return (
     <section className="section" id="features">
       <div className="container">
         <div className="section__head">
-          <span className="eyebrow">System Functional Architecture</span>
-          <h2>Core Capabilities &amp; Analytical Modules</h2>
+          <span className="eyebrow">{t('System Functional Architecture')}</span>
+          <h2>{t('Core Capabilities & Analytical Modules')}</h2>
           <p>
-            Structured into 6 primary functional modules and advanced traffic extensions
-            dedicated to UAV trajectory extraction and ultra-short-term forecasting.
+            {t('Structured into 6 primary functional modules and advanced traffic extensions dedicated to UAV trajectory extraction and ultra-short-term forecasting.')}
           </p>
         </div>
         <div className="grid grid--features">
@@ -20,11 +21,11 @@ export default function FeaturesSection() {
                   <Icon size={20} />
                 </span>
                 <span className={`pill pill--${tag === 'Advanced' ? 'purple' : 'blue'}`}>
-                  {tag}
+                  {t(tag)}
                 </span>
               </div>
-              <h3>{title}</h3>
-              <p>{desc}</p>
+              <h3>{t(title)}</h3>
+              <p>{t(desc)}</p>
             </article>
           ))}
         </div>

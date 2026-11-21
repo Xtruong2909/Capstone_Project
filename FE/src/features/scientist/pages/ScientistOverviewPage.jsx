@@ -1,237 +1,61 @@
-import { Link, useNavigate } from 'react-router-dom'
-import {
-  Database,
-  Layers,
-  MapPin,
-  Radio,
-  Eye,
-  Sparkles,
-  FlaskConical,
-  TrendingUp,
-  ShieldCheck,
-} from 'lucide-react'
-import { useApprovedDatasets } from '../../../hooks/useScientistData'
+import { Link } from 'react-router-dom'
+import { ChevronRight, Database, FolderOpen, Layers, MapPin, Radio, Sparkles } from 'lucide-react'
+import { useApprovedGroups } from '../../../hooks/useScientistData'
 
 const WORKFLOW = [
-  ['Browse Approved Datasets', 'View cleaned and approved pNEUMA dataset versions shared by Admin.'],
-  ['Inspect Schema & Preview', 'Examine columns, data types, detected structure, and paginated rows.'],
-  ['Time-Series Aggregation', 'Aggregate trajectories into 1m, 3m, 5m temporal bins for forecasting.'],
-  ['Model Training & Evaluation', 'Train Baseline, Random Forest, or LSTM models and evaluate MAE / RMSE.'],
+  ['Chọn batch', 'Mở batch đã được Admin cấp quyền.'],
+  ['Chọn dataset và session', 'Xem các phiên ghi hình trong dataset đã được duyệt.'],
+  ['Xem trước dữ liệu', 'Nhấn vào session để kiểm tra cột và dữ liệu.'],
+  ['Huấn luyện và dự báo', 'Tạo đặc trưng, chia dữ liệu và chạy mô hình.'],
 ]
 
+function StatCard({ tone, icon: Icon, label, value, detail }) {
+  return <div className={`stat-card stat-card--${tone}`}><Icon size={96} className="stat-card__watermark" />
+    <div className="stat-card__top"><div className="stat-card__info"><div className="stat-card__eyebrow">{label}</div>
+      <h3>{value}</h3><p>{detail}</p></div><div className={`stat-card__icon stat-card__icon--${tone}`}><Icon size={22} /></div></div>
+  </div>
+}
+
 export default function ScientistOverviewPage() {
-  const { datasets, isLoading, error } = useApprovedDatasets('')
-  const navigate = useNavigate()
+  const { groups, isLoading, error } = useApprovedGroups()
+  const approvedDatasets = groups.reduce((total, group) => total + group.approved_datasets, 0)
+  const sources = new Set(groups.map((group) => group.source).filter(Boolean)).size
+  const drones = new Set(groups.map((group) => group.drone_id).filter(Boolean)).size
 
-  const goTo = (e, path) => {
-    e.preventDefault()
-    e.stopPropagation()
-    navigate(path)
-  }
-
-  const uniqueDatasets = new Set(datasets.map((d) => d.dataset_id)).size
-  const uniqueLocations = new Set(datasets.map((d) => d.location_name).filter(Boolean)).size
-  const uniqueSources = new Set(datasets.map((d) => d.source).filter(Boolean)).size
-  const latest = datasets.slice(0, 6)
-
-  return (
-    <div className="sci-page">
-      {error && <div className="sci-state sci-state--error">{error}</div>}
-
-      {/* 4 Professional KPI Stat Cards */}
-      <div className="stats-grid">
-        <div className="stat-card stat-card--blue">
-          <Database size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <div className="stat-card__eyebrow">Approved Datasets</div>
-              <h3>{isLoading ? '…' : uniqueDatasets}</h3>
-              <p>Active traffic datasets</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--blue">
-              <Database size={22} />
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--purple">
-          <Layers size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <div className="stat-card__eyebrow">Approved Versions</div>
-              <h3>{isLoading ? '…' : datasets.length}</h3>
-              <p>Verified by Admin</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--purple">
-              <Layers size={22} />
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--green">
-          <MapPin size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <div className="stat-card__eyebrow">Locations</div>
-              <h3>{isLoading ? '…' : uniqueLocations}</h3>
-              <p>Traffic survey areas</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--green">
-              <MapPin size={22} />
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card--amber">
-          <Radio size={96} className="stat-card__watermark" />
-          <div className="stat-card__top">
-            <div className="stat-card__info">
-              <div className="stat-card__eyebrow">Data Sources</div>
-              <h3>{isLoading ? '…' : uniqueSources}</h3>
-              <p>UAV & drone feeds</p>
-            </div>
-            <div className="stat-card__icon stat-card__icon--amber">
-              <Radio size={22} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Split: Available Datasets & Workflow */}
-      <div className="sci-split">
-        {/* Left: Available Approved Versions */}
-        <section className="admin-card">
-          <div className="admin-card__header">
-            <div>
-              <h2 className="admin-card__title">Available Approved Versions</h2>
-              <p className="admin-card__subtitle">Verified datasets ready for time-series extraction & AI modeling</p>
-            </div>
-            <Link to="/scientist/datasets" className="btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}>
-              View all
-            </Link>
-          </div>
-
-          {isLoading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem 1.25rem' }}>
-              {[1, 2, 3].map((n) => (
-                <div key={n} className="sci-skeleton" style={{ height: 75 }} />
-              ))}
-            </div>
-          )}
-
-          {!isLoading && datasets.length === 0 && (
-            <div className="sci-state" style={{ margin: '1rem 1.25rem', padding: '2.5rem 1rem' }}>
-              <p style={{ margin: 0, fontWeight: 600 }}>No approved datasets assigned yet.</p>
-              <p style={{ margin: '0.3rem 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
-                Contact your system administrator to grant dataset permissions.
-              </p>
-            </div>
-          )}
-
-          {!isLoading && datasets.length > 0 && (
-            <div className="sci-overview-list">
-              {latest.map((d) => {
-                const basePath = `/scientist/datasets/${d.dataset_id}/versions/${d.version_id}`
-                return (
-                  <Link key={d.version_id} to={basePath} className="sci-overview-row">
-                    <div className="sci-overview-row__left">
-                      <div className="sci-overview-row__avatar">
-                        <Database size={20} />
-                      </div>
-
-                      <div className="sci-overview-row__info">
-                        <div className="sci-overview-row__title-line">
-                          <span className="sci-overview-row__name" title={d.dataset_name}>
-                            {d.dataset_name}
-                          </span>
-                          <span className="sci-pill sci-pill--version">{d.version_tag}</span>
-                          <span className="sci-pill sci-pill--approved">
-                            <ShieldCheck size={11} /> {d.approval_status}
-                          </span>
-                        </div>
-
-                        <div
-                          className="sci-overview-row__meta"
-                          title={[d.location_name, d.source].filter(Boolean).join(' • ')}
-                        >
-                          {d.location_name && (
-                            <span className="sci-overview-row__meta-item">
-                              <MapPin size={12} />
-                              <span>{d.location_name}</span>
-                            </span>
-                          )}
-                          {d.source && (
-                            <span className="sci-overview-row__meta-item">
-                              <Layers size={12} />
-                              <span>{d.source}</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="sci-icon-actions">
-                      <button
-                        type="button"
-                        className="sci-action-chip"
-                        title="Open Training Pipeline"
-                        onClick={(e) => goTo(e, `${basePath}/train`)}
-                      >
-                        <FlaskConical size={14} />
-                        <span>Train</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="sci-action-chip"
-                        title="Open Prediction Insight"
-                        onClick={(e) => goTo(e, `${basePath}/predict`)}
-                      >
-                        <TrendingUp size={14} />
-                        <span>Predict</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="sci-action-chip sci-action-chip--primary"
-                        title="Open Dataset Detail & Preview"
-                        onClick={(e) => goTo(e, basePath)}
-                      >
-                        <Eye size={14} />
-                        <span>Preview</span>
-                      </button>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Right: Data Science Workflow */}
-        <section className="admin-card">
-          <div className="admin-card__header">
-            <div>
-              <h2 className="admin-card__title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                <Sparkles size={17} style={{ color: '#1668e3' }} /> Data Science Workflow
-              </h2>
-              <p className="admin-card__subtitle">End-to-end traffic forecasting pipeline</p>
-            </div>
-          </div>
-
-          <div style={{ padding: '1rem 1.25rem 1.25rem' }}>
-            <ol className="sci-flow">
-              {WORKFLOW.map(([title, text], i) => (
-                <li key={title}>
-                  <span className="sci-flow__num">{i + 1}</span>
-                  <div>
-                    <b>{title}</b>
-                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', lineHeight: 1.45 }}>{text}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-      </div>
+  return <div className="sci-page">
+    {error && <div className="sci-state sci-state--error" role="alert">{error}</div>}
+    <div className="stats-grid">
+      <StatCard tone="blue" icon={FolderOpen} label="Batch đã duyệt" value={isLoading ? '…' : groups.length} detail="Có quyền truy cập" />
+      <StatCard tone="purple" icon={Database} label="Datasets" value={isLoading ? '…' : approvedDatasets} detail="Đã được phê duyệt" />
+      <StatCard tone="green" icon={Radio} label="Nguồn dữ liệu" value={isLoading ? '…' : sources} detail="Nguồn ghi hình" />
+      <StatCard tone="amber" icon={MapPin} label="Drone" value={isLoading ? '…' : drones} detail="Thiết bị trong các batch" />
     </div>
-  )
+
+    <div className="sci-split">
+      <section className="admin-card"><div className="admin-card__header"><div>
+        <h2 className="admin-card__title">Các batch đã được phê duyệt</h2>
+        <p className="admin-card__subtitle">Chọn batch để xem dataset, sau đó chọn session để xem trước.</p>
+      </div><Link to="/scientist/datasets" className="btn-secondary">Xem tất cả</Link></div>
+        {isLoading && <div className="sci-overview-list">{[1, 2, 3].map((value) => <div key={value} className="sci-skeleton" style={{ height: 75 }} />)}</div>}
+        {!isLoading && !error && groups.length === 0 && <div className="sci-state">Bạn chưa được cấp quyền truy cập batch nào.</div>}
+        {!isLoading && !error && groups.length > 0 && <div className="sci-overview-list">
+          {groups.slice(0, 6).map((group) => <Link key={group.group_id} className="sci-overview-row" to={`/scientist/datasets/groups/${group.group_id}`}>
+            <span className="sci-overview-row__left"><span className="sci-overview-row__avatar"><Layers size={20} /></span>
+              <span className="sci-overview-row__info"><span className="sci-overview-row__title-line">
+                <span className="sci-overview-row__name">{group.group_name || `Batch ${group.group_id.slice(0, 8)}`}</span>
+                <span className="sci-pill sci-pill--approved">{group.approved_datasets} dataset</span></span>
+                <span className="sci-overview-row__meta">{group.source} · {group.drone_id || 'Drone chưa xác định'}</span>
+              </span></span><span className="sci-action-chip sci-action-chip--primary">Xem datasets <ChevronRight size={15} /></span>
+          </Link>)}
+        </div>}
+      </section>
+      <section className="admin-card"><div className="admin-card__header"><div>
+        <h2 className="admin-card__title"><Sparkles size={17} style={{ color: '#1668e3', verticalAlign: 'middle' }} /> Data Science Workflow</h2>
+        <p className="admin-card__subtitle">Các bước từ batch đến dự báo</p>
+      </div></div><div style={{ padding: '1rem 1.25rem 1.25rem' }}><ol className="sci-flow">
+        {WORKFLOW.map(([title, detail], index) => <li key={title}><span className="sci-flow__num">{index + 1}</span>
+          <div><b>{title}</b><p style={{ margin: 0, fontSize: '.8rem', color: '#64748b' }}>{detail}</p></div></li>)}
+      </ol></div></section>
+    </div>
+  </div>
 }

@@ -3,9 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { Menu, X, LogIn } from 'lucide-react'
 import Logo from './Logo'
 import { NAV_LINKS } from '../homeContent'
+import LanguageSwitcher from '../../../components/LanguageSwitcher'
+import { useLanguage } from '../../../hooks/useLanguage'
 import './HomeNavbar.css'
 
 export default function HomeNavbar({ onSignIn }) {
+  const { t } = useLanguage()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
@@ -54,34 +57,35 @@ export default function HomeNavbar({ onSignIn }) {
       <div className="container navbar__inner">
         <Logo />
 
-        <nav className={`navbar__links ${open ? 'is-open' : ''}`} aria-label="Primary">
+        <nav className={`navbar__links ${open ? 'is-open' : ''}`} aria-label={t('Primary')}>
           {NAV_LINKS.map((l) => (
             <a
               key={l.href}
               href={location.pathname === '/' ? l.href : `/${l.href}`}
               onClick={(e) => handleNavClick(e, l.href)}
             >
-              {l.label}
+              {t(l.label)}
             </a>
           ))}
 
           {/* Nút đăng nhập chỉ xuất hiện bên trong menu drawer trên thiết bị di động */}
           {open && (
             <button className="btn btn--primary navbar__cta-mobile" onClick={handleSignIn}>
-              <LogIn size={16} /> Sign in
+              <LogIn size={16} /> {t('Sign in')}
             </button>
           )}
         </nav>
 
         {/* Nút đăng nhập chính trên máy tính để bàn */}
+        <LanguageSwitcher className="navbar__language" />
         <button id="nav-sign-in" className="btn btn--primary navbar__cta" onClick={handleSignIn}>
-          <LogIn size={16} /> Sign in
+          <LogIn size={16} /> {t('Sign in')}
         </button>
 
         {/* Nút toggle mở menu trên di động */}
         <button
           className="navbar__toggle"
-          aria-label="Toggle menu"
+          aria-label={t('Toggle menu')}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >

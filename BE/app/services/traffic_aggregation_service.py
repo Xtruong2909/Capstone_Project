@@ -19,6 +19,7 @@ from app.crud.crud_traffic_time import traffic_time_query
 from app.models.dataset import DatasetVersion
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 from app.schemas.traffic_aggregation import TrafficAggregationRecord
+from app.services.audit_log_service import record_audit_event
 from app.services.recording_time_service import (
     numeric_timestamp,
     recording_start_from_filename,
@@ -425,6 +426,9 @@ def run_traffic_aggregation_job(
     roi_identifier: str,
     replace_existing: bool = False,
     job_id: UUID | None = None,
+    actor_id: UUID | None = None,
+    actor_username: str | None = None,
+    ip_address: str | None = None,
 ) -> None:
     started_at = time.perf_counter()
     job_db = db_session_factory()
@@ -475,6 +479,23 @@ def run_traffic_aggregation_job(
                     "records_created": result["records_created"],
                 },
             )
+        record_audit_event(
+            user_id=actor_id,
+            username=actor_username,
+            action="AGGREGATE_DATA",
+            module="Data Processing",
+            status="SUCCESS",
+            description="Traffic flow aggregation completed",
+            resource_id=job_id,
+            ip_address=ip_address,
+            details={
+                "dataset_id": str(dataset_id),
+                "dataset_version_id": str(version_id),
+                "aggregation_interval": aggregation_interval,
+                "roi_identifier": roi_identifier,
+                "records_created": result["records_created"],
+            },
+        )
         _log_timing("background_job_total", started_at, dataset_id=str(dataset_id), version_id=str(version_id), job_id=str(job_id) if job_id else None)
     except Exception as exc:
         if job is not None:
@@ -490,6 +511,21 @@ def run_traffic_aggregation_job(
                     "roi_identifier": roi_identifier,
                 },
             )
+        record_audit_event(
+            user_id=actor_id,
+            username=actor_username,
+            action="AGGREGATE_DATA",
+            module="Data Processing",
+            status="FAILED",
+            description="Traffic flow aggregation failed",
+            resource_id=job_id,
+            ip_address=ip_address,
+            details={
+                "dataset_id": str(dataset_id),
+                "dataset_version_id": str(version_id),
+                "error_type": type(exc).__name__,
+            },
+        )
         logger.exception(
             "traffic aggregation background job failed",
             extra={

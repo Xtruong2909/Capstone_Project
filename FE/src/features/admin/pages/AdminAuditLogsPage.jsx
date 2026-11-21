@@ -1,111 +1,34 @@
-import { useEffect, useState } from 'react'
-import { ScrollText, RefreshCw, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
 import { adminService } from '../../../services/adminService'
+import { useAdminPage } from '../../../hooks/useAdminData'
+import { useLanguage } from '../../../hooks/useLanguage'
+import { AdminBadge, AdminPagination, AdminState, AdminToolbar } from '../components/AdminUi'
 
 export default function AdminAuditLogsPage() {
-  const [logs, setLogs] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const fetchLogs = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const data = await adminService.getAuditLogs()
-      setLogs(data)
-    } catch (err) {
-      setError('Failed to load system audit logs.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchLogs()
-  }, [])
-
-  const getActionBadgeClass = (action) => {
-    if (action.includes('CREATE')) return 'badge--active'
-    if (action.includes('DELETE') || action.includes('REJECT')) return 'badge--rejected'
-    if (action.includes('UPDATE') || action.includes('STATUS')) return 'badge--pending'
-    return 'badge--engineer'
-  }
-
-  return (
-    <div>
-      <div className="admin-card">
-        <div className="admin-card__header">
-          <h3 className="admin-card__title">
-            System Audit Logs ({logs.length})
-          </h3>
-          <button
-            type="button"
-            className="btn-action btn-action--primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            onClick={fetchLogs}
-          >
-            <RefreshCw size={14} />
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div className="empty-state">
-            <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 0.75rem', color: '#2563eb' }} />
-            <p>Loading audit logs...</p>
-          </div>
-        ) : error ? (
-          <div className="empty-state">
-            <AlertCircle size={24} style={{ margin: '0 auto 0.75rem', color: '#dc2626' }} />
-            <p>{error}</p>
-          </div>
-        ) : logs.length === 0 ? (
-          <div className="empty-state">
-            <ScrollText size={28} style={{ margin: '0 auto 0.75rem', color: '#94a3b8' }} />
-            <p>No audit log entries recorded yet.</p>
-            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-              All user creation, status updates, and dataset approval actions are automatically logged here.
-            </span>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>#ID</th>
-                  <th>Timestamp</th>
-                  <th>Account</th>
-                  <th>Action</th>
-                  <th>Resource Type</th>
-                  <th>IP Address</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id}>
-                    <td>#{log.id}</td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {new Date(log.created_at).toLocaleString('en-US')}
-                    </td>
-                    <td>{log.user_email || 'System'}</td>
-                    <td>
-                      <span className={`badge ${getActionBadgeClass(log.action)}`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td>{log.resource_type}</td>
-                    <td style={{ fontSize: '0.8rem', color: '#64748b' }}>{log.ip_address || '—'}</td>
-                    <td style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#334155' }}>
-                      {log.details ? JSON.stringify(log.details) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  const { t, language } = useLanguage()
+  const [search, setSearch] = useState('')
+  const [module, setModule] = useState('')
+  const [status, setStatus] = useState('')
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const invalidDates = Boolean(start && end && start > end)
+  const logs = useAdminPage(adminService.getAuditLogs, {
+    search: search || undefined, module: module || undefined, status: status || undefined,
+    start_date: start ? new Date(`${start}T00:00:00`).toISOString() : undefined,
+    end_date: end ? new Date(`${end}T23:59:59.999`).toISOString() : undefined,
+  }, !invalidDates)
+  return <section className="admin-card">
+    <AdminToolbar title={`${t('System Audit Logs')} (${logs.total})`} onRefresh={logs.reload}>
+      <input className="admin-input" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Search audit logs')} aria-label={t('Search audit logs')} />
+      <select className="admin-select" value={module} onChange={(event) => setModule(event.target.value)} aria-label={t('Module')}><option value="">{t('All Modules')}</option>{['User Management', 'Authentication', 'Dataset', 'Model Training', 'Sharing'].map((name) => <option key={name} value={name}>{t(name)}</option>)}</select>
+      <select className="admin-select" value={status} onChange={(event) => setStatus(event.target.value)} aria-label={t('Status')}><option value="">{t('All Statuses')}</option><option value="SUCCESS">{t('SUCCESS')}</option><option value="FAILED">{t('FAILED')}</option></select>
+      <label>{t('From')}<input className="admin-input" type="date" value={start} onChange={(event) => setStart(event.target.value)} /></label>
+      <label>{t('To')}<input className="admin-input" type="date" value={end} min={start} onChange={(event) => setEnd(event.target.value)} /></label>
+    </AdminToolbar>
+    {invalidDates ? <p className="admin-notice admin-notice--error" role="alert">Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.</p> : <>
+      <AdminState resource={logs}><div className="admin-table-scroll"><table className="admin-table"><thead><tr>{['Timestamp', 'Account', 'Action', 'Module', 'Status'].map((label) => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{logs.items.map((log) => <tr key={log.id}>
+        <td>{new Date(log.created_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}</td><td>{log.username || t('System')}</td><td><code>{log.action}</code></td><td>{log.module}</td><td><AdminBadge value={log.status} /></td>
+      </tr>)}</tbody></table></div></AdminState><AdminPagination {...logs} />
+    </>}
+  </section>
 }

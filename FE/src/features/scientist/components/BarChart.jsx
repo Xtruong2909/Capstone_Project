@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react'
-import { formatNumber } from '../utils/formatters'
+import { formatNumber, formatRecordingTime } from '../utils/formatters'
 
 const WIDTH = 860
 const HEIGHT = 320
@@ -7,9 +7,7 @@ const PAD = { top: 44, right: 24, bottom: 42, left: 52 }
 
 function formatTimeLabel(iso) {
   if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return formatRecordingTime(iso)
 }
 
 /**

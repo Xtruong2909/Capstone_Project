@@ -14,6 +14,8 @@ def require_dataset_reader(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> User:
+    if current_user.role_id == "business_user":
+        raise HTTPException(403, "Hãy xem Dataset qua Kết quả được chia sẻ")
     # Preserve the existing data-engineering workflow and its separate role.
     if current_user.role_id == "data_engineer":
         return require_data_engineer(current_user)
