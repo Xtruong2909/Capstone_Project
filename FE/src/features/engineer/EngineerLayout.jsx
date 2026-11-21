@@ -21,7 +21,9 @@ import {
   saveJsonStorage,
 } from './utils/engineerHelpers'
 import '../admin/AdminPortal.css'
+import '../admin/AdminData.css'
 import './EngineerPortal.css'
+import './EngineerData.css'
 
 const ROUTE_META = {
   '/engineer': { title: 'Pipeline Overview' },

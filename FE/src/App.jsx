@@ -20,6 +20,7 @@ import EngineerCatalogPage from './features/engineer/pages/EngineerCatalogPage'
 import EngineerUploadPage from './features/engineer/pages/EngineerUploadPage'
 import EngineerPreviewPage from './features/engineer/pages/EngineerPreviewPage'
 import EngineerPipelineStudioPage from './features/engineer/pages/EngineerPipelineStudioPage'
+import EngineerSubmissionsPage from './features/engineer/pages/EngineerSubmissionsPage'
 
 // Data Scientist features
 import ScientistLayout from './features/scientist/ScientistLayout'
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="upload" element={<EngineerUploadPage />} />
           <Route path="preview" element={<EngineerPreviewPage />} />
           <Route path="pipeline-studio" element={<EngineerPipelineStudioPage />} />
+          <Route path="submissions" element={<EngineerSubmissionsPage />} />
         </Route>
       </Route>
 

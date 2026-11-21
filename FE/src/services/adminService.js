@@ -30,25 +30,28 @@ function extractVersionTagFromFilename(filename, datasetId) {
   return match ? match[1] : null
 }
 
+const get = async (url, params = {}, signal) => (await apiClient.get(url, { params, signal })).data
+
 export const adminService = {
   /**
-   * Lấy thống kê tổng quan hệ thống từ DB
+   * Lấy thống kê tổng quan hệ thống từ DB (/admin/stats)
    */
-  async getStats() {
-    const response = await apiClient.get('/admin/stats')
+  async getStats(signal) {
+    const response = await apiClient.get('/admin/stats', { signal })
     return response.data
   },
 
   /**
-   * Lấy danh sách toàn bộ người dùng
+   * Lấy danh sách toàn bộ người dùng (/admin/users)
    */
-  async getUsers(params = {}) {
-    const response = await apiClient.get('/admin/users', { params })
-    return response.data
+  async getUsers(params = {}, signal) {
+    const response = await apiClient.get('/admin/users', { params, signal })
+    const data = response.data
+    return Array.isArray(data) ? data : data?.items || []
   },
 
   /**
-   * Tạo người dùng mới
+   * Tạo người dùng mới (/admin/users)
    */
   async createUser(userData) {
     const response = await apiClient.post('/admin/users', userData)
@@ -66,27 +69,28 @@ export const adminService = {
   },
 
   /**
-   * Lấy danh sách các vai trò hệ thống
+   * Lấy danh sách các vai trò hệ thống (/admin/roles)
    */
-  async getRoles() {
-    const response = await apiClient.get('/admin/roles')
-    return response.data
+  async getRoles(signal) {
+    const response = await apiClient.get('/admin/roles', { signal })
+    const data = response.data
+    return Array.isArray(data) ? data : data?.items || []
   },
 
   /**
    * Lấy nhật ký hoạt động hệ thống (Audit Trail)
    */
-  async getAuditLogs(params = {}) {
-    const response = await apiClient.get('/admin/audit-logs', { params })
+  async getAuditLogs(params = {}, signal) {
+    const response = await apiClient.get('/admin/audit-logs', { params, signal })
     return response.data
   },
 
   /**
-   * Lấy danh sách phiên bản dataset để phê duyệt
+   * Lấy danh sách phiên bản dataset để phê duyệt (/admin/datasets)
    */
-  async getDatasets(params = {}) {
-    const response = await apiClient.get('/admin/datasets', { params })
-    const items = Array.isArray(response.data) ? response.data : []
+  async getDatasets(params = {}, signal) {
+    const response = await apiClient.get('/admin/datasets', { params, signal })
+    const items = Array.isArray(response.data) ? response.data : response.data?.items || []
 
     // Lưu vào catalog cache để giữ thông tin metadata khi version chuyển sang APPROVED
     const catalog = readJsonStorage(CATALOG_CACHE_KEY, {})
@@ -101,6 +105,18 @@ export const adminService = {
     writeJsonStorage(CATALOG_CACHE_KEY, catalog)
 
     return items
+  },
+
+  /**
+   * Xóa bộ nhớ đệm review dataset
+   */
+  clearReviewCache() {
+    try {
+      localStorage.removeItem(APPROVED_CACHE_KEY)
+      localStorage.removeItem(CATALOG_CACHE_KEY)
+    } catch {
+      // ignore
+    }
   },
 
   /**
@@ -135,8 +151,6 @@ export const adminService = {
 
   /**
    * Lấy danh sách các phiên bản dataset đã được APPROVED
-   * Kết hợp dữ liệu từ API (/admin/datasets, /admin/audit-logs, /admin/access-grants, /admin/datasets/{dataset_id}/versions/{id}/preview)
-   * và cache để hiển thị đầy đủ trên trang Dataset Available mà không cần sửa Backend.
    */
   async getApprovedDatasets() {
     const [datasetsRes, auditLogsRes, grantsRes] = await Promise.all([
@@ -145,9 +159,15 @@ export const adminService = {
       apiClient.get('/admin/access-grants', { params: { limit: 100 } }).catch(() => ({ data: [] })),
     ])
 
-    const apiDatasets = Array.isArray(datasetsRes.data) ? datasetsRes.data : []
-    const auditLogs = Array.isArray(auditLogsRes.data) ? auditLogsRes.data : []
-    const accessGrants = Array.isArray(grantsRes.data) ? grantsRes.data : []
+    const apiDatasets = Array.isArray(datasetsRes.data)
+      ? datasetsRes.data
+      : datasetsRes.data?.items || []
+    const auditLogs = Array.isArray(auditLogsRes.data)
+      ? auditLogsRes.data
+      : auditLogsRes.data?.items || []
+    const accessGrants = Array.isArray(grantsRes.data)
+      ? grantsRes.data
+      : grantsRes.data?.items || []
 
     const catalog = readJsonStorage(CATALOG_CACHE_KEY, {})
     const approvedMap = readJsonStorage(APPROVED_CACHE_KEY, {})
@@ -157,99 +177,82 @@ export const adminService = {
       if (item?.id) {
         catalog[item.id] = { ...catalog[item.id], ...item }
         if ((item.approval_status || '').toUpperCase() === 'APPROVED') {
-          approvedMap[item.id] = { ...approvedMap[item.id], ...item, approval_status: 'APPROVED' }
-        }
-      }
-    })
-
-    // 2. Thu thập dataset_id và metadata từ access_grants
-    const grantMetaByVersionId = {}
-    accessGrants.forEach((g) => {
-      if (g?.dataset_version_id) {
-        grantMetaByVersionId[g.dataset_version_id] = {
-          id: g.dataset_version_id,
-          dataset_id: g.dataset_id,
-          dataset_name: g.dataset_name,
-          version_tag: g.version_tag,
-        }
-      }
-    })
-
-    // 3. Phân tích Audit Logs để tìm tất cả version có trạng thái cuối cùng là APPROVED
-    //    và ánh xạ version_id -> dataset_id từ các log SUBMIT_DATASET_FOR_REVIEW / RESUBMIT_DATASET_FOR_REVIEW
-    const datasetIdByVersionId = {}
-    const latestDecisionByVersionId = {}
-
-    // auditLogs được trả về theo thứ tự mới nhất trước (created_at DESC)
-    auditLogs.forEach((log) => {
-      const resId = log?.resource_id
-      const details = log?.details || {}
-
-      if (details.version_id && details.dataset_id) {
-        datasetIdByVersionId[details.version_id] = details.dataset_id
-      }
-      if (resId && details.dataset_id) {
-        datasetIdByVersionId[resId] = details.dataset_id
-      }
-      if (
-        log?.action === 'CONFIRM_DATASET_COLUMN_MAPPING' &&
-        resId &&
-        details.dataset_version_id
-      ) {
-        datasetIdByVersionId[details.dataset_version_id] = resId
-      }
-
-      if (log?.resource_type === 'DATASET_VERSION' && resId) {
-        if (!latestDecisionByVersionId[resId]) {
-          if (log.action === 'DATASET_APPROVED' || details.status === 'APPROVED') {
-            latestDecisionByVersionId[resId] = {
-              status: 'APPROVED',
-              note: details.note || null,
-              reviewed_at: log.created_at,
-              reviewer_email: log.user_email || null,
-            }
-          } else if (log.action === 'DATASET_REJECTED' || details.status === 'REJECTED') {
-            latestDecisionByVersionId[resId] = {
-              status: 'REJECTED',
-              note: details.note || null,
-              reviewed_at: log.created_at,
-            }
-          } else if (
-            log.action === 'SUBMIT_DATASET_FOR_REVIEW' ||
-            log.action === 'RESUBMIT_DATASET_FOR_REVIEW'
-          ) {
-            latestDecisionByVersionId[resId] = {
-              status: 'SUBMITTED',
-              note: details.note || null,
-              reviewed_at: log.created_at,
-            }
+          approvedMap[item.id] = {
+            ...item,
+            dataset_name: item.dataset_name || catalog[item.id]?.dataset_name,
+            version_tag: item.version_tag || catalog[item.id]?.version_tag,
+            file_format: item.file_format || catalog[item.id]?.file_format,
+            total_records: item.total_records ?? catalog[item.id]?.total_records,
           }
         }
       }
     })
 
-    // Loại bỏ những version mà quyết định mới nhất không còn là APPROVED
-    Object.keys(latestDecisionByVersionId).forEach((versionId) => {
-      const decision = latestDecisionByVersionId[versionId]
-      if (decision.status !== 'APPROVED') {
-        delete approvedMap[versionId]
-      } else {
-        const existing = approvedMap[versionId] || catalog[versionId] || grantMetaByVersionId[versionId] || {}
-        approvedMap[versionId] = {
-          ...existing,
-          id: versionId,
-          dataset_id: existing.dataset_id || datasetIdByVersionId[versionId] || null,
+    // 2. Tìm trong accessGrants những dataset_version_id đã được cấp quyền -> chắc chắn đã APPROVED
+    accessGrants.forEach((grant) => {
+      const vId = grant.dataset_version_id
+      if (vId && !approvedMap[vId]) {
+        const cached = catalog[vId] || {}
+        approvedMap[vId] = {
+          id: vId,
+          dataset_id: cached.dataset_id || grant.dataset_id,
+          dataset_name: grant.dataset_name || cached.dataset_name || 'Traffic Dataset',
+          version_tag: grant.version_tag || cached.version_tag || 'v1.0',
+          file_format: (cached.file_format || 'PARQUET').toUpperCase(),
           approval_status: 'APPROVED',
-          approval_note: decision.note ?? existing.approval_note ?? null,
-          reviewed_at: decision.reviewed_at || existing.reviewed_at || existing.created_at || null,
+          approval_note: cached.approval_note || 'Approved via Access Grant',
+          reviewed_at: grant.created_at || cached.reviewed_at || new Date().toISOString(),
+          reviewer_name: cached.reviewer_name || null,
+          reviewer_email: cached.reviewer_email || null,
+          total_records: cached.total_records ?? 0,
+        }
+      }
+    })
+
+    // 3. Quét audit logs để khôi phục phiên bản nào từng có quyết định APPROVE
+    const approvedDecisions = {}
+    auditLogs.forEach((log) => {
+      const action = (log.action || '').toUpperCase()
+      if (action.includes('APPROVE') && log.dataset_version_id) {
+        const vId = log.dataset_version_id
+        if (
+          !approvedDecisions[vId] ||
+          new Date(log.created_at).getTime() > new Date(approvedDecisions[vId].reviewed_at).getTime()
+        ) {
+          approvedDecisions[vId] = {
+            dataset_id: log.dataset_id,
+            dataset_name: log.dataset_name,
+            approval_status: 'APPROVED',
+            approval_note: log.approval_note || log.details || 'Approved via Audit Log',
+            reviewed_at: log.created_at,
+            reviewer_name: log.full_name || log.username || null,
+            reviewer_email: log.email || null,
+          }
+        }
+      }
+    })
+
+    Object.entries(approvedDecisions).forEach(([vId, decision]) => {
+      if (!approvedMap[vId]) {
+        const existing = catalog[vId] || {}
+        approvedMap[vId] = {
+          id: vId,
+          dataset_id: decision.dataset_id || existing.dataset_id,
+          dataset_name: decision.dataset_name || existing.dataset_name || 'Traffic Dataset',
+          version_tag: existing.version_tag || 'v1.0',
+          file_format: (existing.file_format || 'PARQUET').toUpperCase(),
+          total_records: existing.total_records ?? 0,
+          approval_status: 'APPROVED',
+          approval_note: decision.approval_note || existing.approval_note || null,
+          reviewed_at: decision.reviewed_at || existing.reviewed_at || new Date().toISOString(),
+          reviewer_name: decision.reviewer_name || existing.reviewer_name || null,
           reviewer_email: decision.reviewer_email || existing.reviewer_email || null,
           created_at: existing.created_at || decision.reviewed_at || new Date().toISOString(),
         }
       }
     })
 
-    // 4. Với các phiên bản APPROVED chưa đủ thông tin (thiếu dataset_name, version_tag hoặc total_records),
-    //    gọi API preview của Admin để lấy đầy đủ metadata từ Backend
+    // 4. Với các phiên bản APPROVED chưa đủ thông tin, gọi API preview của Admin để làm giàu metadata
     const enrichPromises = Object.values(approvedMap).map(async (item) => {
       if (
         item.dataset_id &&
@@ -303,7 +306,11 @@ export const adminService = {
    * Admin xem trước dữ liệu của một phiên bản dataset (raw hoặc normalized)
    * GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview
    */
-  async getDatasetVersionPreview(datasetId, versionId, { page = 1, pageSize = 20, representation = 'normalized' } = {}) {
+  async getDatasetVersionPreview(
+    datasetId,
+    versionId,
+    { page = 1, pageSize = 20, representation = 'normalized' } = {}
+  ) {
     const response = await apiClient.get(
       `/admin/datasets/${datasetId}/versions/${versionId}/preview`,
       {
@@ -358,33 +365,80 @@ export const adminService = {
   /**
    * Lấy tổng quan và danh sách thí nghiệm dự báo AI/ML
    */
-  async getExperimentsOverview() {
-    const response = await apiClient.get('/admin/experiments/overview')
+  async getExperimentsOverview(params = {}, signal) {
+    const response = await apiClient.get('/admin/experiments/overview', { params, signal })
     return response.data
   },
 
   /**
    * Lấy danh sách các quyền truy cập dataset đã cấp
    */
-  async getAccessGrants(params = {}) {
-    const response = await apiClient.get('/admin/access-grants', { params })
-    return response.data
+  async getAccessGrants(params = {}, signal) {
+    const response = await apiClient.get('/admin/access-grants', { params, signal })
+    const data = response.data
+    return Array.isArray(data) ? data : data?.items || []
   },
 
   /**
    * Cấp quyền truy cập dataset cho người dùng
+   * Hỗ trợ cả 2 kiểu:
+   * 1. grantAccess(grantData) -> POST /admin/access-grants
+   * 2. grantAccess({ dataset_id, user_id }) -> fallback POST /admin/datasets/{id}/access
    */
-  async grantAccess(grantData) {
-    const response = await apiClient.post('/admin/access-grants', grantData)
+  async grantAccess(payload) {
+    if (payload?.user_id && payload?.dataset_version_id) {
+      const response = await apiClient.post('/admin/access-grants', payload)
+      return response.data
+    }
+    if (payload?.dataset_id && payload?.user_id) {
+      return (await apiClient.post(`/admin/datasets/${payload.dataset_id}/access`, { user_id: payload.user_id })).data
+    }
+    const response = await apiClient.post('/admin/access-grants', payload)
     return response.data
   },
 
   /**
    * Thu hồi quyền truy cập dataset
    */
-  async revokeAccess(grantId) {
-    const response = await apiClient.delete(`/admin/access-grants/${grantId}`)
+  async revokeAccess(grantIdOrPayload) {
+    if (typeof grantIdOrPayload === 'object' && grantIdOrPayload?.dataset_id && grantIdOrPayload?.user_id) {
+      return (await apiClient.delete(`/admin/datasets/${grantIdOrPayload.dataset_id}/access/${grantIdOrPayload.user_id}`)).data
+    }
+    const response = await apiClient.delete(`/admin/access-grants/${grantIdOrPayload}`)
     return response.data
   },
-}
 
+  /**
+   * Lấy trạng thái kết nối PostgreSQL từ Backend
+   */
+  async getDatabaseHealth(_, signal) {
+    const baseURL = apiClient.defaults.baseURL.replace(/\/api\/v1\/?$/, '')
+    return (await apiClient.get('/health/db', { baseURL, signal })).data
+  },
+
+  /* =========================================================================
+     BATCH & PORTAL EXTENSIONS (Dành cho Batch Workflow & Session Preview)
+     ========================================================================= */
+  getDatasetGroups: (params, signal) => get('/admin/portal/dataset-groups', params, signal),
+  getBatchEligibleUsers: ({ group_id, ...params }, signal) =>
+    get(`/admin/datasets/groups/${group_id}/eligible-users`, params, signal),
+  async grantBatchAccess({ group_id, user_id }) {
+    return (await apiClient.post(`/admin/datasets/groups/${group_id}/access`, { user_id })).data
+  },
+  getBatchAccessUsers: ({ group_id, ...params }, signal) =>
+    get(`/admin/datasets/groups/${group_id}/access`, params, signal),
+  async revokeBatchAccess({ group_id, user_id }) {
+    await apiClient.delete(`/admin/datasets/groups/${group_id}/access/${user_id}`)
+  },
+  async reviewBatch(groupId, payload) {
+    return (await apiClient.post(`/admin/datasets/groups/${groupId}/review`, payload)).data
+  },
+  async getDatasetSessions({ dataset_id, version_id, ...params }, signal) {
+    const result = await get(`/admin/datasets/${dataset_id}/versions/${version_id}/sessions`, params, signal)
+    return { ...result, items: result?.sessions || [] }
+  },
+  getSessionPreview: ({ dataset_id, version_id, session_id, page_size = 20, ...params }, signal) =>
+    get(`/admin/datasets/${dataset_id}/versions/${version_id}/sessions/${session_id}/preview`, { ...params, limit: page_size }, signal),
+  getEligibleUsers: ({ dataset_id, ...params }, signal) =>
+    get(`/admin/datasets/${dataset_id}/eligible-users`, params, signal),
+}

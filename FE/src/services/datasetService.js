@@ -137,4 +137,11 @@ export const datasetService = {
 
     return data
   },
+
+  /**
+   * Alias for previewDataset for backward compatibility
+   */
+  getDatasetPreview: async (datasetId, params = {}) => {
+    return datasetService.previewDataset(datasetId, params)
+  },
 }
