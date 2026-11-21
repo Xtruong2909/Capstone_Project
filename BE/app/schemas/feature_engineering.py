@@ -3,12 +3,14 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.json_schema import SkipJsonSchema
 
 
 class FeatureRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     dataset_version_id: UUID
-    roi_identifier: str = Field(default="MAIN_ROI", min_length=1, max_length=64)
+    # Hide the optional selector in Swagger while preserving existing clients.
+    roi_identifier: SkipJsonSchema[str] = Field(default="MAIN_ROI", min_length=1, max_length=64)
 
 
 class FeatureConfiguration(BaseModel):

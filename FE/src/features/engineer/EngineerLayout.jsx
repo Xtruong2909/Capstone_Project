@@ -1,17 +1,17 @@
 import { useEffect, useState, useCallback } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Database,
   LayoutDashboard,
   FileSpreadsheet,
   Upload,
   Table2,
   Workflow,
+  Database,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useLanguage } from '../../hooks/useLanguage'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
 import { datasetService } from '../../services/datasetService'
 import apiClient from '../../services/apiClient'
 import {
@@ -20,31 +20,22 @@ import {
   loadJsonStorage,
   saveJsonStorage,
 } from './utils/engineerHelpers'
-import '../admin/AdminLayout.css'
+import '../admin/AdminPortal.css'
+import './EngineerPortal.css'
+
+const ROUTE_META = {
+  '/engineer': { title: 'Pipeline Overview' },
+  '/engineer/datasets': { title: 'Dataset Catalog' },
+  '/engineer/upload': { title: 'Upload & Versioning' },
+  '/engineer/pipeline-studio': { title: 'Pipeline Studio' },
+  '/engineer/preview': { title: 'Schema & Data Preview' },
+}
 
 export default function EngineerLayout() {
+  const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('sidebar_collapsed_engineer') === 'true'
-    } catch {
-      return false
-    }
-  })
-
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev
-      try {
-        localStorage.setItem('sidebar_collapsed_engineer', String(next))
-      } catch {
-        // ignore storage error
-      }
-      return next
-    })
-  }
+  const location = useLocation()
 
   const [dbStatus, setDbStatus] = useState(null)
   const [datasets, setDatasets] = useState([])
@@ -136,177 +127,126 @@ export default function EngineerLayout() {
     }
   }
 
-  return (
-    <div className="admin-shell">
-      {/* Collapsible Sidebar */}
-      <aside
-        className={`admin-sidebar ${isSidebarCollapsed ? 'admin-sidebar--collapsed' : ''}`}
-      >
-        {/* Single Center-Edge Proximity Hover Zone & Floating Toggle Button */}
-        <div className="admin-sidebar__edge-zone">
-          <button
-            type="button"
-            className="admin-sidebar__floating-toggle"
-            onClick={toggleSidebar}
-            aria-label={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-            title={isSidebarCollapsed ? 'Mở rộng Sidebar' : 'Thu gọn Sidebar'}
-          >
-            {isSidebarCollapsed ? (
-              <ChevronRight size={18} strokeWidth={2.6} />
-            ) : (
-              <ChevronLeft size={18} strokeWidth={2.6} />
-            )}
-          </button>
-        </div>
+  const currentMeta = ROUTE_META[location.pathname] || ROUTE_META['/engineer']
 
-        <div className="admin-sidebar__header">
-          <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge" title="Urban Traffic - Data Engineer">
-              <Database size={20} />
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="admin-sidebar__brand-text">
-                <h2>Urban Traffic</h2>
-                <span>pNEUMA Pipeline</span>
-              </div>
-            )}
+  return (
+    <div className="adm-shell">
+      {/* Dark Obsidian Command Sidebar — Auto-expanding Rail */}
+      <aside className="adm-sidebar">
+        <div className="adm-sidebar__brand">
+          <div className="adm-sidebar__logo eng-sidebar-logo" title="pNEUMA Data Pipeline">
+            <Database size={21} />
+          </div>
+          <div className="adm-sidebar__brand-info">
+            <h2 className="adm-sidebar__brand-title">pNEUMA STUDIO</h2>
+            <span className="adm-sidebar__brand-sub">Data Engineering</span>
           </div>
         </div>
 
-        <nav className="admin-sidebar__nav">
-          <NavLink
-            to="/engineer"
-            end
-            title="Pipeline Overview"
-            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
-          >
-            <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
-            <span>Pipeline Overview</span>
-          </NavLink>
+        <nav className="adm-sidebar__nav" aria-label={t('Data Engineer Navigation')}>
+          <div className="adm-nav-group">
+            <span className="adm-nav-group__label">{t('Workspace')}</span>
+            <NavLink
+              to="/engineer"
+              end
+              title={t('Pipeline Overview')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Pipeline Overview')}</span>
+            </NavLink>
+            <NavLink
+              to="/engineer/datasets"
+              title={t('Dataset Catalog')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <FileSpreadsheet size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Dataset Catalog')}</span>
+            </NavLink>
+          </div>
 
-          <NavLink
-            to="/engineer/datasets"
-            title="Dataset Catalog"
-            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
-          >
-            <FileSpreadsheet size={19} style={{ flexShrink: 0 }} />
-            <span>Dataset Catalog</span>
-          </NavLink>
+          <div className="adm-nav-group">
+            <span className="adm-nav-group__label">{t('Ingestion & QA')}</span>
+            <NavLink
+              to="/engineer/upload"
+              title={t('Upload & Versioning')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Upload size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Upload & Versioning')}</span>
+            </NavLink>
+            <NavLink
+              to="/engineer/pipeline-studio"
+              title={t('Pipeline Studio')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Workflow size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Pipeline Studio')}</span>
+            </NavLink>
+          </div>
 
-          <NavLink
-            to="/engineer/upload"
-            title="Upload & Versioning"
-            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
-          >
-            <Upload size={19} style={{ flexShrink: 0 }} />
-            <span>Upload & Versioning</span>
-          </NavLink>
-
-          <NavLink
-            to="/engineer/pipeline-studio"
-            title="Pipeline Studio"
-            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
-          >
-            <Workflow size={19} style={{ flexShrink: 0 }} />
-            <span>Pipeline Studio</span>
-          </NavLink>
-
-          <NavLink
-            to="/engineer/preview"
-            title="Schema & Data Preview"
-            className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
-          >
-            <Table2 size={19} style={{ flexShrink: 0 }} />
-            <span>Schema & Data Preview</span>
-          </NavLink>
+          <div className="adm-nav-group">
+            <span className="adm-nav-group__label">{t('Inspection')}</span>
+            <NavLink
+              to="/engineer/preview"
+              title={t('Schema & Data Preview')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Table2 size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Schema & Data Preview')}</span>
+            </NavLink>
+          </div>
         </nav>
 
-        <div className="admin-sidebar__footer">
-          {!isSidebarCollapsed ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.1rem 0.2rem',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Role
-              </span>
-              <span
-                className="badge badge--engineer"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '0.15rem 0.6rem',
-                  fontWeight: 700,
-                  borderRadius: '9999px',
-                }}
-              >
-                Data Engineer
-              </span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <span
-                className="badge badge--engineer"
-                title="Role: Data Engineer"
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '0.15rem 0.35rem',
-                  fontWeight: 800,
-                  borderRadius: '6px',
-                }}
-              >
-                DE
-              </span>
-            </div>
-          )}
-
+        <div className="adm-sidebar__footer">
           <div
-            className="admin-user-profile"
-            title={`${user?.full_name || 'Data Engineer'} (${user?.email || 'engineer@gmail.com'})`}
+            className="adm-user-card"
+            title={`${user?.full_name || 'Data Engineer'} • Engineer (${user?.email || 'engineer@gmail.com'})`}
           >
-            <div className="admin-avatar">
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="admin-user-info">
-                <span className="admin-user-name">{user?.full_name || 'Data Engineer'}</span>
-                <span className="admin-user-email">{user?.email || 'engineer@gmail.com'}</span>
+            <div className="adm-user-card__avatar-wrap">
+              <div className="adm-user-card__avatar eng-avatar">
+                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
               </div>
-            )}
+              <span className="adm-user-card__status-dot" title="Online" />
+            </div>
+            <div className="adm-user-card__meta">
+              <div className="adm-user-card__name-row">
+                <span className="adm-user-card__name">
+                  {user?.full_name || 'Data Engineer'}
+                </span>
+                <span className="eng-role-pill">
+                  <Database size={10} />
+                  <span>Engineer</span>
+                </span>
+              </div>
+              <span className="adm-user-card__role">{user?.email || 'engineer@gmail.com'}</span>
+            </div>
           </div>
 
           <button
             type="button"
-            className="admin-logout-btn"
+            className="adm-logout-btn"
             onClick={handleLogout}
-            title="Sign Out"
+            title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isSidebarCollapsed && <span>Sign Out</span>}
+            <span className="adm-logout-btn__text">{t('Sign Out')}</span>
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="admin-main">
-        <header className="admin-header">
-          <div className="admin-header__title">
-            <h1>Data Engineer Workspace (pNEUMA Pipeline)</h1>
+      {/* Main Content Area */}
+      <div className="adm-workspace">
+        <header className="adm-topbar">
+          <div className="adm-topbar__left">
+            <h1 className="adm-topbar__title">{t(currentMeta.title)}</h1>
+          </div>
+          <div className="adm-topbar__right">
+            <LanguageSwitcher />
           </div>
         </header>
 
-        <main className="admin-content">
+        <main className="adm-canvas">
           <Outlet
             context={{
               dbStatus,

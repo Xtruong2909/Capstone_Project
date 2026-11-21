@@ -11,6 +11,7 @@ import {
   Cpu,
   Target,
 } from 'lucide-react'
+import { useLanguage } from '../../../hooks/useLanguage'
 
 // Metrics aligned with De_tai_Phan_tich_giao_thong_UAV.docx (Section 1 & 4)
 const KPIS = [
@@ -65,37 +66,38 @@ function toPath(pts, w, h, minVal, maxVal) {
 }
 
 export default function DashboardMockup() {
+  const { t } = useLanguage()
   return (
-    <div className="mock" role="img" aria-label="Preview of the UAV Traffic Flow Analytics Dashboard">
+    <div className="mock" role="img" aria-label={t('Preview of the UAV Traffic Flow Analytics Dashboard')}>
       <aside className="mock__side">
         <div className="mock__side-item">
-          <Home size={14} /> Overview
+          <Home size={14} /> {t('Overview')}
         </div>
         <div className="mock__side-item">
-          <Database size={14} /> pNEUMA Dataset
+          <Database size={14} /> {t('pNEUMA Dataset')}
         </div>
         <div className="mock__side-item is-parent">
-          <BarChart3 size={14} /> Traffic Analytics
+          <BarChart3 size={14} /> {t('Traffic Analytics')}
         </div>
-        <div className="mock__side-sub is-active">1–5 Min Forecasting</div>
-        <div className="mock__side-sub">Model Comparison</div>
-        <div className="mock__side-sub">Error Benchmarks</div>
+        <div className="mock__side-sub is-active">{t('1–5 Min Forecasting')}</div>
+        <div className="mock__side-sub">{t('Model Comparison')}</div>
+        <div className="mock__side-sub">{t('Error Benchmarks')}</div>
         <div className="mock__side-foot">
           <div className="mock__side-item">
-            <Settings size={14} /> Settings
+            <Settings size={14} /> {t('Settings')}
           </div>
           <div className="mock__side-item">
-            <HelpCircle size={14} /> Research Docs
+            <HelpCircle size={14} /> {t('Research Docs')}
           </div>
         </div>
       </aside>
 
       <div className="mock__main">
         <div className="mock__crumb">
-          pNEUMA Athens Drone Session › 1-Minute Aggregation › Random Forest Prediction
+          {t('pNEUMA Athens Drone Session › 1-Minute Aggregation › Random Forest Prediction')}
         </div>
         <div className="mock__title">
-          UAV Short-Term Traffic Flow Prediction Dashboard
+          {t('UAV Short-Term Traffic Flow Prediction Dashboard')}
         </div>
 
         {/* 4 Primary Indicators */}
@@ -106,9 +108,9 @@ export default function DashboardMockup() {
                 <Icon size={16} />
               </span>
               <div>
-                <small>{label}</small>
-                <strong>{value}</strong>
-                <em>{delta}</em>
+                <small>{t(label)}</small>
+                <strong>{t(value)}</strong>
+                <em>{t(delta)}</em>
               </div>
             </div>
           ))}
@@ -119,13 +121,13 @@ export default function DashboardMockup() {
           <div className="mock__panel mock__panel--chart">
             <div className="mock__panel-head">
               <div>
-                <b>Traffic Flow Comparison (veh/min)</b>
-                <span className="mock__subhead">Actual (08:04: 52 veh/min) vs. Forecast (50 veh/min)</span>
+                <b>{t('Traffic Flow Comparison (veh/min)')}</b>
+                <span className="mock__subhead">{t('Actual (08:04: 52 veh/min) vs. Forecast (50 veh/min)')}</span>
               </div>
               <div className="mock__tabs">
-                <i className="on">1 Min Horizon</i>
-                <i>3 Min</i>
-                <i>5 Min</i>
+              <i className="on">{t('1 Min Horizon')}</i>
+              <i>{t('3 Min')}</i>
+              <i>{t('5 Min')}</i>
               </div>
             </div>
 
@@ -178,36 +180,36 @@ export default function DashboardMockup() {
             </svg>
 
             <div className="mock__legend">
-              <span><i style={{ background: '#1668e3' }}></i> Observed Flow</span>
-              <span><i style={{ background: '#f59e0b' }}></i> Random Forest (t+1)</span>
-              <span><i style={{ background: '#12a05a' }}></i> Persistence Baseline</span>
+              <span><i style={{ background: '#1668e3' }}></i> {t('Observed Flow')}</span>
+              <span><i style={{ background: '#f59e0b' }}></i> {t('Random Forest (t+1)')}</span>
+              <span><i style={{ background: '#12a05a' }}></i> {t('Persistence Baseline')}</span>
             </div>
           </div>
 
           <div className="mock__panel mock__panel--bench">
             <div className="mock__panel-head">
-              <b>Model Error Benchmarks</b>
+              <b>{t('Model Error Benchmarks')}</b>
             </div>
             <div className="mock__metrics-list">
               <div className="mock__metric-card">
-                <span>Random Forest (Core ML)</span>
+                <span>{t('Random Forest (Core ML)')}</span>
                 <div>
-                  <strong>MAE: 2.15 veh/min</strong>
-                  <small>RMSE: 2.84 veh/min</small>
+                  <strong>{t('MAE: 2.15 veh/min')}</strong>
+                  <small>{t('RMSE: 2.84 veh/min')}</small>
                 </div>
               </div>
               <div className="mock__metric-card is-baseline">
-                <span>Historical Average (Baseline)</span>
+                <span>{t('Historical Average (Baseline)')}</span>
                 <div>
-                  <strong>MAE: 4.62 veh/min</strong>
-                  <small>RMSE: 5.71 veh/min</small>
+                  <strong>{t('MAE: 4.62 veh/min')}</strong>
+                  <small>{t('RMSE: 5.71 veh/min')}</small>
                 </div>
               </div>
               <div className="mock__metric-card is-lstm">
-                <span>LSTM Neural Network (Extension)</span>
+                <span>{t('LSTM Neural Network (Extension)')}</span>
                 <div>
-                  <strong>MAE: 2.08 veh/min</strong>
-                  <small>RMSE: 2.76 veh/min</small>
+                  <strong>{t('MAE: 2.08 veh/min')}</strong>
+                  <small>{t('RMSE: 2.76 veh/min')}</small>
                 </div>
               </div>
             </div>
@@ -217,35 +219,35 @@ export default function DashboardMockup() {
         {/* Temporal Flow Table */}
         <div className="mock__panel">
           <div className="mock__panel-head">
-            <b>Recent 1-Minute Chronological Ingestion &amp; Forecast Validation</b>
+            <b>{t('Recent 1-Minute Chronological Ingestion & Forecast Validation')}</b>
           </div>
           <table className="mock__table">
             <thead>
               <tr>
-                <th>Timestamp</th>
-                <th>Vehicle Count</th>
-                <th>Average Speed</th>
-                <th>Estimated Traffic Flow</th>
-                <th>Predicted (t+1)</th>
-                <th>Evaluation Status</th>
+                <th>{t('Timestamp')}</th>
+                <th>{t('Vehicle Count')}</th>
+                <th>{t('Average Speed')}</th>
+                <th>{t('Estimated Traffic Flow')}</th>
+                <th>{t('Predicted (t+1)')}</th>
+                <th>{t('Evaluation Status')}</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>08:04:00 (Doc Example)</td>
-                <td><strong>52 vehicles</strong></td>
+                <td>{t('08:04:00 (Doc Example)')}</td>
+                <td><strong>{t('52 vehicles')}</strong></td>
                 <td>38.4 km/h</td>
                 <td>52 veh/min</td>
                 <td>50 veh/min</td>
-                <td><span className="pill pill--green">Δ -2 veh/min (Valid)</span></td>
+                <td><span className="pill pill--green">{t('Δ -2 veh/min (Valid)')}</span></td>
               </tr>
               <tr>
                 <td>08:03:00</td>
-                <td>50 vehicles</td>
+                <td>{t('50 vehicles')}</td>
                 <td>39.1 km/h</td>
                 <td>50 veh/min</td>
                 <td>51 veh/min</td>
-                <td><span className="pill pill--green">Δ +1 veh/min</span></td>
+                <td><span className="pill pill--green">{t('Δ +1 veh/min')}</span></td>
               </tr>
               <tr>
                 <td>08:02:00</td>
@@ -253,7 +255,7 @@ export default function DashboardMockup() {
                 <td>40.2 km/h</td>
                 <td>48 veh/min</td>
                 <td>47 veh/min</td>
-                <td><span className="pill pill--green">Δ -1 veh/min</span></td>
+                <td><span className="pill pill--green">{t('Δ -1 veh/min')}</span></td>
               </tr>
             </tbody>
           </table>

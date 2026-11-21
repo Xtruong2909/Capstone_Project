@@ -8,35 +8,24 @@ import {
   ScrollText,
   LogOut,
   Shield,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
-import './AdminLayout.css'
+import { useLanguage } from '../../hooks/useLanguage'
+import LanguageSwitcher from '../../components/LanguageSwitcher'
+import './AdminPortal.css'
+
+const ROUTE_META = {
+  '/admin': { title: 'System Overview' },
+  '/admin/users': { title: 'User & RBAC Governance' },
+  '/admin/datasets': { title: 'Dataset Approval Queue' },
+  '/admin/datasets-available': { title: 'Available Datasets' },
+  '/admin/audit-logs': { title: 'Immutable Audit Ledger' },
+}
 
 export default function AdminLayout() {
+  const { t } = useLanguage()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('sidebar_collapsed_admin') === 'true'
-    } catch {
-      return false
-    }
-  })
-
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev
-      try {
-        localStorage.setItem('sidebar_collapsed_admin', String(next))
-      } catch {
-        // ignore storage error
-      }
-      return next
-    })
-  }
 
   const handleLogout = () => {
     logout()
@@ -66,17 +55,26 @@ export default function AdminLayout() {
           </button>
         </div>
 
-        <div className="admin-sidebar__header">
-          <div className="admin-sidebar__brand">
-            <div className="admin-sidebar__logo-badge" title="Urban Traffic - Admin Portal">
-              <Shield size={20} />
-            </div>
-            {!isSidebarCollapsed && (
-              <div className="admin-sidebar__brand-text">
-                <h2>Urban Traffic</h2>
-                <span>Admin Portal</span>
-              </div>
-            )}
+        <nav className="adm-sidebar__nav" aria-label={t('Admin Navigation')}>
+          <div className="adm-nav-group">
+            <span className="adm-nav-group__label">{t('Command')}</span>
+            <NavLink
+              to="/admin"
+              end
+              title={t('System Overview')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <LayoutDashboard size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('System Overview')}</span>
+            </NavLink>
+            <NavLink
+              to="/admin/users"
+              title={t('User Management')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Users size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('User Management')}</span>
+            </NavLink>
           </div>
         </div>
 
@@ -84,48 +82,48 @@ export default function AdminLayout() {
           <NavLink
             to="/admin"
             end
-            title="System Overview"
+            title={t('System Overview')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <LayoutDashboard size={19} style={{ flexShrink: 0 }} />
-            <span>System Overview</span>
+            <span>{t('System Overview')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/users"
-            title="User Management"
+            title={t('User Management')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Users size={19} style={{ flexShrink: 0 }} />
-            <span>User Management</span>
+            <span>{t('User Management')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/datasets"
             end
-            title="Dataset Approvals"
+            title={t('Dataset Approvals')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <CheckCircle size={19} style={{ flexShrink: 0 }} />
-            <span>Dataset Approvals</span>
+            <span>{t('Dataset Approvals')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/datasets-available"
-            title="Dataset Available"
+            title={t('Dataset Available')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Database size={19} style={{ flexShrink: 0 }} />
-            <span>Dataset Available</span>
+            <span>{t('Dataset Available')}</span>
           </NavLink>
 
           <NavLink
             to="/admin/audit-logs"
-            title="Audit Logs"
+            title={t('Audit Logs')}
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <ScrollText size={19} style={{ flexShrink: 0 }} />
-            <span>Audit Logs</span>
+            <span>{t('Audit Logs')}</span>
           </NavLink>
         </nav>
 
@@ -139,45 +137,31 @@ export default function AdminLayout() {
                 padding: '0.1rem 0.2rem',
               }}
             >
-              <span
-                style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                Role
-              </span>
-              <span
-                className="badge badge--admin"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '0.15rem 0.6rem',
-                  fontWeight: 700,
-                  borderRadius: '9999px',
-                }}
-              >
-                Administrator
-              </span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <span
-                className="badge badge--admin"
-                title="Role: Administrator"
-                style={{
-                  fontSize: '0.65rem',
-                  padding: '0.15rem 0.35rem',
-                  fontWeight: 800,
-                  borderRadius: '6px',
-                }}
-              >
-                AD
-              </span>
-            </div>
-          )}
+              <ShieldCheck size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Dataset Approvals')}</span>
+            </NavLink>
+            <NavLink
+              to="/admin/datasets-available"
+              title={t('Dataset Available')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Database size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Dataset Available')}</span>
+            </NavLink>
+          </div>
+
+          <div className="adm-nav-group">
+            <span className="adm-nav-group__label">{t('Compliance')}</span>
+            <NavLink
+              to="/admin/audit-logs"
+              title={t('Audit Logs')}
+              className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
+            >
+              <ScrollText size={18} style={{ flexShrink: 0 }} />
+              <span className="adm-nav-link__text">{t('Audit Logs')}</span>
+            </NavLink>
+          </div>
+        </nav>
 
           <div
             className="admin-user-profile"
@@ -191,26 +175,30 @@ export default function AdminLayout() {
                 <span className="admin-user-name">{user?.full_name || 'Administrator'}</span>
                 <span className="admin-user-email">{user?.email || 'admin@gmail.com'}</span>
               </div>
-            )}
+              <span className="adm-user-card__role">{user?.email || 'admin@gmail.com'}</span>
+            </div>
           </div>
 
           <button
             type="button"
             className="admin-logout-btn"
             onClick={handleLogout}
-            title="Sign Out"
+            title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isSidebarCollapsed && <span>Sign Out</span>}
+            <span className="adm-logout-btn__text">{t('Sign Out')}</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <div className="admin-main">
-        <header className="admin-header">
-          <div className="admin-header__title">
-            <h1>Administrator Dashboard</h1>
+      <div className="adm-workspace">
+        <header className="adm-topbar">
+          <div className="adm-topbar__left">
+            <h1 className="adm-topbar__title">{t(currentMeta.title)}</h1>
+          </div>
+          <div className="adm-topbar__right">
+            <LanguageSwitcher />
           </div>
         </header>
 

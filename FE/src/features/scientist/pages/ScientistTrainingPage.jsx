@@ -1,188 +1,155 @@
-import { useNavigate, useParams } from 'react-router-dom'
-import { Eye, BarChart3, Loader2, FlaskConical, CheckCircle2 } from 'lucide-react'
-import { useApprovedDatasets, useDatasetPreview } from '../../../hooks/useScientistData'
-import {
-  useOneMinuteVehicleAggregation,
-  useTrainingFeatureEngineering,
-} from '../../../hooks/useTrafficForecast'
-import DatasetInfoPanel from '../components/DatasetInfoPanel'
-import BarChart from '../components/BarChart'
-import AggregationExplorer from '../components/AggregationExplorer'
-import TrainingFeaturePanel from '../components/TrainingFeaturePanel'
-import { formatDate, formatNumber } from '../utils/formatters'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Check, Clock3, Database, FlaskConical, Layers3, LoaderCircle, RefreshCw, Scissors, Sparkles } from 'lucide-react'
+import { useApprovedDatasets, useApprovedGroups, useGroupDatasets, useGroupSessionMetadata } from '../../../hooks/useScientistData'
+import { useAggregationResults, useFeaturePreview, useScienceTraining } from '../../../hooks/useScienceWorkflow'
+import { AggregationTimeTable, ChronologicalSplitTable, FeaturePreviewTable } from '../components/TrainingTimeTables'
+import ScientistBackLink from '../components/ScientistBackLink'
+
+const RUNNING_STATUSES = ['PROCESSING', 'PENDING', 'QUEUED', 'RUNNING']
+
+function getStepState(result, ready) {
+  if (result?.status === 'COMPLETED') return 'complete'
+  if (result?.status === 'PARTIAL_SUCCESS') return 'partial'
+  if (result && RUNNING_STATUSES.includes(result.status)) return 'processing'
+  if (result?.status === 'FAILED') return 'failed'
+  return ready ? 'ready' : 'waiting'
+}
+
+const STATE_LABELS = {
+  partial: 'Hoàn tất một phần',
+  complete: 'Hoàn tất', processing: 'Đang xử lý', failed: 'Cần kiểm tra',
+  ready: 'Sẵn sàng', waiting: 'Chưa mở',
+}
+
+function TrainingStep({ number, icon: Icon, title, description, state, headerActions, compact = false, children }) {
+  const statusBadge = <span className={`sci-training-status sci-training-status--${state}`}>
+    {state === 'processing' ? <LoaderCircle size={14} className="sci-training-spin" /> : state === 'waiting' ? <Clock3 size={14} /> : state === 'complete' ? <Check size={14} /> : null}
+    {STATE_LABELS[state]}
+  </span>
+  return <section className={`sci-training-step sci-training-step--${state}${compact ? ' sci-training-step--compact' : ''}`}>
+    <div className="sci-training-step__marker" aria-hidden="true">
+      {state === 'complete' ? <Check size={21} /> : <Icon size={21} />}
+    </div>
+    <div className="sci-training-step__content">
+      <div className="sci-training-step__heading">
+        <div><span className="sci-training-step__eyebrow">BƯỚC {number}</span><h2>{title}</h2></div>
+        {headerActions ? <div className="sci-training-step__heading-controls">{statusBadge}{headerActions}</div> : statusBadge}
+      </div>
+      {description && <p className="sci-training-step__description">{description}</p>}
+      {children && <div className="sci-training-step__body">{children}</div>}
+    </div>
+  </section>
+}
 
 export default function ScientistTrainingPage() {
-  const { datasetId, versionId } = useParams()
-  const navigate = useNavigate()
-
-  const { datasets, isLoading: isLoadingList } = useApprovedDatasets('')
-  const meta = datasets.find((d) => d.dataset_id === datasetId && d.version_id === versionId)
-  const { preview } = useDatasetPreview(datasetId, versionId, {
-    page: 1,
-    pageSize: 1,
-    representation: 'normalized',
-  })
-
-  const { chart, statusInfo, isLoading, isCalculating, progress, error, aggregateOneMinute } =
-    useOneMinuteVehicleAggregation(datasetId)
-
-  const {
-    featureData,
-    isLoading: isGeneratingFeatures,
-    error: featureError,
-    generateTrainingFeatures,
-  } = useTrainingFeatureEngineering(datasetId, versionId)
-
-  const handleReviewDataset = () => {
-    navigate(`/scientist/datasets/${datasetId}/versions/${versionId}`)
-  }
-
-  return (
-    <div className="sci-page">
-      <DatasetInfoPanel
-        item={meta}
-        datasets={datasets}
-        datasetId={datasetId}
-        versionId={versionId}
-        preview={preview}
-        isLoading={isLoadingList}
-      />
-
-      {/* Section 1: Training Actions + 1-Minute Vehicle Aggregation Bar Chart */}
-      <section className="admin-card">
-        <div className="admin-card__header">
-          <div className="admin-card__header-left">
-            <div className="admin-card__icon-box admin-card__icon-box--purple">
-              <FlaskConical size={18} />
-            </div>
-            <div>
-              <h2 className="admin-card__title">Training · 1-Minute Vehicle Aggregation</h2>
-              <p className="admin-card__subtitle">
-                Review dataset records or aggregate vehicle counts into 1-minute buckets for model training.
-              </p>
-            </div>
-          </div>
-
-          <div className="sci-train-actions">
-            <button
-              type="button"
-              className="btn-secondary sci-train-btn"
-              onClick={handleReviewDataset}
-            >
-              <Eye size={16} />
-              <span>Review Dataset</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-action btn-action--primary sci-train-btn"
-              onClick={aggregateOneMinute}
-              disabled={isLoading || isCalculating}
-            >
-              {isCalculating ? (
-                <Loader2 size={16} className="sci-spin" />
-              ) : (
-                <BarChart3 size={16} />
-              )}
-              <span>
-                {isCalculating
-                  ? 'Calculating...'
-                  : 'Aggregate Vehicles (1 Min)'}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <div className="sci-card-body">
-          {isLoading && (
-            <div className="sci-state" role="status">
-              <Loader2 size={20} className="sci-spin" /> Loading saved vehicle aggregation...
-            </div>
-          )}
-
-          {/* Calculating state */}
-          {isCalculating && (
-            <div className="sci-job">
-              <div className="sci-job__row">
-                <span className="sci-pill sci-job__status">
-                  <Loader2 size={12} className="sci-spin" />
-                  Calculating 1-minute vehicle aggregation...
-                </span>
-                <span style={{ marginLeft: 'auto', fontWeight: 700 }}>{progress}%</span>
-              </div>
-              <div className="sci-progress">
-                <div style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {/* Error state */}
-          {error && (
-            <div className="sci-state sci-state--error">
-              <p style={{ margin: 0, fontWeight: 700 }}>{error}</p>
-            </div>
-          )}
-
-          {/* Show the empty prompt only after checking saved results. */}
-          {!isLoading && !isCalculating && !error && !chart && (
-            <div className="sci-state">
-              <BarChart3 size={34} style={{ marginBottom: '0.5rem', color: '#94a3b8' }} />
-              <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: '0.25rem' }}>
-                No vehicle aggregation generated yet
-              </div>
-              <div style={{ fontSize: '0.84rem' }}>
-                Click <strong>&ldquo;Aggregate Vehicles (1 Min)&rdquo;</strong> above to compute and display the interactive bar chart.
-              </div>
-            </div>
-          )}
-
-          {/* Saved or newly generated aggregation results. */}
-          {!isLoading && !isCalculating && chart && (
-            <>
-              {statusInfo && (
-                <div className="sci-status-box">
-                  <span className="sci-pill sci-pill--approved">
-                    <CheckCircle2 size={12} /> Aggregated (60s / 1 min)
-                  </span>
-                  <span className="sci-status-box__item">
-                    Total buckets: <strong>{formatNumber(statusInfo.records_count)}</strong> min
-                  </span>
-                  {statusInfo.last_generated_at && (
-                    <span className="sci-status-box__item">
-                      Last generated: <strong>{formatDate(statusInfo.last_generated_at)}</strong>
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <BarChart
-                labels={chart.time_labels}
-                values={chart.vehicle_count}
-              />
-            </>
-          )}
-        </div>
-      </section>
-
-      {!isLoading && !isCalculating && chart && (
-        <AggregationExplorer
-          key={`aggregation:${datasetId}:${versionId}`}
-          datasetId={datasetId}
-          versionId={versionId}
-          aggregationInterval={60}
-          roiIdentifier="MAIN_ROI"
-          title="Training · 1-Minute Traffic Charts"
-        />
-      )}
-
-      {/* Feature Engineering - Training Samples (POST /api/feature-engineering/training) */}
-      <TrainingFeaturePanel
-        key={`features:${datasetId}:${versionId}`}
-        featureData={featureData}
-        isLoading={isGeneratingFeatures}
-        error={featureError}
-        onGenerate={generateTrainingFeatures}
-      />
-    </div>
+  const { groupId, datasetId, versionId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedSessionId = searchParams.get('sessionId') || ''
+  const { groups, isLoading: groupsLoading, error: groupsError, reload: reloadGroups } = useApprovedGroups()
+  const { datasets, isLoading: datasetsLoading, error: datasetsError, reload: reloadDatasets } = useApprovedDatasets()
+  const dataset = datasets.find((item) => item.dataset_id === datasetId && item.version_id === versionId)
+  const activeGroupId = groupId || dataset?.group_id
+  const group = groups.find((item) => item.group_id === activeGroupId)
+  const { datasets: groupDatasets } = useGroupDatasets(activeGroupId)
+  const sessionsById = useGroupSessionMetadata(groupDatasets)
+  const { workflow, busy, error, loadError, isLoadingWorkflow, reloadWorkflow, startAggregation, refreshAggregation, generateFeatures, refreshFeatures, createSplit } = useScienceTraining(group?.group_id)
+  const { aggregation, features, split, experiment } = workflow
+  const aggregationTable = useAggregationResults(
+    aggregation?.aggregation_id,
+    ['COMPLETED', 'PARTIAL_SUCCESS'].includes(aggregation?.status),
+    selectedSessionId,
   )
+  const selectAggregationSession = (sessionId) => {
+    aggregationTable.setSessionId(sessionId)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (sessionId) next.set('sessionId', sessionId)
+      else next.delete('sessionId')
+      return next
+    }, { replace: true })
+  }
+  const featureTable = useFeaturePreview(features?.feature_generation_id, features?.status === 'COMPLETED')
+  const aggregationState = getStepState(aggregation, true)
+  const featuresState = getStepState(features, aggregationState === 'complete')
+  const splitState = getStepState(split, featuresState === 'complete')
+  const experimentState = getStepState(experiment, splitState === 'complete')
+  const completedSteps = [aggregationState, featuresState, splitState, experimentState].filter((state) => state === 'complete').length
+  const loading = groupsLoading || (!groupId && datasetsLoading)
+
+  return <div className="sci-page sci-training-page">
+    <ScientistBackLink to="/scientist/datasets">Tất cả batch</ScientistBackLink>
+    <header className="sci-training-hero">
+      <div className="sci-training-hero__icon"><FlaskConical size={27} /></div>
+      <div className="sci-training-hero__text">
+        <span className="sci-training-hero__eyebrow">DATA SCIENCE WORKFLOW</span>
+        <h1>Huấn luyện mô hình</h1>
+        <p>{group?.group_name || 'Batch'} · Tổng hợp dữ liệu, tạo đặc trưng và huấn luyện Random Forest</p>
+      </div>
+      {group && <div className="sci-training-hero__progress"><strong>{completedSteps}/4</strong><span>bước hoàn tất</span></div>}
+    </header>
+
+    {loading && <div className="sci-state"><div className="sci-spinner" /> Đang tải batch…</div>}
+    {(groupsError || (!groupId && datasetsError)) && <div role="alert" className="sci-state sci-state--error">
+      <div>{groupsError || datasetsError}</div>
+      <button type="button" className="sci-training-button sci-training-button--secondary sci-training-load-retry" onClick={groupsError ? reloadGroups : reloadDatasets}>
+        <RefreshCw size={15} /> Thử lại
+      </button>
+    </div>}
+    {!loading && !groupsError && (!groupId ? !datasetsError : true) && !group && <div role="alert" className="sci-state sci-state--error">Bạn không có quyền truy cập batch này.</div>}
+    {error && <div role="alert" className="sci-training-alert">{error}</div>}
+    {group && isLoadingWorkflow && <div className="sci-state"><div className="sci-spinner" /> Đang tải lần tổng hợp đã lưu…</div>}
+    {group && loadError && <div role="alert" className="sci-state sci-state--error">{loadError} <button type="button" className="sci-training-button sci-training-button--secondary" onClick={reloadWorkflow}><RefreshCw size={15} /> Thử lại</button></div>}
+
+    {group && !isLoadingWorkflow && !loadError && <div className="sci-training-flow">
+      <TrainingStep number={1} icon={Database} title="Tổng hợp dữ liệu theo phút" description={aggregationState === 'complete' ? null : `Gộp các dataset đã duyệt trong ${group.group_name} thành dữ liệu theo phút.`} state={aggregationState} compact headerActions={<div className="sci-training-step__actions">
+        {aggregationState !== 'processing' && <button type="button" className={`sci-training-button${aggregation ? ' sci-training-button--secondary' : ''}`} disabled={busy} onClick={startAggregation}><Database size={16} /> {aggregation ? 'Tổng hợp lại' : 'Bắt đầu tổng hợp'}</button>}
+        {aggregation && aggregationState !== 'complete' && <button type="button" className="sci-training-button sci-training-button--secondary" disabled={busy} onClick={refreshAggregation}><RefreshCw size={15} /> Cập nhật</button>}
+      </div>}>
+        {aggregationState === 'processing' && <div className="sci-aggregation-progress" role="status">
+          <div><strong>{aggregation?.completed_sessions || 0}/{aggregation?.total_sessions || 0} phiên hoàn tất</strong><span>Tiến độ tự cập nhật sau mỗi 3 giây.</span></div>
+          <progress aria-label="Tiến độ tổng hợp phiên ghi hình" max={Math.max(1, aggregation?.total_sessions || 0)} value={(aggregation?.completed_sessions || 0) + (aggregation?.failed_sessions || 0)} />
+          {aggregation?.failed_sessions > 0 && <span>{aggregation.failed_sessions} phiên xử lý lỗi</span>}
+        </div>}
+        {['partial', 'failed'].includes(aggregationState) && <div className="sci-training-alert" role="alert">
+          <strong>{(aggregation.sessions || []).filter((session) => session.status === 'COMPLETED').length}/{aggregation.total_sessions} phiên đã hoàn tất.</strong>
+          <p>Các phiên thành công vẫn có thể xem bên dưới. Cần xử lý phiên lỗi và tổng hợp đầy đủ trước khi tạo đặc trưng.</p>
+          <ul>{(aggregation.sessions || []).filter((session) => session.status === 'FAILED').map((session) => <li key={session.session_id}>
+            <strong>{sessionsById[session.session_id]?.original_filename || session.session_id}</strong>: {session.error_message || 'Không xử lý được phiên ghi hình.'}
+          </li>)}</ul>
+        </div>}
+        {['complete', 'partial'].includes(aggregationState) && <AggregationTimeTable {...aggregationTable} setSessionId={selectAggregationSession} aggregationId={aggregation.aggregation_id} groupId={activeGroupId} sessions={(aggregation.sessions || []).filter((session) => session.status === 'COMPLETED')} sessionsById={sessionsById} />}
+      </TrainingStep>
+
+      <TrainingStep number={2} icon={Layers3} title="Tạo lag features" description={featuresState === 'complete' ? null : 'Tạo các đặc trưng từ dữ liệu đã tổng hợp để đưa vào mô hình.'} state={featuresState} compact headerActions={<div className="sci-training-step__actions">
+        {features && <span className="sci-training-step__metric"><b>{features.sample_count ?? '—'}</b> mẫu</span>}
+        {featuresState !== 'processing' && <button type="button" className={`sci-training-button${features ? ' sci-training-button--secondary' : ''}`} disabled={busy || aggregationState !== 'complete'} onClick={generateFeatures}><Sparkles size={16} /> {features ? 'Tạo lại đặc trưng' : 'Tạo đặc trưng'}</button>}
+        {features && featuresState !== 'complete' && <button type="button" className="sci-training-button sci-training-button--secondary" disabled={busy} onClick={refreshFeatures}><RefreshCw size={15} /> Cập nhật</button>}
+        {aggregationState !== 'complete' && <span className="sci-training-hint">Hoàn tất bước 1 để tiếp tục</span>}
+      </div>}>
+        {featuresState === 'complete' && <FeaturePreviewTable {...featureTable} sessionsById={sessionsById} />}
+      </TrainingStep>
+
+      <TrainingStep number={3} icon={Scissors} title="Chia dữ liệu train/test" description={splitState === 'complete' ? null : 'Chia dữ liệu theo thứ tự thời gian với tỷ lệ 70/30.'} state={splitState} compact headerActions={<div className="sci-training-step__actions">
+        {split && <><span className="sci-training-step__metric">Train <b>{split.train_sample_count ?? '—'}</b> · Test <b>{split.test_sample_count ?? '—'}</b> mẫu</span>
+          <span className={`sci-training-step__metric${split.leakage_check?.has_leakage ? ' sci-training-step__metric--warning' : ''}`}>
+            Rò rỉ: <b>{split.leakage_check?.has_leakage ? 'Có' : 'Không'}</b>
+          </span></>}
+        {splitState !== 'processing' && <button type="button" className={`sci-training-button${split ? ' sci-training-button--secondary' : ''}`} disabled={busy || featuresState !== 'complete'} onClick={createSplit}><Scissors size={16} /> {split ? 'Chia lại' : 'Chia dữ liệu 70/30'}</button>}
+          {featuresState !== 'complete' && <span className="sci-training-hint">Hoàn tất bước 2 để tiếp tục</span>}
+        </div>}>
+        {splitState === 'complete' && <ChronologicalSplitTable split={split} datasets={groupDatasets} sessionsById={sessionsById} />}
+      </TrainingStep>
+
+      <div className="sci-training-experiments-cta">
+        <span className="sci-training-experiments-cta__marker" aria-hidden="true"><FlaskConical size={20} /></span>
+        <span className="sci-training-experiments-cta__label">BƯỚC 4</span>
+        {splitState === 'complete' && split?.split_id
+          ? <Link className="sci-training-button" to={`/scientist/experiments/groups/${activeGroupId}/new?split_id=${encodeURIComponent(split.split_id)}`}>
+            Thí nghiệm <ArrowRight size={16} />
+          </Link>
+          : <><span className="sci-training-hint">Hoàn tất bước chia Train/Test để cấu hình thí nghiệm</span>
+            <button type="button" className="sci-training-button" disabled>Thí nghiệm <ArrowRight size={16} /></button></>}
+      </div>
+    </div>}
+  </div>
 }

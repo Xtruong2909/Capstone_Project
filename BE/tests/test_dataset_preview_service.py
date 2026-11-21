@@ -96,6 +96,66 @@ def test_non_pneuma_csv_keeps_its_original_schema_when_normalization_is_requeste
     assert any("Chưa có quy tắc chuẩn hóa" in warning for warning in preview.warnings)
 
 
+def test_cold_session_preview_reads_only_requested_points(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "cold.csv"
+    path.write_text(
+        ";".join(PNEUMA_COLUMNS) + "\n"
+        + "17;Car;12;3;1;2;3;0;0;0;4;5;6;0;0;1;\n"
+        + "bad;record\n"
+        + "19;Bus;12;3;7;8;9;0;0;2;10;11;12;0;0;3;\n"
+        + "20;Car;12;3;1;2;3;0;0;4;\n" * 100,
+        encoding="utf-8",
+    )
+    warmed = []
+    parsed = []
+    original_parse = dataset_preview_service._parse_pneuma_line
+
+    def parse(raw: bytes, delimiter: str) -> list[str] | None:
+        parsed.append(raw)
+        return original_parse(raw, delimiter)
+
+    monkeypatch.setattr(dataset_preview_service, "_parse_pneuma_line", parse)
+    monkeypatch.setattr(dataset_preview_service, "_warm_pneuma_index", lambda p, d: warmed.append(p))
+    cold = _read_csv(path, offset=1, page_size=2, representation="normalized", build_index=False)
+    assert [row["track_id"] for row in cold.rows] == [17, 19]
+    assert [row["lat"] for row in cold.rows] == [4, 7]
+    assert cold.has_more and cold.total_rows is None
+    assert len(parsed) == 3  # Only the two relevant trajectories and one malformed row.
+    assert warmed == [path]
+    assert not dataset_preview_service._pneuma_index_path(path).exists()
+    indexed = _read_csv(path, offset=1, page_size=2, representation="normalized")
+    assert cold.rows == indexed.rows
+    assert indexed.total_rows == 104
+
+
+def test_cold_preview_reports_exact_count_when_end_is_reached(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "small.csv"
+    path.write_text(";".join(PNEUMA_COLUMNS) + "\n17;Car;12;3;1;2;3;0;0;0;\n", encoding="utf-8")
+    monkeypatch.setattr(dataset_preview_service, "_warm_pneuma_index", lambda p, d: None)
+    preview = _read_csv(path, offset=0, page_size=20, representation="normalized", build_index=False)
+    assert len(preview.rows) == preview.total_rows == 1
+    assert not preview.has_more
+    beyond_end = _read_csv(path, offset=10, page_size=20, representation="normalized", build_index=False)
+    assert beyond_end.rows == [] and beyond_end.total_rows == 1
+
+
+def test_indexed_page_converts_only_selected_points(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "long-track.csv"
+    path.write_text(";".join(PNEUMA_COLUMNS) + "\n17;Car;12;3;" + "1;2;3;0;0;0;" * 1000 + "\n", encoding="utf-8")
+    _read_csv(path, offset=0, page_size=1, representation="normalized")
+    converted = []
+    original_number = dataset_preview_service._csv_number
+
+    def number(value: str, *, integer: bool = False) -> int | float | None:
+        converted.append(value)
+        return original_number(value, integer=integer)
+
+    monkeypatch.setattr(dataset_preview_service, "_csv_number", number)
+    preview = _read_csv(path, offset=990, page_size=2, representation="normalized")
+    assert len(preview.rows) == 2 and preview.has_more
+    assert len(converted) == 21  # Three track fields plus three points (including lookahead).
+
+
 def test_tab_csv_and_duplicate_header_are_reported_without_losing_cells(
     tmp_path: Path,
 ) -> None:

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, FileText, GitBranch, Eye, Workflow, Send } from 'lucide-react'
+import { X, FileText, GitBranch, Eye, Workflow, Send, AlertCircle } from 'lucide-react'
 import { pipelineService } from '../../../services/pipelineService'
 import {
   formatBytes,
@@ -12,24 +12,13 @@ import {
 export function DatasetStatusBadge({ status }) {
   switch ((status || '').toUpperCase()) {
     case 'APPROVED':
-      return <span className="badge badge--approved">Approved</span>
+      return <span className="adm-badge adm-badge--emerald">Approved</span>
     case 'REJECTED':
-      return <span className="badge badge--rejected">Rejected</span>
+      return <span className="adm-badge adm-badge--rose">Rejected</span>
     case 'SUBMITTED':
-      return (
-        <span
-          className="badge badge--pending"
-          style={{
-            background: '#eff6ff',
-            color: '#1d4ed8',
-            border: '1px solid #bfdbfe',
-          }}
-        >
-          Submitted
-        </span>
-      )
+      return <span className="adm-badge adm-badge--blue">Submitted</span>
     default:
-      return <span className="badge badge--pending">Pending</span>
+      return <span className="adm-badge adm-badge--amber">Pending</span>
   }
 }
 
@@ -41,9 +30,30 @@ export default function DatasetDetailModal({
   onStartNewVersion,
   onPreviewDataset,
   onOpenPipelineStudio,
+  onResubmitted,
 }) {
   const navigate = useNavigate()
   const [isResubmitting, setIsResubmitting] = useState(false)
+  const [showResubmitForm, setShowResubmitForm] = useState(false)
+  const [resubmitNote, setResubmitNote] = useState(
+    'Updated mapping and resolved trajectory quality issues'
+  )
+  const [resubmitError, setResubmitError] = useState(null)
+  const [resubmitSuccess, setResubmitSuccess] = useState(false)
+
+  useEffect(() => {
+    if (!item) return
+    setShowResubmitForm(false)
+    setResubmitError(null)
+    setResubmitSuccess(false)
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose?.()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [item, onClose])
+
   if (!item) return null
 
   const effectiveVersion = resolveEffectiveVersionTag(item, versionLineageMap)
@@ -51,21 +61,33 @@ export default function DatasetDetailModal({
   const reviewNote = resolveEffectiveApprovalNote(item)
   const lineageInfo = versionLineageMap[item.dataset_id]
 
-  const handleResubmit = async () => {
-    if (!item?.dataset_id || !item?.version_id) return
-    const note = prompt(
-      'Enter feedback response or update note for Administrator:',
-      'Updated mapping and resolved trajectory quality issues'
-    )
-    if (note === null) return
+  const alertVariant =
+    item.approval_status === 'REJECTED'
+      ? 'eng-alert--error'
+      : item.approval_status === 'APPROVED'
+        ? 'eng-alert--success'
+        : item.approval_status === 'SUBMITTED'
+          ? 'eng-alert--info'
+          : 'eng-alert--warning'
 
+  const handleResubmit = async (e) => {
+    e.preventDefault()
+    if (!item?.dataset_id || !item?.version_id) return
     setIsResubmitting(true)
+    setResubmitError(null)
     try {
-      await pipelineService.resubmitVersionForReview(item.dataset_id, item.version_id, note)
-      alert('Version resubmitted successfully for Administrator approval.')
-      onClose()
+      await pipelineService.resubmitVersionForReview(
+        item.dataset_id,
+        item.version_id,
+        resubmitNote.trim() || 'Resubmitted after review'
+      )
+      setResubmitSuccess(true)
+      setShowResubmitForm(false)
+      onResubmitted?.()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Resubmission failed. Please check version status.')
+      setResubmitError(
+        err.response?.data?.detail || 'Resubmission failed. Please check version status.'
+      )
     } finally {
       setIsResubmitting(false)
     }
@@ -73,87 +95,149 @@ export default function DatasetDetailModal({
 
   return (
     <div
-      className="modal-backdrop"
+      className="adm-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dataset-detail-modal-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (e.target === e.currentTarget) onClose?.()
       }}
     >
-      <div className="modal-dialog" style={{ maxWidth: '580px' }}>
-        <div className="modal-header">
-          <h3>Dataset Metadata & Review Feedback</h3>
-          <button type="button" className="modal-close-btn" onClick={onClose}>
-            <X size={20} />
+      <div className="adm-modal" style={{ maxWidth: '640px' }}>
+        <div className="adm-modal__header">
+          <h3 id="dataset-detail-modal-title" className="adm-modal__title">
+            Dataset Metadata & Review
+          </h3>
+          <button
+            type="button"
+            className="adm-modal__close"
+            onClick={onClose}
+            aria-label="Close modal"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        <div className="modal-body">
+        <div className="adm-modal__body">
+          {/* Summary Header */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              gap: '1rem',
               padding: '0.85rem 1rem',
               background: '#f8fafc',
               border: '1px solid #e2e8f0',
-              borderRadius: '10px',
+              borderRadius: '12px',
               marginBottom: '1rem',
             }}
           >
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '1rem', color: '#0f172a' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                className="eng-truncate"
+                title={item.name}
+                style={{ fontWeight: 700, fontSize: '0.98rem', color: '#0f172a' }}
+              >
                 {item.name}
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.15rem' }}>
-                Code: <code>{item.code}</code> • Version: <strong>{effectiveVersion}</strong>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.78rem',
+                  color: '#64748b',
+                  marginTop: '0.25rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span className="adm-code-tag">{item.code}</span>
+                <span>Version {effectiveVersion}</span>
               </div>
             </div>
             <DatasetStatusBadge status={item.approval_status} />
           </div>
 
-          {/* Admin Review Note Box */}
-          <div
-            style={{
-              padding: '0.9rem 1rem',
-              borderRadius: '10px',
-              marginBottom: '1rem',
-              background:
-                item.approval_status === 'REJECTED'
-                  ? '#fef2f2'
-                  : item.approval_status === 'APPROVED'
-                  ? '#f0fdf4'
-                  : item.approval_status === 'SUBMITTED'
-                  ? '#eff6ff'
-                  : '#fffbeb',
-              border:
-                item.approval_status === 'REJECTED'
-                  ? '1px solid #fecaca'
-                  : item.approval_status === 'APPROVED'
-                  ? '1px solid #bbf7d0'
-                  : item.approval_status === 'SUBMITTED'
-                  ? '1px solid #bfdbfe'
-                  : '1px solid #fde68a',
-              color:
-                item.approval_status === 'REJECTED'
-                  ? '#991b1b'
-                  : item.approval_status === 'APPROVED'
-                  ? '#166534'
-                  : item.approval_status === 'SUBMITTED'
-                  ? '#1d4ed8'
-                  : '#92400e',
-              fontSize: '0.84rem',
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
-              Administrator Review Note:
+          {/* Review Note */}
+          {reviewNote && (
+            <div className={`eng-alert ${alertVariant}`} style={{ marginBottom: '1rem' }}>
+              <div className="eng-alert__content">
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.2rem' }}>
+                    Administrator Review Note
+                  </div>
+                  <div className="eng-break-all">{reviewNote}</div>
+                </div>
+              </div>
             </div>
-            <div>{reviewNote}</div>
-          </div>
+          )}
 
-          {/* Lineage Info (if upgraded version) */}
+          {resubmitSuccess && (
+            <div className="eng-alert eng-alert--success" style={{ marginBottom: '1rem' }}>
+              <span>Version resubmitted for Administrator approval.</span>
+            </div>
+          )}
+
+          {resubmitError && (
+            <div className="eng-alert eng-alert--error" style={{ marginBottom: '1rem' }}>
+              <div className="eng-alert__content">
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>{resubmitError}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Inline Resubmit Form */}
+          {showResubmitForm && (
+            <form
+              onSubmit={handleResubmit}
+              style={{
+                padding: '0.9rem 1rem',
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '12px',
+                marginBottom: '1rem',
+              }}
+            >
+              <label htmlFor="resubmit-note-input" className="adm-label">
+                Response Note for Administrator
+              </label>
+              <textarea
+                id="resubmit-note-input"
+                className="adm-textarea"
+                rows={2}
+                value={resubmitNote}
+                onChange={(e) => setResubmitNote(e.target.value)}
+                placeholder="Describe what was fixed..."
+                style={{ minHeight: '68px', marginBottom: '0.65rem' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="adm-btn adm-btn--ghost adm-btn--sm"
+                  onClick={() => setShowResubmitForm(false)}
+                  disabled={isResubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="adm-btn adm-btn--emerald adm-btn--sm"
+                  disabled={isResubmitting}
+                >
+                  <Send size={14} />
+                  <span>{isResubmitting ? 'Resubmitting...' : 'Confirm Resubmit'}</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Lineage */}
           {lineageInfo && (
             <div
               style={{
-                padding: '0.8rem 1rem',
+                padding: '0.75rem 0.95rem',
                 background: '#faf5ff',
                 border: '1px solid #e9d5ff',
                 borderRadius: '10px',
@@ -163,7 +247,7 @@ export default function DatasetDetailModal({
               }}
             >
               <strong>Version Lineage:</strong> Upgraded from{' '}
-              <code>{lineageInfo.parentDatasetName}</code>
+              <span className="adm-code-tag">{lineageInfo.parentDatasetName}</span>
               {lineageInfo.changeSummary && (
                 <div style={{ marginTop: '0.25rem' }}>
                   <strong>Changelog:</strong> {lineageInfo.changeSummary}
@@ -173,135 +257,125 @@ export default function DatasetDetailModal({
           )}
 
           {/* Metadata Details Grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '0.75rem',
-              fontSize: '0.83rem',
-              marginBottom: '1rem',
-            }}
-          >
-            <div>
-              <span style={{ color: '#64748b', display: 'block', fontSize: '0.74rem' }}>
-                Original File
+          <div className="eng-kv-grid" style={{ marginBottom: '1rem' }}>
+            <div className="eng-kv-item">
+              <span className="eng-kv-item__label">Original File</span>
+              <span className="eng-kv-item__value eng-truncate" title={item.original_filename}>
+                {item.original_filename || '—'}
               </span>
-              <strong style={{ color: '#1e293b' }}>{item.original_filename}</strong>
             </div>
-            <div>
-              <span style={{ color: '#64748b', display: 'block', fontSize: '0.74rem' }}>
-                Format & Size
+            <div className="eng-kv-item">
+              <span className="eng-kv-item__label">Format & Size</span>
+              <span className="eng-kv-item__value">
+                {item.file_format || '—'} ({formatBytes(item.file_size_bytes)})
               </span>
-              <strong style={{ color: '#1e293b' }}>
-                {item.file_format} ({formatBytes(item.file_size_bytes)})
-              </strong>
             </div>
-            <div>
-              <span style={{ color: '#64748b', display: 'block', fontSize: '0.74rem' }}>
-                Source
+            <div className="eng-kv-item">
+              <span className="eng-kv-item__label">Source</span>
+              <span className="eng-kv-item__value eng-truncate" title={item.source}>
+                {item.source || '—'}
               </span>
-              <strong style={{ color: '#1e293b' }}>{item.source}</strong>
             </div>
-            <div>
-              <span style={{ color: '#64748b', display: 'block', fontSize: '0.74rem' }}>
-                Location / Corridor
+            <div className="eng-kv-item">
+              <span className="eng-kv-item__label">Location / Corridor</span>
+              <span className="eng-kv-item__value eng-truncate" title={item.location_name}>
+                {item.location_name || '—'}
               </span>
-              <strong style={{ color: '#1e293b' }}>{item.location_name}</strong>
             </div>
-            <div>
-              <span style={{ color: '#64748b', display: 'block', fontSize: '0.74rem' }}>
-                Capture Date
-              </span>
-              <strong style={{ color: '#1e293b' }}>{item.capture_date || '—'}</strong>
+            <div className="eng-kv-item">
+              <span className="eng-kv-item__label">Capture Date</span>
+              <span className="eng-kv-item__value">{item.capture_date || '—'}</span>
             </div>
-            <div>
-              <span style={{ color: '#64748b', display: 'block', fontSize: '0.74rem' }}>
-                Total Records
-              </span>
-              <strong style={{ color: '#059669' }}>
+            <div className="eng-kv-item">
+              <span className="eng-kv-item__label">Total Records</span>
+              <span className="eng-kv-item__value" style={{ color: '#059669' }}>
                 {effectiveRecordCount != null
                   ? Number(effectiveRecordCount).toLocaleString()
-                  : 'Click Preview to compute'}
-              </strong>
+                  : 'Open Preview to compute'}
+              </span>
             </div>
           </div>
 
           {item.description && (
             <div
               style={{
-                padding: '1rem 1.15rem',
+                padding: '0.85rem 1rem',
                 background: '#f8fafc',
-                borderRadius: '12px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.94rem',
-                lineHeight: 1.6,
-                color: '#0f172a',
-                marginBottom: '1.25rem',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                fontSize: '0.85rem',
+                lineHeight: 1.55,
+                color: '#334155',
               }}
             >
-              <span
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
-                  fontSize: '0.84rem',
+                  fontSize: '0.74rem',
                   fontWeight: 700,
-                  color: '#1d4ed8',
-                  marginBottom: '0.4rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  color: '#64748b',
+                  marginBottom: '0.35rem',
                 }}
               >
-                <FileText size={15} />
+                <FileText size={13} />
                 <span>Description</span>
-              </span>
-              {item.description}
+              </div>
+              <div className="eng-break-all">{item.description}</div>
             </div>
           )}
+        </div>
 
-          <div className="modal-actions">
-            <button type="button" className="btn-secondary" onClick={onClose}>
-              Close
-            </button>
+        <div className="adm-modal__footer" style={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
               type="button"
-              className="btn-action"
-              style={{
-                background: '#f3e8ff',
-                color: '#7c3aed',
-                border: '1px solid #d8b4fe',
-                fontWeight: 700,
-              }}
+              className="adm-btn adm-btn--ghost adm-btn--sm"
               onClick={() => {
-                onClose()
+                onClose?.()
                 onStartNewVersion?.(item)
               }}
             >
               <GitBranch size={14} />
-              <span>Upload New Version</span>
+              <span>New Version</span>
             </button>
-            {item.approval_status === 'REJECTED' && item.version_id && (
+            {item.approval_status === 'REJECTED' && item.version_id && !showResubmitForm && (
               <button
                 type="button"
-                className="btn-action btn-action--success"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-                disabled={isResubmitting}
-                onClick={handleResubmit}
+                className="adm-btn adm-btn--emerald adm-btn--sm"
+                onClick={() => setShowResubmitForm(true)}
               >
                 <Send size={14} />
-                <span>{isResubmitting ? 'Resubmitting...' : 'Resubmit to Admin'}</span>
+                <span>Resubmit</span>
               </button>
             )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
+              Close
+            </button>
             <button
               type="button"
-              className="btn-action"
-              style={{
-                background: '#eff6ff',
-                color: '#1d4ed8',
-                border: '1px solid #bfdbfe',
-                fontWeight: 700,
-              }}
+              className="adm-btn adm-btn--ghost"
               onClick={() => {
                 const id = item.dataset_id
-                onClose()
+                onClose?.()
+                onPreviewDataset?.(id)
+              }}
+            >
+              <Eye size={15} />
+              <span>Preview</span>
+            </button>
+            <button
+              type="button"
+              className="adm-btn adm-btn--primary"
+              onClick={() => {
+                const id = item.dataset_id
+                onClose?.()
                 if (onOpenPipelineStudio) {
                   onOpenPipelineStudio(id)
                 } else {
@@ -309,20 +383,8 @@ export default function DatasetDetailModal({
                 }
               }}
             >
-              <Workflow size={14} />
-              <span>Pipeline Studio</span>
-            </button>
-            <button
-              type="button"
-              className="btn-action btn-action--primary"
-              onClick={() => {
-                const id = item.dataset_id
-                onClose()
-                onPreviewDataset?.(id)
-              }}
-            >
-              <Eye size={14} />
-              <span>Preview Dataset</span>
+              <Workflow size={15} />
+              <span>Open Pipeline Studio</span>
             </button>
           </div>
         </div>

@@ -5,21 +5,27 @@ prediction execution, database writes or new tables.
 
 ## API
 
-Both endpoints require the existing Bearer authentication, admin/data_scientist
-role and dataset access grant (admin follows existing bypass rules).
+The following legacy HTTP endpoints have been removed and are not available in
+Swagger or the API:
 
 - `POST /api/feature-engineering/training`
 - `POST /api/feature-engineering/prediction`
 
-These paths are mounted explicitly under `/api`, as requested, rather than the
-existing `/api/v1` prefix. Both accept the same request:
+The feature-building service remains available for internal backend use. The
+train/test split endpoint still accepts prepared sample data in the format
+described below; it does not regenerate samples from a dataset ID.
+
+The removed endpoints previously accepted the same request:
 
 ```json
 {
-  "dataset_version_id": "88606239-73b3-401f-96c7-7eaeea164d99",
-  "roi_identifier": "MAIN_ROI"
+  "dataset_version_id": "88606239-73b3-401f-96c7-7eaeea164d99"
 }
 ```
+
+The optional `roi_identifier` is hidden from the request schema in Swagger and
+defaults to `MAIN_ROI`. Existing clients may still send an explicit ROI;
+validation and response ROI fields remain unchanged.
 
 Configuration is fixed and returned under `configuration`:
 

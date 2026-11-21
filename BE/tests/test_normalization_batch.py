@@ -80,10 +80,11 @@ def test_service_preview_and_filename(tmp_path: Path, monkeypatch: pytest.Monkey
     )
     assert (result.records_before, result.records_after) == (1, 2)
     assert result.preview.rows[0]["time"] == 60.0
-    assert result.preview.original_filename == source.name
+    assert result.preview.original_filename == "test-normalized.parquet"
     assert not result.preview.pagination.has_more
     meta = json.loads((tmp_path / "staging" / f"{result.staging_id}.json").read_text(encoding="utf-8"))
-    assert meta["original_filename"] == source.name
+    assert meta["original_filename"] == "test-normalized.parquet"
+    assert meta["source_filenames"] == [source.name]
 
 
 def test_normalization_benchmark(tmp_path: Path) -> None:

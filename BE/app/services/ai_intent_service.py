@@ -1,0 +1,88 @@
+"""Infer a bounded assistant task from a natural-language question."""
+
+import re
+import unicodedata
+from uuid import UUID
+
+from app.schemas.ai_assistant import AssistantAction
+
+
+def normalize_question(question: str) -> str:
+    """Fold Vietnamese accents while keeping word boundaries for intent matching."""
+    decomposed = unicodedata.normalize("NFD", question.casefold()).replace("đ", "d")
+    without_marks = "".join(
+        char for char in decomposed if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"[^a-z0-9#]+", " ", without_marks).strip()
+
+
+def infer_action(question: str) -> AssistantAction:
+    """Use explicit task words; ambiguous questions stay in general chat."""
+    normalized = normalize_question(question)
+    experiment_numbers = experiment_numbers_from_question(question)
+    has_experiment = bool(experiment_numbers) or any(
+        term in normalized for term in ("thi nghiem", "experiment")
+    )
+    if (any(term in normalized for term in (
+        "so sanh", "khac nhau", "tot nhat", "tot hon", "hieu qua nhat",
+    )) and has_experiment):
+        return AssistantAction.EXPERIMENT_COMPARISON
+    if (any(term in normalized for term in ("goi y", "de xuat", "toi uu")) and
+            any(term in normalized for term in ("cau hinh", "random forest", "mo hinh"))):
+        return AssistantAction.MODEL_RECOMMENDATION
+    if (any(term in normalized for term in (
+        "phan tich", "danh gia", "nhan xet", "ket qua", "the nao",
+    )) and has_experiment):
+        return AssistantAction.EXPERIMENT_ANALYSIS
+    if (any(term in normalized for term in ("giai thich", "phan tich", "nhan xet")) and
+            any(term in normalized for term in ("du bao", "prediction"))):
+        return AssistantAction.FORECAST_EXPLANATION
+    return AssistantAction.CHAT
+
+
+def experiment_numbers_from_question(question: str) -> list[int]:
+    """Extract distinct Ex-01 style names in the order the user mentioned them."""
+    normalized = normalize_question(question)
+    return list(dict.fromkeys(
+        int(number) for number in re.findall(r"\bex\s*0*(\d+)\b", normalized)
+    ))
+
+
+def asks_for_dataset_analysis(question: str) -> bool:
+    normalized = normalize_question(question)
+    return (
+        any(term in normalized for term in ("dataset", "du lieu"))
+        and any(term in normalized for term in (
+            "phan tich", "danh gia", "tong quan", "chat luong", "kiem tra",
+        ))
+    )
+
+
+def asks_for_session_list(question: str) -> bool:
+    """Identify requests for session identities rather than a session count."""
+    normalized = normalize_question(question)
+    return "session" in normalized.split() and any(
+        phrase in normalized for phrase in (
+            "session nao", "danh sach session", "liet ke session",
+            "list session", "cac session", "nhung session", "cai nao",
+        )
+    )
+
+
+def prediction_id_from_question(question: str) -> int | None:
+    """Only treat an explicitly labeled ID as a forecast record ID."""
+    normalized = normalize_question(question)
+    match = re.search(r"(?:prediction id|du bao id|id du bao|#)\s*#?\s*(\d+)\b", normalized)
+    return int(match.group(1)) if match else None
+
+
+def forecast_id_from_question(question: str) -> UUID | None:
+    """Resolve only a labeled forecast UUID, never a horizon or unrelated ID."""
+    match = re.search(
+        r"(?:forecast_id|forecast id|id dự báo|mã dự báo)\s*[:#]?\s*"
+        r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\b",
+        question,
+        flags=re.IGNORECASE,
+    )
+    return UUID(match.group(1)) if match else None

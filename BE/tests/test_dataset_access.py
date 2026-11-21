@@ -81,7 +81,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         lambda db, ds, search, skip, limit: [
             (u, (ds, u.id) in grants)
             for u in users.values()
-            if u.role_id in repo.ACCESS_ROLES and (not search or search in u.email)
+            if u.role_id in repo.GRANT_ROLES and (not search or search in u.email)
         ][skip : skip + limit],
     )
     monkeypatch.setattr(
@@ -157,7 +157,7 @@ def request(
     return asyncio.run(run())
 
 
-@pytest.mark.parametrize("role", ["scientist", "business"])
+@pytest.mark.parametrize("role", ["scientist"])
 def test_admin_grants_and_revokes_access(state: SimpleNamespace, role: str) -> None:
     target = getattr(state, role)
     ds = state.datasets[0]
@@ -177,10 +177,80 @@ def test_admin_grants_and_revokes_access(state: SimpleNamespace, role: str) -> N
     assert request(state.app, "DELETE", f"{path}/{target.id}")[0] == 404
 
 
+@pytest.mark.parametrize("role", ["business", "engineer", "admin"])
+def test_only_scientists_can_receive_dataset_access(state: SimpleNamespace, role: str) -> None:
+    target = getattr(state, role)
+    status, body = request(state.app, "POST", f"/admin/datasets/{state.datasets[0]}/access",
+                           {"user_id": str(target.id)})
+    assert status == 422
+    assert "Only Data Scientist" in body["detail"]
+    assert not state.grants
+    state.db.commit.assert_not_called()
+
+
+def test_admin_group_access_grants_all_datasets_atomically(
+    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = uuid4()
+    group = SimpleNamespace(
+        id=group_id, name="Drone d1", source="pNEUMA", drone_id="d1",
+    )
+    datasets = [state.datasets[0], state.datasets[1]]
+    approved = {datasets[0]}
+    monkeypatch.setattr(repo, "get_group", lambda db, key: group if key == group_id else None)
+    monkeypatch.setattr(
+        repo, "list_group_datasets",
+        lambda db, key: [SimpleNamespace(id=dataset_id) for dataset_id in datasets]
+        if key == group_id else [],
+    )
+    monkeypatch.setattr(repo, "approved_group_dataset_ids", lambda db, key: approved)
+    monkeypatch.setattr(
+        repo, "list_group_grants",
+        lambda db, key, user_id=None: [
+            grant for (dataset_id, uid), grant in state.grants.items()
+            if key == group_id and dataset_id in datasets and (user_id is None or uid == user_id)
+        ],
+    )
+    monkeypatch.setattr(
+        repo, "list_eligible_group_users",
+        lambda db, search, skip, limit: [state.scientist][skip:skip + limit],
+    )
+    monkeypatch.setattr(
+        repo, "list_groups",
+        lambda db, user, search, skip, limit: [group][skip:skip + limit]
+        if user.role_id == "admin" or any(uid == user.id for _, uid in state.grants) else [],
+    )
+    path = f"/admin/datasets/groups/{group_id}/access"
+    assert request(state.app, "POST", path, {"user_id": str(state.business.id)})[0] == 422
+    assert not state.grants
+    payload = {"user_id": str(state.scientist.id)}
+    assert request(state.app, "POST", path, payload)[0] == 409
+    assert not state.grants
+
+    approved.add(datasets[1])
+    status, body = request(state.app, "POST", path, payload)
+    assert status == 200
+    assert body["granted_datasets"] == body["total_datasets"] == 2
+    assert len(state.grants) == 2
+    assert request(state.app, "POST", path, payload)[0] == 200
+    assert len(state.grants) == 2
+    assert request(state.app, "GET", path)[1][0]["has_full_access"] is True
+    assert request(state.app, "GET", f"/admin/datasets/groups/{group_id}/eligible-users")[1][0]["granted_datasets"] == 2
+    eligible = request(state.app, "GET", f"/admin/datasets/groups/{group_id}/eligible-users")[1]
+    assert {item["role"] for item in eligible} == {"data_scientist"}
+    state.current = state.scientist
+    assert request(state.app, "GET", "/datasets/accessible-groups")[1][0]["group_id"] == str(group_id)
+    assert request(state.app, "DELETE", f"{path}/{state.scientist.id}")[0] == 403
+    state.current = state.admin
+    assert request(state.app, "DELETE", f"{path}/{state.scientist.id}")[0] == 204
+    assert not state.grants
+
+
 def test_many_users_many_datasets_revoke_is_scoped(state: SimpleNamespace) -> None:
     for ds in state.datasets:
         for target in (state.scientist, state.business):
-            service.grant_access(state.db, ds, target.id, state.admin)
+            # Keep legacy grants readable/revocable without authorizing new Business grants.
+            repo.add_grant(state.db, ds, target.id, state.admin.id)
     service.revoke_access(state.db, state.datasets[0], state.scientist.id, state.admin)
     assert len(state.grants) == 3
     assert service.check_dataset_access(state.scientist, state.datasets[1], state.db)
@@ -240,65 +310,103 @@ def test_validation_and_missing_resources(state: SimpleNamespace) -> None:
 
 def test_eligible_users_search_pagination_and_granted_flag(state: SimpleNamespace) -> None:
     ds = state.datasets[0]
-    service.grant_access(state.db, ds, state.business.id, state.admin)
+    service.grant_access(state.db, ds, state.scientist.id, state.admin)
     status, body = request(state.app, "GET", f"/admin/datasets/{ds}/eligible-users")
-    assert status == 200 and len(body) == 2
-    assert {r["role"] for r in body} == {"data_scientist", "business_user"}
-    assert next(r for r in body if r["user_id"] == str(state.business.id))["has_access"]
+    assert status == 200 and len(body) == 1
+    assert {r["role"] for r in body} == {"data_scientist"}
+    assert body[0]["has_access"]
     assert len(request(state.app, "GET", f"/admin/datasets/{ds}/eligible-users?limit=1")[1]) == 1
     assert (
         len(request(state.app, "GET", f"/admin/datasets/{ds}/eligible-users?search=business")[1])
-        == 1
+        == 0
     )
+
+
+def test_admin_dataset_catalog_lists_all_datasets_with_search_and_pagination(
+    state: SimpleNamespace,
+) -> None:
+    status, body = request(
+        state.app, "GET", "/admin/datasets/catalog?search=Dataset&skip=0&limit=1",
+    )
+    assert status == 200
+    assert len(body) == 1
+    assert body[0]["id"] == str(state.datasets[0])
+
+    state.current = state.scientist
+    status, _ = request(state.app, "GET", "/admin/datasets/catalog")
+    assert status == 403
 
 
 @pytest.mark.parametrize("role", ["scientist", "business"])
 def test_accessible_only_current_user_and_empty_default(state: SimpleNamespace, role: str) -> None:
     target = getattr(state, role)
     state.current = target
-    assert request(state.app, "GET", "/datasets/accessible")[1] == []
-    service.grant_access(state.db, state.datasets[0], target.id, state.admin)
+    if role == "business":
+        assert request(state.app, "GET", "/datasets/accessible")[0] == 403
+    else:
+        assert request(state.app, "GET", "/datasets/accessible")[1] == []
+    repo.add_grant(state.db, state.datasets[0], target.id, state.admin.id)
     status, body = request(state.app, "GET", f"/datasets/accessible?user_id={state.admin.id}")
-    assert status == 200 and [d["id"] for d in body] == [str(state.datasets[0])]
+    if role == "business":
+        assert status == 403
+    else:
+        assert status == 200 and [d["id"] for d in body] == [str(state.datasets[0])]
 
 
 @pytest.mark.parametrize("role", ["scientist", "business"])
-def test_approved_datasets_allowed_roles(
+def test_approved_groups_allowed_roles(
     state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
 ) -> None:
     state.current = getattr(state, role)
-    dataset = repo.get_dataset(state.db, state.datasets[0])
-    version = SimpleNamespace(
-        id=uuid4(), version_tag="v1.0", approval_status="APPROVED",
-        approved_by=state.admin.id,
-    )
-    query = Mock(return_value=[(dataset, version)])
-    monkeypatch.setattr(repo, "approved_datasets", query)
+    group = SimpleNamespace(id=uuid4(), name="Drone d1", source="UAV", drone_id="d1")
+    query = Mock(return_value=[group])
+    monkeypatch.setattr(repo, "list_approved_groups", query)
+    monkeypatch.setattr(repo, "list_group_datasets", lambda *_: [object(), object()])
+    monkeypatch.setattr(repo, "approved_group_dataset_ids_for_user", lambda *_: {state.datasets[0]})
     status, body = request(state.app, "GET", "/datasets/approved?search=Traffic&skip=1&limit=2")
+    if role == "business":
+        assert status == 403
+        query.assert_not_called()
+        return
     assert status == 200
-    assert body[0]["dataset_id"] == str(dataset.id)
-    assert body[0]["version_id"] == str(version.id)
-    query.assert_called_once_with(state.db, state.current, "Traffic", 1, 2)
+    assert body[0]["group_id"] == str(group.id)
+    assert body[0]["approved_datasets"] == 1
+    assert body[0]["total_datasets"] == 2
+    assert body[0]["drone_id"] == "d1"
+    query.assert_called_once_with(state.db, state.current.id, "Traffic", 1, 2)
     query.return_value = []
     assert request(state.app, "GET", "/datasets/approved")[1] == []
 
 
 @pytest.mark.parametrize("role", ["admin", "engineer"])
-def test_approved_datasets_rejects_other_roles(
+def test_approved_groups_rejects_other_roles(
     state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
 ) -> None:
     state.current = getattr(state, role)
     query = Mock()
-    monkeypatch.setattr(repo, "approved_datasets", query)
+    monkeypatch.setattr(repo, "list_approved_groups", query)
     assert request(state.app, "GET", "/datasets/approved")[0] == 403
     query.assert_not_called()
 
 
-def test_approved_datasets_has_separate_swagger_group() -> None:
+def test_approved_groups_have_hierarchical_swagger_paths() -> None:
     from app.main import app
 
-    operation = app.openapi()["paths"]["/api/v1/datasets/approved"]["get"]
-    assert operation["tags"] == ["Data Scientist / Business User"]
+    paths = app.openapi()["paths"]
+    base = "/api/v1/datasets/approved"
+    for path, expected_params in (
+        (base, set()),
+        (base + "/groups/{group_id}/datasets", {"group_id"}),
+        (base + "/groups/{group_id}/datasets/{dataset_id}/sessions", {"group_id", "dataset_id"}),
+        (
+            base + "/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
+            {"group_id", "dataset_id", "session_id"},
+        ),
+    ):
+        operation = paths[path]["get"]
+        assert operation["tags"] == ["Data Scientist Dataset Access"]
+        assert expected_params.issubset({item["name"] for item in operation.get("parameters", [])})
+    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions" not in paths
 
 
 
@@ -313,7 +421,7 @@ def test_unauthenticated_and_invalid_token(state: SimpleNamespace) -> None:
 
 def test_business_cannot_train_even_with_grant(state: SimpleNamespace) -> None:
     ds = state.datasets[0]
-    service.grant_access(state.db, ds, state.business.id, state.admin)
+    repo.add_grant(state.db, ds, state.business.id, state.admin.id)
     with pytest.raises(HTTPException) as exc:
         require_dataset_scientist(ds, state.business, state.db)
     assert exc.value.status_code == 403
@@ -388,9 +496,6 @@ def test_repository_filter_and_database_unique_constraint() -> None:
         "versions",
         "versions/{resource}/status",
         "versions/{resource}/report",
-        "quality-checks/{resource}",
-        "quality-checks/{resource}/report",
-        "quality-checks/{resource}/issues",
     ],
 )
 def test_real_read_routes_deny_ungranted_dataset(state: SimpleNamespace, suffix: str) -> None:
@@ -406,12 +511,12 @@ def test_real_read_routes_deny_ungranted_dataset(state: SimpleNamespace, suffix:
         app.dependency_overrides.clear()
 
 
-@pytest.mark.parametrize("suffix", ["normalize", "normalize/validate", "quality-checks"])
+@pytest.mark.parametrize("suffix", ["normalize", "export"])
 def test_grant_does_not_allow_business_to_preprocess(state: SimpleNamespace, suffix: str) -> None:
     from app.main import app
 
     ds = state.datasets[0]
-    service.grant_access(state.db, ds, state.business.id, state.admin)
+    repo.add_grant(state.db, ds, state.business.id, state.admin.id)
     app.dependency_overrides[get_db] = lambda: state.db
     app.dependency_overrides[get_current_user] = lambda: state.business
     try:
@@ -454,7 +559,7 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
             text(
                 "CREATE TABLE datasets (id CHAR(32) PRIMARY KEY, "
                 "name TEXT, code TEXT, source TEXT, description TEXT, "
-                "capture_date DATE, location_name TEXT, "
+                    "capture_date DATE, recording_date DATE, drone_id TEXT, group_id CHAR(32), location_name TEXT, "
                 "created_by CHAR(32), created_at DATETIME)"
             )
         )
@@ -536,7 +641,7 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
     engine.dispose()
 
 
-@pytest.mark.parametrize("role", ["scientist", "business"])
+@pytest.mark.parametrize("role", ["scientist"])
 def test_grant_requires_approval_before_writing(
     state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str
 ) -> None:
@@ -557,84 +662,90 @@ def test_grant_requires_approval_before_writing(
 
 @pytest.mark.parametrize("role", ["scientist", "business", "admin", "engineer"])
 @pytest.mark.parametrize("approval", ["APPROVED", "PENDING", "SUBMITTED", "REJECTED"])
-def test_consumer_preview_guards_and_response(
+def test_consumer_session_review_guards_and_response(
     state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, role: str, approval: str
 ) -> None:
-    from app.schemas.dataset import DatasetPreviewResponse
+    from app.schemas.dataset import RecordingSessionListResponse, RecordingSessionPreviewResponse
     from app.services import dataset_consumer_service as consumer
 
     ds = state.datasets[0]
     version_id = uuid4()
+    session_id = uuid4()
     target = getattr(state, role)
     if role in ("scientist", "business"):
-        service.grant_access(state.db, ds, target.id, state.admin)
+        repo.add_grant(state.db, ds, target.id, state.admin.id)
     state.current = target
     version = SimpleNamespace(id=version_id, dataset_id=ds, approval_status=approval)
     monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
-    preview = DatasetPreviewResponse(
-        dataset_id=ds, dataset_version_id=version_id, dataset_name="Traffic",
-        original_filename="traffic.csv", file_format="csv", file_size=20,
-        status="uploaded", columns=[{"name": "speed", "type": "number"}],
-        rows=[{"speed": 30}],
-        pagination={"page": 2, "page_size": 1, "returned_rows": 1,
-                    "has_more": False, "total_rows": 2},
+    session_list = RecordingSessionListResponse(
+        dataset_id=ds, version_id=version_id, total=1, page=1, page_size=20,
+        sessions=[{
+            "session_id": session_id, "dataset_id": ds, "version_id": version_id,
+            "original_filename": "20181024_d1_0830_0900.csv", "drone_id": "d1",
+            "recording_date": "2018-10-24", "file_size": 20,
+            "scheduled_start": "2018-10-24T08:30:00", "scheduled_end": "2018-10-24T09:00:00",
+            "scheduled_duration_seconds": 1800, "checksum": "abc", "upload_status": "UPLOADED",
+        }],
     )
-    read = Mock(return_value=preview)
-    mapping = Mock(return_value=preview)
-    monkeypatch.setattr(consumer, "get_dataset_preview", read)
-    monkeypatch.setattr(consumer, "apply_saved_column_mappings", mapping)
-    path = f"/datasets/{ds}/versions/{version_id}/preview"
-    status, body = request(state.app, "GET", path + "?page=2&page_size=1&representation=raw")
-    if role in ("scientist", "business") and approval == "APPROVED":
+    preview = RecordingSessionPreviewResponse(
+        session_id=session_id, dataset_id=ds, version_id=version_id,
+        dataset_version_id=version_id, dataset_name="Traffic",
+        original_filename="20181024_d1_0830_0900.csv", file_format="csv", file_size=20,
+        status="UPLOADED", detected_structure="csv_with_header", representation="raw",
+        columns=[{"name": "speed", "type": "string"}], total_columns=1,
+        column_offset=0, has_more_columns=False, rows=[{"speed": "30"}], rows_read=2,
+        pagination={"page": 2, "page_size": 1, "returned_rows": 1,
+                    "has_more": False, "total_rows": None},
+    )
+    list_sessions = Mock(return_value=session_list)
+    preview_session = Mock(return_value=preview)
+    monkeypatch.setattr(consumer, "list_recording_sessions", list_sessions)
+    monkeypatch.setattr(consumer, "preview_recording_session", preview_session)
+    base = f"/datasets/{ds}/versions/{version_id}"
+    status, body = request(state.app, "GET", base + "/sessions?page=1&page_size=20")
+    if (role == "scientist" and approval == "APPROVED") or role == "engineer":
         assert status == 200
-        assert body["rows"] == [{"speed": 30}]
-        assert body["dataset_version_id"] == str(version_id)
-        read.assert_called_once_with(
-            state.db, dataset_id=ds, dataset_version_id=version_id,
-            page=2, page_size=1, representation="raw",
+        assert body["sessions"][0]["session_id"] == str(session_id)
+        list_sessions.assert_called_once_with(
+            state.db, ds, version_id, page=1, page_size=20,
         )
-        mapping.assert_called_once_with(state.db, dataset_id=ds, preview=preview)
-        service.revoke_access(state.db, ds, target.id, state.admin)
-        read.reset_mock()
-        assert request(state.app, "GET", path)[0] == 403
-        read.assert_not_called()
+        status, body = request(
+            state.app, "GET",
+            base + f"/sessions/{session_id}/preview?page=2&limit=1&representation=raw",
+        )
+        assert status == 200
+        assert body["rows"] == [{"speed": "30"}]
+        preview_session.assert_called_once_with(
+            state.db, ds, version_id, session_id, page=2, limit=1,
+            column_offset=0, representation="raw",
+        )
+        if role in ("scientist", "business"):
+            service.revoke_access(state.db, ds, target.id, state.admin)
+            assert request(state.app, "GET", base + "/sessions")[0] == 403
     else:
         assert status == 403
-        read.assert_not_called()
-        mapping.assert_not_called()
+        list_sessions.assert_not_called()
+        preview_session.assert_not_called()
 
 
-@pytest.mark.parametrize("case,expected", [("missing", 404), ("wrong_parent", 404),
-                                          ("no_grant", 403), ("anonymous", 401)])
-def test_consumer_preview_invalid_access(
-    state: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, case: str, expected: int
-) -> None:
-    from app.services import dataset_consumer_service as consumer
-
-    ds = state.datasets[0]
-    state.current = state.scientist
-    if case != "no_grant":
-        service.grant_access(state.db, ds, state.scientist.id, state.admin)
-    version = None if case == "missing" else SimpleNamespace(
-        dataset_id=state.datasets[1], approval_status="APPROVED"
-    )
-    monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
-    read = Mock()
-    monkeypatch.setattr(consumer, "get_dataset_preview", read)
-    if case == "anonymous":
-        state.app.dependency_overrides.pop(get_current_user)
-    assert request(state.app, "GET", f"/datasets/{ds}/versions/{uuid4()}/preview")[0] == expected
-    read.assert_not_called()
+def test_consumer_session_review_validates_parameters(state: SimpleNamespace) -> None:
+    base = f"/datasets/{state.datasets[0]}/versions/{uuid4()}"
+    assert request(state.app, "GET", base + "/sessions?page=0")[0] == 422
+    assert request(state.app, "GET", base + f"/sessions/{uuid4()}/preview?limit=101")[0] == 422
+    assert request(state.app, "GET", base + f"/sessions/{uuid4()}/preview?representation=bad")[0] == 422
 
 
-@pytest.mark.parametrize("query", ["page=0", "page_size=101", "representation=bad"])
-def test_consumer_preview_validates_parameters(state: SimpleNamespace, query: str) -> None:
-    path = f"/datasets/{state.datasets[0]}/versions/{uuid4()}/preview?{query}"
-    assert request(state.app, "GET", path)[0] == 422
-
-
-def test_consumer_preview_swagger_group() -> None:
+def test_consumer_session_review_swagger_and_old_route_removed() -> None:
     from app.main import app
 
-    path = "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview"
-    assert app.openapi()["paths"][path]["get"]["tags"] == ["Data Scientist / Business User"]
+    paths = app.openapi()["paths"]
+    assert paths[
+        "/api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions"
+    ]["get"]["tags"] == [
+        "Data Scientist Dataset Access"
+    ]
+    assert paths[
+        "/api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview"
+    ]["get"]["tags"] == ["Data Scientist Dataset Access"]
+    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions" not in paths
+    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview" not in paths

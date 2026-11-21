@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { NAV_LINKS } from '../homeContent'
+import { useLanguage } from '../../../hooks/useLanguage'
 import './SideOutline.css'
 
 // Google Docs-style outline on the left: click an item to scroll to that section.
 export default function SideOutline() {
+  const { t } = useLanguage()
   const [activeId, setActiveId] = useState('')
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export default function SideOutline() {
   }
 
   return (
-    <nav className="side-outline" aria-label="Page outline">
+    <nav className="side-outline" aria-label={t('Page outline')}>
       <ul>
         {NAV_LINKS.map((l) => {
           const id = l.href.replace('#', '')
@@ -41,7 +43,7 @@ export default function SideOutline() {
                 onClick={(e) => handleClick(e, l.href)}
               >
                 <span className="side-outline__bar" />
-                <span className="side-outline__label">{l.label}</span>
+                <span className="side-outline__label">{t(l.label)}</span>
               </a>
             </li>
           )

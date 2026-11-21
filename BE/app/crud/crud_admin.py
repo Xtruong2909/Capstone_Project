@@ -1,13 +1,20 @@
+from datetime import datetime
 from uuid import UUID
 
+from sqlalchemy import Text, cast, func, or_
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetVersion
+from app.models.dataset import Dataset, DatasetGroup, DatasetVersion
 from app.models.experiment import Experiment
+from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
+from app.models.model_training import ModelTrainingExperiment, ModelTrainingSplit
+from app.models.traffic import TrafficAggregationJob
 from app.models.user import Role, User
 from app.schemas.admin import UserCreate, UserRoleId
+from app.services.audit_log_service import record_audit_event
 
 
 def get_admin_stats(db: Session) -> dict:
@@ -77,24 +84,55 @@ def get_all_roles(db: Session) -> list[Role]:
     return db.query(Role).order_by(Role.id).all()
 
 
-def get_audit_logs(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
-    """Retrieve audit logs with associated user email."""
-    logs = db.query(AuditLog).order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
-    result = []
-    for log in logs:
-        user_email = log.user.email if log.user else None
-        result.append({
-            "id": log.id,
-            "user_id": log.user_id,
-            "user_email": user_email,
-            "action": log.action,
-            "resource_type": log.resource_type,
-            "resource_id": log.resource_id,
-            "details": log.details,
-            "ip_address": log.ip_address,
-            "created_at": log.created_at,
-        })
-    return result
+def get_audit_logs(
+    db: Session,
+    *,
+    skip: int = 0,
+    limit: int = 50,
+    user_id: UUID | None = None,
+    action: str | None = None,
+    module: str | None = None,
+    resource_id: str | None = None,
+    status: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    search: str | None = None,
+) -> tuple[int, list[AuditLog]]:
+    """Return a stable, filtered audit-log page and its matching total."""
+    query = db.query(AuditLog)
+    if user_id is not None:
+        query = query.filter(AuditLog.user_id == user_id)
+    if action:
+        query = query.filter(func.lower(AuditLog.action) == action.lower())
+    if module:
+        query = query.filter(func.lower(AuditLog.module) == module.lower())
+    if resource_id:
+        query = query.filter(AuditLog.resource_id == resource_id)
+    if status:
+        query = query.filter(AuditLog.status == status)
+    if start_date is not None:
+        query = query.filter(AuditLog.created_at >= start_date)
+    if end_date is not None:
+        query = query.filter(AuditLog.created_at <= end_date)
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(or_(
+            AuditLog.username.ilike(search_pattern),
+            AuditLog.action.ilike(search_pattern),
+            AuditLog.module.ilike(search_pattern),
+            AuditLog.description.ilike(search_pattern),
+            AuditLog.resource_id.ilike(search_pattern),
+            cast(AuditLog.details, Text).ilike(search_pattern),
+        ))
+
+    total = query.count()
+    logs = (
+        query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return total, logs
 
 
 def create_audit_log(
@@ -105,26 +143,34 @@ def create_audit_log(
     resource_id: str | None = None,
     details: dict | None = None,
     ip_address: str | None = None,
-) -> AuditLog:
-    """Record an audit trail entry."""
-    log = AuditLog(
+) -> None:
+    """Compatibility wrapper for existing callers; logging is isolated from business DB work."""
+    actor = db.get(User, user_id) if user_id is not None else None
+    module = {
+        "USER": "User Management",
+        "DATASET_VERSION": "Dataset",
+        "DATASET": "Dataset",
+    }.get(resource_type.upper(), resource_type.replace("_", " ").title())
+    record_audit_event(
+        user=actor,
         user_id=user_id,
         action=action,
-        resource_type=resource_type,
+        module=module,
+        status="SUCCESS",
+        description=action.replace("_", " ").title(),
         resource_id=resource_id,
-        details=details,
         ip_address=ip_address,
+        details=details,
     )
-    db.add(log)
-    db.commit()
-    db.refresh(log)
-    return log
 
 
 def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
     """Retrieve dataset versions for approval management."""
     versions = (
-        db.query(DatasetVersion, Dataset.name.label("dataset_name"))
+        db.query(
+            DatasetVersion, Dataset.name.label("dataset_name"),
+            Dataset.recording_date, Dataset.drone_id,
+        )
         .join(Dataset, DatasetVersion.dataset_id == Dataset.id)
         .filter(
             DatasetVersion.approval_status == "SUBMITTED",
@@ -137,11 +183,13 @@ def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 5
         .all()
     )
     result = []
-    for ver, dataset_name in versions:
+    for ver, dataset_name, recording_date, drone_id in versions:
         result.append({
             "id": ver.id,
             "dataset_id": ver.dataset_id,
             "dataset_name": dataset_name,
+            "recording_date": recording_date,
+            "drone_id": drone_id,
             "version_tag": ver.version_tag,
             "file_format": ver.file_format,
             "total_records": ver.total_records,
@@ -149,6 +197,33 @@ def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 5
             "created_at": ver.created_at,
         })
     return result
+
+
+def list_submitted_group_ids(db: Session) -> list[UUID]:
+    rows = (
+        db.query(Dataset.group_id)
+        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .filter(
+            Dataset.group_id.is_not(None),
+            DatasetVersion.approval_status == "SUBMITTED",
+            DatasetVersion.submitted_by.is_not(None),
+            DatasetVersion.submitted_at.is_not(None),
+        )
+        .group_by(Dataset.group_id)
+        .order_by(func.max(DatasetVersion.submitted_at).desc())
+        .all()
+    )
+    return [row[0] for row in rows]
+
+
+def lock_dataset_versions(db: Session, version_ids: list[UUID]) -> list[DatasetVersion]:
+    return (
+        db.query(DatasetVersion)
+        .filter(DatasetVersion.id.in_(version_ids))
+        .order_by(DatasetVersion.id)
+        .with_for_update()
+        .all()
+    )
 
 
 def approve_or_reject_dataset_version(
@@ -170,53 +245,50 @@ def approve_or_reject_dataset_version(
     return version
 
 
-def get_experiments_overview_data(db: Session, limit: int = 10) -> dict:
-    """Retrieve ML forecasting experiments and compute summary metrics."""
-    total_experiments = db.query(Experiment).count()
-    running_count = db.query(Experiment).filter(Experiment.status == "RUNNING").count()
-    completed_count = db.query(Experiment).filter(Experiment.status == "COMPLETED").count()
-    failed_count = db.query(Experiment).filter(Experiment.status == "FAILED").count()
+def count_experiments(db: Session, model: type, status: str | None = None) -> int:
+    """Count persisted experiments, optionally restricted to one status."""
+    query = db.query(model)
+    if status is not None:
+        query = query.filter(model.status == status)
+    return query.count()
 
-    stats = {
-        "total_experiments": total_experiments,
-        "running_count": running_count,
-        "completed_count": completed_count,
-        "failed_count": failed_count,
-    }
 
-    # Retrieve experiments with details
-    experiments_query = (
+def list_recent_legacy_experiments(db: Session, limit: int) -> list[Experiment]:
+    """Fetch recent legacy forecasting experiments."""
+    return (
         db.query(Experiment)
-        .order_by(Experiment.created_at.desc())
+        .order_by(Experiment.created_at.desc(), Experiment.id.desc())
         .limit(limit)
         .all()
     )
 
-    experiments = []
-    for exp in experiments_query:
-        metrics_dict = None
-        if exp.evaluation_metric:
-            metrics_dict = {
-                "mae": float(exp.evaluation_metric.mae),
-                "rmse": float(exp.evaluation_metric.rmse),
-            }
 
-        experiments.append({
-            "id": exp.id,
-            "name": exp.name,
-            "model_type": exp.model_type,
-            "target_variable": exp.target_variable,
-            "temporal_aggregation_sec": exp.temporal_aggregation_sec,
-            "status": exp.status,
-            "execution_time_sec": float(exp.execution_time_sec) if exp.execution_time_sec else None,
-            "creator_name": exp.creator.full_name if exp.creator else None,
-            "dataset_version_tag": exp.dataset_version.version_tag if exp.dataset_version else None,
-            "dataset_name": exp.dataset_version.dataset.name if exp.dataset_version and exp.dataset_version.dataset else None,
-            "metrics": metrics_dict,
-            "created_at": exp.created_at,
-        })
-
-    return {
-        "stats": stats,
-        "experiments": experiments,
-    }
+def list_recent_training_experiments(db: Session, limit: int) -> list[tuple]:
+    """Fetch recent training runs with their saved split and group context."""
+    return (
+        db.query(
+            ModelTrainingExperiment,
+            User.full_name.label("creator_name"),
+            DatasetVersion.version_tag.label("dataset_version_tag"),
+            Dataset.name.label("dataset_name"),
+            LagFeatureGeneration.id.label("feature_generation_id"),
+            TrafficAggregationJob.id.label("aggregation_id"),
+            TrafficAggregationJob.aggregation_interval.label("aggregation_interval"),
+            DatasetGroup.id.label("group_id"),
+            DatasetGroup.name.label("group_name"),
+        )
+        .outerjoin(ModelTrainingSplit, ModelTrainingExperiment.split_id == ModelTrainingSplit.id)
+        .outerjoin(DatasetVersion, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
+        .outerjoin(Dataset, DatasetVersion.dataset_id == Dataset.id)
+        .outerjoin(LagFeatureSplit, ModelTrainingExperiment.lag_feature_split_id == LagFeatureSplit.id)
+        .outerjoin(LagFeatureGeneration, LagFeatureSplit.feature_generation_id == LagFeatureGeneration.id)
+        .outerjoin(TrafficAggregationJob, LagFeatureGeneration.aggregation_id == TrafficAggregationJob.id)
+        .outerjoin(
+            DatasetGroup,
+            DatasetGroup.id == cast(TrafficAggregationJob.job_metadata["group_id"].as_string(), PGUUID),
+        )
+        .outerjoin(User, ModelTrainingExperiment.created_by == User.id)
+        .order_by(ModelTrainingExperiment.created_at.desc(), ModelTrainingExperiment.id.desc())
+        .limit(limit)
+        .all()
+    )

@@ -20,7 +20,6 @@ import {
   formatBytes,
   resolveEffectiveVersionTag,
 } from '../utils/engineerHelpers'
-import PneumaSampleGeneratorModal from '../components/PneumaSampleGeneratorModal'
 
 export default function EngineerUploadPage() {
   const navigate = useNavigate()
@@ -71,7 +70,6 @@ export default function EngineerUploadPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState(null)
   const [uploadSuccess, setUploadSuccess] = useState(null)
-  const [isSampleGeneratorOpen, setIsSampleGeneratorOpen] = useState(false)
 
   // Apply URL query or router state when arriving from "New Version" action
   useEffect(() => {
@@ -242,9 +240,12 @@ export default function EngineerUploadPage() {
     }
   }
 
-  const handleGenerateSamplePneumaFile = () => {
-    setIsSampleGeneratorOpen(true)
-  }
+  // Auto-load sample file if passed via navigation state from EngineerOverviewPage
+  useEffect(() => {
+    if (location.state?.sampleFile) {
+      handleSampleDatasetGenerated(location.state.sampleFile, location.state.sampleSummary)
+    }
+  }, [location.state])
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
@@ -364,51 +365,36 @@ export default function EngineerUploadPage() {
   }
 
   return (
-    <div className="admin-card">
-      <div className="admin-card__header">
-        <div className="admin-card__header-left">
-          <div className="admin-card__icon-box admin-card__icon-box--blue">
+    <section className="adm-panel">
+      <div className="adm-panel__header">
+        <div className="adm-panel__title-group">
+          <div className="adm-panel__icon adm-tone--blue">
             {uploadMode === 'iteration' ? <GitBranch size={18} /> : <Upload size={18} />}
           </div>
-          <h3 className="admin-card__title">
-            {uploadMode === 'iteration'
-              ? 'Upload New Dataset Version Iteration (v1.1 / v2.0)'
-              : 'Upload Traffic Trajectory Dataset'}
-          </h3>
+          <div>
+            <h2 className="adm-panel__title">
+              {uploadMode === 'iteration'
+                ? 'Upload Dataset Version Iteration'
+                : 'Upload Traffic Trajectory Dataset'}
+            </h2>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Mode Switcher: New Dataset vs Version Iteration */}
-          <div
-            style={{
-              display: 'inline-flex',
-              background: '#f1f5f9',
-              padding: '0.22rem',
-              borderRadius: '10px',
-              border: '1px solid #cbd5e1',
-            }}
-          >
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="adm-filter-pills" role="group" aria-label="Upload mode">
             <button
               type="button"
+              className={`adm-filter-pill ${uploadMode === 'new' ? 'active' : ''}`}
               onClick={() => {
                 setUploadMode('new')
                 setUploadError(null)
-              }}
-              style={{
-                padding: '0.38rem 0.85rem',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '0.79rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: uploadMode === 'new' ? '#2563eb' : 'transparent',
-                color: uploadMode === 'new' ? '#ffffff' : '#475569',
               }}
             >
               New Dataset (v1.0)
             </button>
             <button
               type="button"
+              className={`adm-filter-pill ${uploadMode === 'iteration' ? 'active' : ''}`}
               onClick={() => {
                 setUploadMode('iteration')
                 setUploadError(null)
@@ -416,56 +402,20 @@ export default function EngineerUploadPage() {
                   handleParentDatasetSelect(datasets[0].dataset_id)
                 }
               }}
-              style={{
-                padding: '0.38rem 0.85rem',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '0.79rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: uploadMode === 'iteration' ? '#7c3aed' : 'transparent',
-                color: uploadMode === 'iteration' ? '#ffffff' : '#475569',
-              }}
             >
-              Version Iteration (v1.1 / v2.0)
+              Version Iteration
             </button>
           </div>
-
-          <button
-            type="button"
-            className="btn-action"
-            style={{
-              background: '#eff6ff',
-              color: '#1d4ed8',
-              border: '1px solid #bfdbfe',
-              fontWeight: 700,
-            }}
-            onClick={handleGenerateSamplePneumaFile}
-          >
-            <Sparkles size={15} />
-            <span>Generate Sample pNEUMA (.csv)</span>
-          </button>
         </div>
       </div>
 
+      <div className="adm-panel__body">
       {uploadError && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.6rem',
-            padding: '0.9rem 1rem',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: '10px',
-            color: '#b91c1c',
-            marginBottom: '1.25rem',
-            fontSize: '0.88rem',
-            fontWeight: 600,
-          }}
-        >
-          <AlertCircle size={18} />
-          <span>{uploadError}</span>
+        <div className="eng-alert eng-alert--error">
+          <div className="eng-alert__content">
+            <AlertCircle size={17} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>{uploadError}</span>
+          </div>
         </div>
       )}
 
@@ -626,120 +576,30 @@ export default function EngineerUploadPage() {
               background: '#f0fdf4',
             }}
           >
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #a7f3d0',
-                borderLeft: '4px solid #10b981',
-                borderRadius: '10px',
-                padding: '0.7rem 0.95rem',
-                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.05)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: '#059669',
-                  marginBottom: '0.22rem',
-                }}
-              >
-                Version Tag
-              </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#064e3b' }}>
+            <div className="eng-kv-item" style={{ background: '#ffffff' }}>
+              <span className="eng-kv-item__label">Version Tag</span>
+              <span className="eng-kv-item__value">
                 {resolveEffectiveVersionTag(uploadSuccess, versionLineageMap)}
-              </div>
+              </span>
             </div>
 
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #a7f3d0',
-                borderLeft: '4px solid #14b8a6',
-                borderRadius: '10px',
-                padding: '0.7rem 0.95rem',
-                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.05)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: '#0d9488',
-                  marginBottom: '0.22rem',
-                }}
-              >
-                Dataset Code
-              </div>
-              <div
-                style={{
-                  fontSize: '0.84rem',
-                  fontWeight: 700,
-                  color: '#0f172a',
-                  fontFamily: 'monospace',
-                  wordBreak: 'break-all',
-                }}
-              >
+            <div className="eng-kv-item" style={{ background: '#ffffff' }}>
+              <span className="eng-kv-item__label">Dataset Code</span>
+              <span className="eng-kv-item__value eng-break-all" style={{ fontFamily: 'monospace', fontSize: '0.84rem' }}>
                 {uploadSuccess.code}
-              </div>
+              </span>
             </div>
 
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #a7f3d0',
-                borderLeft: '4px solid #10b981',
-                borderRadius: '10px',
-                padding: '0.7rem 0.95rem',
-                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.05)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: '#059669',
-                  marginBottom: '0.22rem',
-                }}
-              >
-                Format
-              </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#064e3b' }}>
-                {uploadSuccess.file_format}
-              </div>
+            <div className="eng-kv-item" style={{ background: '#ffffff' }}>
+              <span className="eng-kv-item__label">Format</span>
+              <span className="eng-kv-item__value">{uploadSuccess.file_format}</span>
             </div>
 
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #a7f3d0',
-                borderLeft: '4px solid #10b981',
-                borderRadius: '10px',
-                padding: '0.7rem 0.95rem',
-                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.05)',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: '#059669',
-                  marginBottom: '0.22rem',
-                }}
-              >
-                File Size
-              </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#064e3b' }}>
+            <div className="eng-kv-item" style={{ background: '#ffffff' }}>
+              <span className="eng-kv-item__label">File Size</span>
+              <span className="eng-kv-item__value">
                 {formatBytes(uploadSuccess.file_size_bytes)}
-              </div>
+              </span>
             </div>
           </div>
         </div>
@@ -839,71 +699,41 @@ export default function EngineerUploadPage() {
           </div>
         )}
 
-        {/* SECTION 01: Dataset File */}
-        <div
-          style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '1.2rem 1.35rem',
-            marginBottom: '1.25rem',
-          }}
-        >
+        {/* Dataset File */}
+        <div style={{ marginBottom: '1.5rem' }}>
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '0.85rem',
+              marginBottom: '0.65rem',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  color: '#2563eb',
-                  background: '#dbeafe',
-                  padding: '0.18rem 0.55rem',
-                  borderRadius: '6px',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                01
-              </span>
-              <span style={{ fontSize: '0.96rem', fontWeight: 700, color: '#0f172a' }}>
-                Dataset File
-              </span>
-            </div>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
-              CSV, Parquet, Excel, JSON
+            <span className="adm-label" style={{ marginBottom: 0 }}>
+              Dataset File *
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+              CSV, Parquet, Excel, JSON (max {formatBytes(MAX_UPLOAD_SIZE_BYTES)})
             </span>
           </div>
 
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Select or drop a dataset file to upload"
+            className={`eng-dropzone ${isDraggingFile || selectedFile ? 'eng-dropzone--active' : ''}`}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                fileInputRef.current?.click()
+              }
+            }}
             onDragEnter={handleDragOver}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            style={{
-              border: isDraggingFile
-                ? '2px dashed #7c3aed'
-                : selectedFile
-                ? '2px solid #2563eb'
-                : '1.5px dashed #cbd5e1',
-              background: isDraggingFile
-                ? '#f5f3ff'
-                : selectedFile
-                ? '#eff6ff'
-                : '#ffffff',
-              borderRadius: '12px',
-              padding: '1.6rem',
-              textAlign: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              position: 'relative',
-            }}
+            style={{ position: 'relative' }}
           >
             <input
               ref={fileInputRef}
@@ -916,54 +746,49 @@ export default function EngineerUploadPage() {
             {selectedFile && (
               <button
                 type="button"
+                className="adm-btn adm-btn--ghost adm-btn--sm"
                 onClick={handleClearSelectedFile}
+                aria-label="Remove selected file"
                 title="Remove selected file"
                 style={{
                   position: 'absolute',
-                  top: '0.85rem',
-                  right: '0.85rem',
-                  background: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '8px',
-                  padding: '0.35rem 0.6rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
+                  top: '0.75rem',
+                  right: '0.75rem',
                   color: '#dc2626',
-                  cursor: 'pointer',
                 }}
               >
                 <Trash2 size={13} />
-                <span>Clear File</span>
+                <span>Clear</span>
               </button>
             )}
 
             <div
               style={{
-                width: '46px',
-                height: '46px',
+                width: '44px',
+                height: '44px',
                 margin: '0 auto 0.65rem',
                 borderRadius: '12px',
-                background: selectedFile ? '#dbeafe' : '#f1f5f9',
+                background: selectedFile ? '#dbeafe' : '#e2e8f0',
                 color: selectedFile ? '#1d4ed8' : '#475569',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <FileText size={22} />
+              <FileText size={21} />
             </div>
 
             {selectedFile ? (
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.98rem', color: '#1e3a8a' }}>
+              <div style={{ maxWidth: '100%' }}>
+                <div
+                  className="eng-truncate"
+                  title={selectedFile.name}
+                  style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e3a8a', padding: '0 2rem' }}
+                >
                   {selectedFile.name}
                 </div>
-                <div style={{ fontSize: '0.83rem', color: '#2563eb', marginTop: '0.2rem' }}>
-                  Size: {formatBytes(selectedFile.size)} / Max{' '}
-                  {formatBytes(MAX_UPLOAD_SIZE_BYTES)}
+                <div style={{ fontSize: '0.82rem', color: '#2563eb', marginTop: '0.2rem' }}>
+                  {formatBytes(selectedFile.size)} / {formatBytes(MAX_UPLOAD_SIZE_BYTES)}
                 </div>
 
                 {fileInspection && (
@@ -971,24 +796,24 @@ export default function EngineerUploadPage() {
                     style={{
                       display: 'inline-flex',
                       flexWrap: 'wrap',
-                      gap: '0.5rem',
+                      gap: '0.45rem',
                       justifyContent: 'center',
                       marginTop: '0.65rem',
                     }}
                   >
-                    <span className="badge badge--active">
-                      <Check size={12} style={{ marginRight: '0.25rem' }} />
+                    <span className="adm-badge adm-badge--emerald">
+                      <Check size={12} />
                       {fileInspection.schemaHint}
                     </span>
                     {fileInspection.estimatedRows != null && (
-                      <span className="badge badge--engineer">
+                      <span className="adm-badge adm-badge--blue">
                         {fileInspection.isPneuma
                           ? `~${fileInspection.estimatedRows.toLocaleString()} vehicle tracks`
                           : `~${fileInspection.estimatedRows.toLocaleString()} trajectory rows`}
                       </span>
                     )}
                     {fileInspection.delimiter && (
-                      <span className="badge badge--pending">
+                      <span className="adm-badge adm-badge--slate">
                         Delimiter: {fileInspection.delimiter}
                       </span>
                     )}
@@ -997,132 +822,105 @@ export default function EngineerUploadPage() {
               </div>
             ) : (
               <div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0f172a' }}>
                   {isDraggingFile
                     ? 'Drop your dataset file here...'
                     : 'Drag & drop a dataset file here, or click to browse'}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.25rem' }}>
-                  Max size: {formatBytes(MAX_UPLOAD_SIZE_BYTES)}
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '0.25rem' }}>
+                  Supported: {ALLOWED_EXTENSIONS.join(', ')}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* SECTION 02: Dataset Metadata */}
+        {/* Dataset Metadata */}
         <div
           style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '1.2rem 1.35rem',
-            marginBottom: '1.25rem',
+            paddingTop: '1.1rem',
+            borderTop: '1px solid #f1f5f9',
+            marginBottom: '1.5rem',
           }}
         >
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '0.95rem',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  color: '#2563eb',
-                  background: '#dbeafe',
-                  padding: '0.18rem 0.55rem',
-                  borderRadius: '6px',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                02
-              </span>
-              <span style={{ fontSize: '0.96rem', fontWeight: 700, color: '#0f172a' }}>
-                Dataset Metadata
-              </span>
-            </div>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
-              Core identification & origin
-            </span>
-          </div>
-
-          <div
-            style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
               gap: '1rem',
             }}
           >
-            <div className="form-field" style={{ marginBottom: 0 }}>
-              <label className="form-label">Dataset Name (3–128 characters) *</label>
+            <div className="adm-field" style={{ marginBottom: 0 }}>
+              <label htmlFor="upload-dataset-name" className="adm-label">
+                Dataset Name (3–128 chars) *
+              </label>
               <input
+                id="upload-dataset-name"
                 type="text"
-                className="admin-input"
+                className="adm-input"
                 required
                 minLength={3}
                 maxLength={128}
                 placeholder="e.g. pNEUMA Athens Morning Peak v1"
                 value={uploadForm.name}
                 onChange={(e) => setUploadForm({ ...uploadForm, name: e.target.value })}
-                style={{ background: '#ffffff' }}
               />
             </div>
 
-            <div className="form-field" style={{ marginBottom: 0 }}>
-              <label className="form-label">Collection Source *</label>
+            <div className="adm-field" style={{ marginBottom: 0 }}>
+              <label htmlFor="upload-dataset-source" className="adm-label">
+                Collection Source *
+              </label>
               <input
+                id="upload-dataset-source"
                 type="text"
-                className="admin-input"
+                className="adm-input"
                 required
                 maxLength={255}
                 placeholder="e.g. pNEUMA Drone Swarm - EPFL"
                 value={uploadForm.source}
                 onChange={(e) => setUploadForm({ ...uploadForm, source: e.target.value })}
-                style={{ background: '#ffffff' }}
               />
             </div>
 
-            <div className="form-field" style={{ marginBottom: 0 }}>
-              <label className="form-label">Traffic Corridor / Location *</label>
+            <div className="adm-field" style={{ marginBottom: 0 }}>
+              <label htmlFor="upload-dataset-location" className="adm-label">
+                Traffic Corridor / Location *
+              </label>
               <input
+                id="upload-dataset-location"
                 type="text"
-                className="admin-input"
+                className="adm-input"
                 required
                 maxLength={255}
                 placeholder="e.g. Athens Central Business District"
                 value={uploadForm.location_name}
                 onChange={(e) => setUploadForm({ ...uploadForm, location_name: e.target.value })}
-                style={{ background: '#ffffff' }}
               />
             </div>
 
-            <div className="form-field" style={{ marginBottom: 0 }}>
-              <label className="form-label">UAV Capture Date</label>
+            <div className="adm-field" style={{ marginBottom: 0 }}>
+              <label htmlFor="upload-capture-date" className="adm-label">
+                UAV Capture Date
+              </label>
               <input
+                id="upload-capture-date"
                 type="date"
-                className="admin-input"
+                className="adm-input"
                 value={uploadForm.capture_date}
                 onChange={(e) => setUploadForm({ ...uploadForm, capture_date: e.target.value })}
-                style={{ background: '#ffffff' }}
               />
             </div>
           </div>
         </div>
 
-        {/* SECTION 03: Description */}
+        {/* Description */}
         <div
-          className="form-field"
+          className="adm-field"
           style={{
+            paddingTop: '1.1rem',
+            borderTop: '1px solid #f1f5f9',
             marginBottom: '1.5rem',
-            padding: '1.2rem 1.35rem',
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
           }}
         >
           <div
@@ -1132,61 +930,23 @@ export default function EngineerUploadPage() {
               alignItems: 'center',
               flexWrap: 'wrap',
               gap: '0.5rem',
-              marginBottom: '0.75rem',
+              marginBottom: '0.5rem',
             }}
           >
-            <label
-              className="form-label"
-              style={{
-                margin: 0,
-                fontSize: '0.96rem',
-                fontWeight: 700,
-                color: '#0f172a',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.6rem',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  color: '#2563eb',
-                  background: '#dbeafe',
-                  padding: '0.18rem 0.55rem',
-                  borderRadius: '6px',
-                  letterSpacing: '0.04em',
-                }}
-              >
-                03
-              </span>
-              <span>Description</span>
-              <span
-                style={{
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                  color: '#64748b',
-                  background: '#e2e8f0',
-                  padding: '0.12rem 0.5rem',
-                  borderRadius: '999px',
-                }}
-              >
-                Optional
-              </span>
+            <label htmlFor="upload-description" className="adm-label" style={{ marginBottom: 0 }}>
+              Description
             </label>
-
-            <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
               {(uploadForm.description || '').length} characters
             </span>
           </div>
 
-          {/* Quick-Insert Tag Chips */}
           <div
             style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: '0.45rem',
-              marginBottom: '0.75rem',
+              gap: '0.4rem',
+              marginBottom: '0.65rem',
             }}
           >
             {[
@@ -1198,22 +958,14 @@ export default function EngineerUploadPage() {
               <button
                 key={tag}
                 type="button"
+                className="adm-btn adm-btn--ghost adm-btn--sm"
+                style={{ fontSize: '0.74rem', minHeight: '28px', padding: '0.2rem 0.6rem' }}
                 onClick={() =>
                   setUploadForm((prev) => ({
                     ...prev,
                     description: prev.description ? `${prev.description.trim()} • ${tag}` : tag,
                   }))
                 }
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #bfdbfe',
-                  color: '#1d4ed8',
-                  borderRadius: '999px',
-                  padding: '0.25rem 0.7rem',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
               >
                 + {tag}
               </button>
@@ -1221,23 +973,12 @@ export default function EngineerUploadPage() {
           </div>
 
           <textarea
-            className="admin-input"
-            rows={5}
-            placeholder="Enter a clear overview of this dataset (e.g., UAV flight altitude, sampling frequency, weather conditions, corridor boundaries, or preprocessing notes)..."
+            id="upload-description"
+            className="adm-textarea"
+            rows={4}
+            placeholder="Flight altitude, sampling frequency, corridor boundaries, or preprocessing notes..."
             value={uploadForm.description}
             onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
-            style={{
-              width: '100%',
-              minHeight: '135px',
-              fontSize: '0.96rem',
-              lineHeight: 1.6,
-              padding: '0.9rem 1.05rem',
-              background: '#ffffff',
-              border: '1px solid #cbd5e1',
-              borderRadius: '10px',
-              color: '#0f172a',
-              resize: 'vertical',
-            }}
           />
         </div>
 
@@ -1259,51 +1000,40 @@ export default function EngineerUploadPage() {
               </span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="stat-card__mini-bar">
+            <div className="adm-progress-track">
               <div
-                className="stat-card__mini-bar-fill"
-                style={{
-                  width: `${uploadProgress}%`,
-                  background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
-                }}
+                className="adm-progress-fill"
+                style={{ width: `${uploadProgress}%`, background: '#2563eb' }}
               />
             </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
           <button
             type="button"
-            className="btn-secondary"
+            className="adm-btn adm-btn--ghost"
             onClick={() => navigate('/engineer/datasets')}
           >
             Back to Catalog
           </button>
           <button
             type="submit"
-            className="btn-action btn-action--primary"
+            className="adm-btn adm-btn--primary"
             disabled={isUploading}
-            style={{ padding: '0.65rem 1.4rem', fontSize: '0.9rem' }}
           >
-            <Upload size={16} />
+            <Upload size={15} />
             <span>
               {isUploading
                 ? 'Uploading...'
                 : uploadMode === 'iteration'
-                ? `Upload Iteration (${targetVersionTag})`
-                : 'Upload & Submit for Approval'}
+                  ? `Upload Iteration (${targetVersionTag})`
+                  : 'Upload & Submit for Approval'}
             </span>
           </button>
         </div>
       </form>
-
-      {isSampleGeneratorOpen && (
-        <PneumaSampleGeneratorModal
-          isOpen={isSampleGeneratorOpen}
-          onClose={() => setIsSampleGeneratorOpen(false)}
-          onGenerate={handleSampleDatasetGenerated}
-        />
-      )}
-    </div>
+      </div>
+    </section>
   )
 }

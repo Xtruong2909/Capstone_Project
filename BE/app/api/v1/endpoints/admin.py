@@ -1,5 +1,6 @@
 import secrets
 import smtplib
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -12,8 +13,10 @@ from app.database.database import get_db
 from app.models.dataset import DatasetVersion
 from app.models.user import User
 from app.schemas.admin import (
+    AdminGroupApprovalSummary,
+    AdminGroupReviewResponse,
     AdminStats,
-    AuditLogResponse,
+    AuditLogPage,
     DatasetApprovalAction,
     DatasetApprovalResponse,
     ExperimentsOverviewResponse,
@@ -21,17 +24,23 @@ from app.schemas.admin import (
     UserCreate,
     UserStatusUpdate,
 )
-from app.schemas.dataset import DatasetPreviewResponse
-from app.schemas.user import UserResponse
-from app.services.dataset_mapping_service import (
-    DatasetMappingNotFoundError,
-    apply_saved_column_mappings,
+from app.schemas.dataset import (
+    GroupDatasetListResponse,
+    RecordingSessionListResponse,
+    RecordingSessionPreviewResponse,
 )
+from app.schemas.user import UserResponse
+from app.services import admin_group_review_service as group_review
+from app.services import admin_monitoring_service as monitoring
+from app.services.audit_log_service import audit_action, record_audit_event
 from app.services.dataset_preview_service import (
     DatasetPreviewFormatError,
     DatasetPreviewNotFoundError,
     DatasetPreviewReadError,
-    get_dataset_preview,
+)
+from app.services.dataset_review_service import (
+    list_recording_sessions,
+    preview_recording_session,
 )
 from app.services.email_service import EmailConfigurationError, send_initial_credentials
 
@@ -78,21 +87,50 @@ def create_new_user(
         )
 
     temporary_password = secrets.token_urlsafe(18)
-    user = crud_admin.create_user(db, user_in, initial_password=temporary_password)
+    with audit_action(
+        action="CREATE_USER",
+        module="User Management",
+        description="User account creation",
+        user=admin,
+        ip_address=request.client.host if request.client else None,
+        record_success=False,
+    ):
+        user = crud_admin.create_user(db, user_in, initial_password=temporary_password)
     try:
         send_initial_credentials(user.email, user.full_name, temporary_password)
     except EmailConfigurationError as exc:
         db.rollback()
+        record_audit_event(
+            user=admin,
+            action="CREATE_USER",
+            module="User Management",
+            status="FAILED",
+            description="User creation failed because email delivery is unavailable",
+            resource_id=user.id,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email chưa được cấu hình. Chưa tạo tài khoản.",
         ) from exc
     except (OSError, smtplib.SMTPException) as exc:
         db.rollback()
+        record_audit_event(
+            user=admin,
+            action="CREATE_USER",
+            module="User Management",
+            status="FAILED",
+            description="User creation failed because credentials could not be emailed",
+            resource_id=user.id,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Không gửi được email tài khoản. Chưa tạo tài khoản.",
         ) from exc
+
+    db.commit()
+    db.refresh(user)
 
     # Ghi nhận Audit Log
     client_ip = request.client.host if request.client else None
@@ -128,8 +166,27 @@ def update_user_status(
             detail="Không thể tự vô hiệu hóa tài khoản của chính mình",
         )
 
-    user = crud_admin.update_user_status(db, user_id=user_id, is_active=status_update.is_active)
+    with audit_action(
+        action="UPDATE_USER",
+        module="User Management",
+        description="User status updated",
+        user=admin,
+        resource_id=user_id,
+        ip_address=request.client.host if request.client else None,
+        details={"is_active": status_update.is_active},
+        record_success=False,
+    ):
+        user = crud_admin.update_user_status(db, user_id=user_id, is_active=status_update.is_active)
     if not user:
+        record_audit_event(
+            user=admin,
+            action="UPDATE_USER",
+            module="User Management",
+            status="FAILED",
+            description="User status update failed because the user was not found",
+            resource_id=user_id,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Không tìm thấy người dùng",
@@ -140,7 +197,7 @@ def update_user_status(
     crud_admin.create_audit_log(
         db,
         user_id=admin.id,
-        action="UPDATE_USER_STATUS",
+        action="UPDATE_USER",
         resource_type="USER",
         resource_id=str(user.id),
         details={"email": user.email, "is_active": user.is_active},
@@ -159,18 +216,137 @@ def list_roles(
     return [RoleResponse.model_validate(r) for r in roles]
 
 
-@router.get("/audit-logs", response_model=list[AuditLogResponse], summary="Nhật ký hoạt động hệ thống")
+@router.get(
+    "/audit-logs",
+    response_model=AuditLogPage,
+    summary="Nhật ký hoạt động hệ thống và thí nghiệm",
+    description=(
+        "Lọc thí nghiệm bằng module=Model Training và resource_id=experiment_id. "
+        "Các sự kiện huấn luyện mới được ghi sau khi chạy xong."
+    ),
+)
 def list_audit_logs(
-    skip: int = 0,
-    limit: int = 50,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    user_id: UUID | None = None,
+    action: Annotated[str | None, Query(max_length=100)] = None,
+    module: Annotated[str | None, Query(max_length=100)] = None,
+    resource_id: Annotated[
+        str | None,
+        Query(max_length=255, description="ID tài nguyên; dùng experiment_id để lọc thí nghiệm"),
+    ] = None,
+    status_filter: Annotated[
+        Literal["SUCCESS", "FAILED"] | None, Query(alias="status")
+    ] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    search: Annotated[str | None, Query(max_length=255)] = None,
     db: Session = Depends(get_db),
-) -> list[AuditLogResponse]:
-    """Xem audit trail thực tế của hệ thống."""
-    logs = crud_admin.get_audit_logs(db, skip=skip, limit=limit)
-    return [AuditLogResponse(**log) for log in logs]
+) -> AuditLogPage:
+    """Search persisted events, including Model Training experiments."""
+    return monitoring.list_audit_logs(
+        db,
+        skip=skip,
+        limit=limit,
+        user_id=user_id,
+        action=action,
+        module=module,
+        resource_id=resource_id,
+        status=status_filter,
+        start_date=start_date,
+        end_date=end_date,
+        search=search,
+    )
 
 
-@router.get("/datasets", response_model=list[DatasetApprovalResponse], summary="Danh sách phiên bản dataset")
+@router.get(
+    "/datasets/groups",
+    response_model=list[AdminGroupApprovalSummary],
+    summary="Các nhóm Dataset đang chờ Admin xét duyệt",
+)
+def list_dataset_groups_for_approval(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[AdminGroupApprovalSummary]:
+    return group_review.list_groups_for_review(db, skip=skip, limit=limit)
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets",
+    response_model=GroupDatasetListResponse,
+    summary="Admin xem các Dataset và phiên bản Export trong nhóm",
+)
+def list_group_datasets_for_admin(
+    group_id: UUID,
+    db: Session = Depends(get_db),
+) -> GroupDatasetListResponse:
+    return group_review.list_group_datasets_for_review(db, group_id)
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions",
+    response_model=RecordingSessionListResponse,
+    summary="Admin xem Recording Sessions của Dataset trong nhóm",
+)
+def list_group_sessions_for_admin(
+    group_id: UUID,
+    dataset_id: UUID,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+) -> RecordingSessionListResponse:
+    try:
+        return group_review.list_group_sessions_for_review(
+            db, group_id, dataset_id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get(
+    "/datasets/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    summary="Admin xem dữ liệu CSV của Session trong nhóm",
+)
+def preview_group_session_for_admin(
+    group_id: UUID,
+    dataset_id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+    representation: Literal["raw", "normalized"] = "normalized",
+    db: Session = Depends(get_db),
+) -> RecordingSessionPreviewResponse:
+    try:
+        return group_review.preview_group_session_for_review(
+            db, group_id, dataset_id, session_id, page=page, limit=limit,
+            column_offset=column_offset, representation=representation,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except DatasetPreviewFormatError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    except DatasetPreviewReadError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post(
+    "/datasets/groups/{group_id}/review",
+    response_model=AdminGroupReviewResponse,
+    summary="Admin phê duyệt hoặc từ chối các phiên bản đã gửi trong nhóm",
+)
+def review_dataset_group(
+    group_id: UUID,
+    action: DatasetApprovalAction,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> AdminGroupReviewResponse:
+    return group_review.review_group(db, group_id, action, admin)
+
+
+@router.get("/datasets", response_model=list[DatasetApprovalResponse], include_in_schema=False, summary="Danh sách phiên bản dataset")
 def list_datasets_for_approval(
     skip: int = 0,
     limit: int = 50,
@@ -182,51 +358,68 @@ def list_datasets_for_approval(
 
 
 @router.get(
-    "/datasets/{dataset_id}/versions/{id}/preview",
-    response_model=DatasetPreviewResponse,
-    summary="Admin xem trước nội dung phiên bản dataset",
+    "/datasets/{dataset_id}/versions/{id}/sessions",
+    response_model=RecordingSessionListResponse,
+    include_in_schema=False,
+    summary="Admin xem Recording Sessions thuộc phiên bản Dataset",
 )
-def preview_dataset_version_for_admin(
+def list_dataset_version_sessions_for_admin(
     dataset_id: UUID,
     id: UUID,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    db: Session = Depends(get_db),
+) -> RecordingSessionListResponse:
+    try:
+        return list_recording_sessions(
+            db, dataset_id, id, page=page, page_size=page_size,
+        )
+    except DatasetPreviewNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get(
+    "/datasets/{dataset_id}/versions/{id}/sessions/{session_id}/preview",
+    response_model=RecordingSessionPreviewResponse,
+    include_in_schema=False,
+    summary="Admin preview nội dung CSV của một Recording Session",
+    description=(
+        "Trả về dữ liệu dạng bảng có phân trang. representation=raw giữ nguyên cột CSV gốc; "
+        "representation=normalized áp dụng mapping đã lưu nếu có. Mặc định 20 dòng."
+    ),
+    responses={
+        404: {"description": "Dataset, phiên bản, session hoặc file không tồn tại"},
+        415: {"description": "Session không chứa file CSV"},
+        422: {"description": "CSV lỗi định dạng hoặc không đọc được"},
+    },
+)
+def preview_dataset_session_for_admin(
+    dataset_id: UUID,
+    id: UUID,
+    session_id: UUID,
+    page: Annotated[int, Query(ge=1, le=10000)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    column_offset: Annotated[int, Query(ge=0, le=100000)] = 0,
     representation: Literal["raw", "normalized"] = "normalized",
     db: Session = Depends(get_db),
-) -> DatasetPreviewResponse:
-    """Read a paginated preview of a specific dataset version for admin review."""
+) -> RecordingSessionPreviewResponse:
     try:
-        preview = get_dataset_preview(
-            db,
-            dataset_id=dataset_id,
-            dataset_version_id=id,
-            page=page,
-            page_size=page_size,
+        return preview_recording_session(
+            db, dataset_id, id, session_id,
+            page=page, limit=limit, column_offset=column_offset,
             representation=representation,
-        )
-        return apply_saved_column_mappings(
-            db,
-            dataset_id=dataset_id,
-            preview=preview,
         )
     except DatasetPreviewNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DatasetPreviewFormatError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
     except DatasetPreviewReadError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-    except DatasetMappingNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.post(
     "/datasets/{dataset_id}/versions/{id}/review",
+    include_in_schema=False,
     summary="Phê duyệt hoặc từ chối phiên bản dataset",
 )
 def review_dataset(
@@ -255,13 +448,23 @@ def review_dataset(
             detail="Không tìm thấy phiên bản dataset trong dataset này",
         )
 
-    ver = crud_admin.approve_or_reject_dataset_version(
-        db,
-        version_id=id,
-        status=action.status,
-        note=action.note,
-        admin_id=admin.id,
-    )
+    with audit_action(
+        action="APPROVE_DATASET",
+        module="Dataset",
+        description="Dataset approval review",
+        user=admin,
+        resource_id=id,
+        ip_address=request.client.host if request.client else None,
+        details={"status": action.status},
+        record_success=False,
+    ):
+        ver = crud_admin.approve_or_reject_dataset_version(
+            db,
+            version_id=id,
+            status=action.status,
+            note=action.note,
+            admin_id=admin.id,
+        )
     if not ver:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -273,7 +476,7 @@ def review_dataset(
     crud_admin.create_audit_log(
         db,
         user_id=admin.id,
-        action=f"DATASET_{action.status}",
+        action="APPROVE_DATASET",
         resource_type="DATASET_VERSION",
         resource_id=str(ver.id),
         details={"status": action.status, "note": action.note},
@@ -313,11 +516,15 @@ def review_dataset_legacy(
     )
 
 
-@router.get("/experiments/overview", response_model=ExperimentsOverviewResponse, summary="Tổng quan thí nghiệm AI/ML")
+@router.get(
+    "/experiments/overview",
+    response_model=ExperimentsOverviewResponse,
+    summary="Tổng quan thí nghiệm Train/Test và Evaluation",
+)
 def get_experiments_overview(
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=100),
+    skip: int = Query(default=0, ge=0, le=100000),
     db: Session = Depends(get_db),
 ) -> ExperimentsOverviewResponse:
-    """Giám sát các thí nghiệm mô hình AI/ML (ARIMA, Prophet) và metrics."""
-    data = crud_admin.get_experiments_overview_data(db, limit=limit)
-    return ExperimentsOverviewResponse(**data)
+    """Giám sát trạng thái, metrics và nhật ký chạy thí nghiệm AI/ML."""
+    return monitoring.get_experiments_overview(db, limit=limit, skip=skip)

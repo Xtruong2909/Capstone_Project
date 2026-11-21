@@ -316,10 +316,12 @@ export function Step1ColumnMapping({
   const [showRawPreview, setShowRawPreview] = useState(false);
   const [rawPreviewData, setRawPreviewData] = useState(null);
   const [isLoadingRawPreview, setIsLoadingRawPreview] = useState(false);
+  const [rawPreviewError, setRawPreviewError] = useState(null);
 
   const handleToggleRawPreview = async () => {
     if (!showRawPreview && !rawPreviewData && datasetId) {
       setIsLoadingRawPreview(true);
+      setRawPreviewError(null);
       try {
         const preview = await pipelineService.getNormalizedPreview(datasetId, {
           page: 1,
@@ -328,7 +330,9 @@ export function Step1ColumnMapping({
         });
         setRawPreviewData(preview);
       } catch (err) {
-        console.error("Failed to load raw preview:", err);
+        setRawPreviewError(
+          err?.response?.data?.detail || "Failed to load raw dataset preview."
+        );
       } finally {
         setIsLoadingRawPreview(false);
       }
@@ -641,7 +645,6 @@ export function Step1ColumnMapping({
             <h3 className="admin-card__title">
               Preview & Column Mapping Studio
             </h3>
-            <p className="admin-card__subtitle"></p>
           </div>
         </div>
 
@@ -797,6 +800,13 @@ export function Step1ColumnMapping({
                 style={{ display: "inline", marginRight: "0.4rem" }}
               />
               Loading raw preview rows...
+            </div>
+          ) : rawPreviewError ? (
+            <div className="eng-alert eng-alert--error" style={{ marginBottom: 0 }}>
+              <div className="eng-alert__content">
+                <AlertCircle size={15} style={{ flexShrink: 0, marginTop: "2px" }} />
+                <span>{rawPreviewError}</span>
+              </div>
             </div>
           ) : rawPreviewData && rawPreviewData.rows?.length > 0 ? (
             <div
@@ -1188,7 +1198,15 @@ export function Step1ColumnMapping({
                       : `${field.description} (optional)`
                   }
                 >
-                  {field.name} {isMapped ? `✓ (${mappedSources[0]})` : ""}
+                  {field.name}{" "}
+                  {isMapped ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                      <Check size={11} />
+                      <span>({mappedSources[0]})</span>
+                    </span>
+                  ) : (
+                    ""
+                  )}
                 </span>
               );
             })}

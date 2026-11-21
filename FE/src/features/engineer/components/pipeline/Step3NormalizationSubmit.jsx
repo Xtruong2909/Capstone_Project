@@ -659,9 +659,6 @@ export default function Step3NormalizationSubmit({
                 <h3 className="admin-card__title" style={{ color: '#166534', fontSize: '1.2rem' }}>
                   Dataset Version Successfully Submitted for Review!
                 </h3>
-                <p className="admin-card__subtitle" style={{ color: '#15803d' }}>
-                  The unpivoted pNEUMA dataset has been exported to Parquet and queued for Administrator approval.
-                </p>
               </div>
             </div>
             <span
@@ -733,9 +730,9 @@ export default function Step3NormalizationSubmit({
                   Trajectory Records
                 </span>
                 <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669', marginTop: '0.25rem' }}>
-                  {submissionSuccess.totalRecords
+                  {submissionSuccess.totalRecords != null
                     ? Number(submissionSuccess.totalRecords).toLocaleString()
-                    : '125,000+'}
+                    : '—'}
                 </div>
               </div>
 
@@ -861,9 +858,6 @@ export default function Step3NormalizationSubmit({
             </div>
             <div>
               <h3 className="admin-card__title">Step 3: Normalization & Final Preview</h3>
-              <p className="admin-card__subtitle">
-                Unpivot wide trajectory rows into 10 standard pNEUMA columns, validate Parquet staging, and submit for Administrator approval.
-              </p>
             </div>
           </div>
 
@@ -930,9 +924,6 @@ export default function Step3NormalizationSubmit({
             </div>
             <div>
               <h3 className="admin-card__title">Dataset Structure Normalization</h3>
-              <p className="admin-card__subtitle">
-                Transforms wide trajectory timeseries columns into flat standardized pNEUMA rows using saved mappings.
-              </p>
             </div>
           </div>
 
@@ -1071,7 +1062,7 @@ export default function Step3NormalizationSubmit({
                 <div className="exp-kpi-box__val" style={{ fontSize: '1.35rem', color: '#0f172a', fontWeight: 800 }}>
                   {normalizeResult.records_before != null
                     ? normalizeResult.records_before.toLocaleString()
-                    : '500'}
+                    : '—'}
                   <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500, marginLeft: '0.35rem' }}>
                     vehicles
                   </span>
@@ -1087,7 +1078,7 @@ export default function Step3NormalizationSubmit({
                 <div className="exp-kpi-box__val" style={{ fontSize: '1.35rem', color: '#2563eb', fontWeight: 800 }}>
                   {normalizeResult.records_after != null
                     ? normalizeResult.records_after.toLocaleString()
-                    : '125,000'}
+                    : '—'}
                   <span style={{ fontSize: '0.78rem', color: '#2563eb', fontWeight: 500, marginLeft: '0.35rem' }}>
                     points
                   </span>
@@ -1101,7 +1092,7 @@ export default function Step3NormalizationSubmit({
                   <span>Expansion Ratio</span>
                 </span>
                 <div className="exp-kpi-box__val" style={{ fontSize: '1.35rem', color: '#7c3aed', fontWeight: 800 }}>
-                  {multiplier ? `${multiplier}x` : '250.0x'}
+                  {multiplier ? `${multiplier}x` : '—'}
                   <span style={{ fontSize: '0.78rem', color: '#7c3aed', fontWeight: 500, marginLeft: '0.35rem' }}>
                     multiplier
                   </span>
@@ -1158,9 +1149,6 @@ export default function Step3NormalizationSubmit({
               </div>
               <div>
                 <h3 className="admin-card__title">Staging Data Validation</h3>
-                <p className="admin-card__subtitle">
-                  Performs integrity checks on the staging Parquet output for missing values, duplicates, coordinates, and negative speeds.
-                </p>
               </div>
             </div>
 
@@ -1414,9 +1402,6 @@ export default function Step3NormalizationSubmit({
               </div>
               <div>
                 <h3 className="admin-card__title">Normalized Trajectory Preview (pNEUMA Standard)</h3>
-                <p className="admin-card__subtitle">
-                  Inspecting the 10 standardized UAV trajectory fields produced by the normalization engine.
-                </p>
               </div>
             </div>
 
@@ -1700,9 +1685,6 @@ export default function Step3NormalizationSubmit({
                 <h3 className="admin-card__title" style={{ color: '#1e40af' }}>
                   Export Version & Processing Report
                 </h3>
-                <p className="admin-card__subtitle" style={{ color: '#3b82f6' }}>
-                  Export standardized staging into an official DatasetVersion, inspect its Processing Report, and submit for Administrator review.
-                </p>
               </div>
             </div>
 
@@ -2014,7 +1996,7 @@ export default function Step3NormalizationSubmit({
                             textDecoration: 'underline',
                           }}
                         >
-                          💡 Bấm để tự động sửa thành: <code>{versionValidation.autoFixedTag}</code>
+                          Apply suggested format: <code>{versionValidation.autoFixedTag}</code>
                         </button>
                       </div>
                     )}

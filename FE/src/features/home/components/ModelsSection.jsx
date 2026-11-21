@@ -1,17 +1,18 @@
 import { Cpu, GitBranch, ShieldCheck } from 'lucide-react'
+import { useLanguage } from '../../../hooks/useLanguage'
 import { MODELS } from '../homeContent'
 
 export default function ModelsSection() {
+  const { t } = useLanguage()
   return (
     <section className="section section--tint" id="models">
       <div className="container">
         {/* Section Header */}
         <div className="section__head">
-          <span className="eyebrow">Methodology &amp; Machine Learning</span>
-          <h2>Multi-Model Traffic Flow Prediction Engine</h2>
+          <span className="eyebrow">{t('Methodology & Machine Learning')}</span>
+          <h2>{t('Multi-Model Traffic Flow Prediction Engine')}</h2>
           <p>
-            Benchmarking baseline persistence against non-linear Random Forest ensembles
-            and sequential LSTM networks across 1, 3, and 5-minute time horizons.
+            {t('Benchmarking baseline persistence against non-linear Random Forest ensembles and sequential LSTM networks across 1, 3, and 5-minute time horizons.')}
           </p>
         </div>
 
@@ -21,25 +22,25 @@ export default function ModelsSection() {
             <article className={`card model-card model-card--${m.id}`} key={m.id}>
               <div className="model-card__header">
                 <div className="model-card__role-tag">
-                  <span className={`pill pill--${m.complexityColor}`}>{m.role}</span>
-                  <span className="model-card__complexity">Complexity: {m.complexity}</span>
+                  <span className={`pill pill--${m.complexityColor}`}>{t(m.role)}</span>
+                  <span className="model-card__complexity">{t('Complexity:')} {t(m.complexity)}</span>
                 </div>
-                <h3>{m.name}</h3>
+                <h3>{t(m.name)}</h3>
               </div>
 
-              <p className="model-card__desc">{m.desc}</p>
+              <p className="model-card__desc">{t(m.desc)}</p>
 
               <div className="model-card__features">
-                <small className="model-card__feature-title">Input Feature Set:</small>
-                <p className="model-card__feature-text">{m.inputs}</p>
+                <small className="model-card__feature-title">{t('Input Feature Set:')}</small>
+                <p className="model-card__feature-text">{t(m.inputs)}</p>
               </div>
 
               <div className="model-card__footer">
                 <span className="model-card__badge">
-                  <ShieldCheck size={14} /> Chronological Split
+                  <ShieldCheck size={14} /> {t('Chronological Split')}
                 </span>
                 <span className="model-card__metric-hint">
-                  Metric: MAE &amp; RMSE
+                  {t('Metric: MAE & RMSE')}
                 </span>
               </div>
             </article>
@@ -53,10 +54,9 @@ export default function ModelsSection() {
               <GitBranch size={22} />
             </div>
             <div>
-              <h4>Chronological Train/Test Protocol</h4>
+              <h4>{t('Chronological Train/Test Protocol')}</h4>
               <p>
-                Strictly splits trajectory data along chronological time slices rather than random shuffling,
-                guaranteeing zero future data leakage when evaluating short-term flow forecasts.
+                {t('Strictly splits trajectory data along chronological time slices rather than random shuffling, guaranteeing zero future data leakage when evaluating short-term flow forecasts.')}
               </p>
             </div>
           </div>
@@ -65,10 +65,9 @@ export default function ModelsSection() {
               <Cpu size={22} />
             </div>
             <div>
-              <h4>Lagged Multi-Feature Vectors</h4>
+              <h4>{t('Lagged Multi-Feature Vectors')}</h4>
               <p>
-                Features combine 5-minute past traffic flows (t-1 to t-5), mean corridor velocity,
-                active vehicle count, and minute-level temporal trends.
+                {t('Features combine 5-minute past traffic flows (t-1 to t-5), mean corridor velocity, active vehicle count, and minute-level temporal trends.')}
               </p>
             </div>
           </div>

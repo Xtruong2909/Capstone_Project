@@ -1,4 +1,5 @@
 import { ExternalLink, Database } from 'lucide-react'
+import { useLanguage } from '../../../hooks/useLanguage'
 import { DATASETS } from '../homeContent'
 
 const STATUS_PILL = {
@@ -8,15 +9,15 @@ const STATUS_PILL = {
 }
 
 export default function DatasetsSection() {
+  const { t } = useLanguage()
   return (
     <section className="section" id="datasets">
       <div className="container">
         <div className="section__head">
-          <span className="eyebrow">Data Assets</span>
-          <h2>UAV Trajectory Benchmark &amp; Input Formats</h2>
+          <span className="eyebrow">{t('Data Assets')}</span>
+          <h2>{t('UAV Trajectory Benchmark & Input Formats')}</h2>
           <p>
-            Built around the landmark pNEUMA drone dataset from EPFL and extensible to
-            custom aerial vehicle tracking sessions.
+            {t('Built around the landmark pNEUMA drone dataset from EPFL and extensible to custom aerial vehicle tracking sessions.')}
           </p>
         </div>
         <div className="grid grid--3">
@@ -28,26 +29,26 @@ export default function DatasetsSection() {
                     <Database size={18} />
                   </span>
                   <div>
-                    <h3>{d.name}</h3>
-                    <small className="dataset__tag">{d.tag}</small>
+                    <h3>{t(d.name)}</h3>
+                    <small className="dataset__tag">{t(d.tag)}</small>
                   </div>
                 </div>
                 <span className={`pill pill--${STATUS_PILL[d.status] || 'blue'}`}>
-                  {d.status}
+                  {t(d.status)}
                 </span>
               </div>
-              <p className="dataset__desc">{d.desc}</p>
+              <p className="dataset__desc">{t(d.desc)}</p>
               <div className="dataset__footer">
-                <span className="dataset__source">Source: {d.source}</span>
+                <span className="dataset__source">{t('Source:')} {t(d.source)}</span>
                 {d.link && (
                   <a
                     href={d.link}
                     target="_blank"
                     rel="noreferrer"
                     className="dataset__link"
-                    aria-label={`External link to ${d.name}`}
+                    aria-label={`${t('External link to')} ${t(d.name)}`}
                   >
-                    EPFL Portal <ExternalLink size={13} />
+                    {t('EPFL Portal')} <ExternalLink size={13} />
                   </a>
                 )}
               </div>

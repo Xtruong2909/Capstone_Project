@@ -25,6 +25,11 @@ export const authService = {
     return response.data
   },
 
+  async logout() {
+    const response = await apiClient.post('/auth/logout')
+    return response.data
+  },
+
   /**
    * Lấy thông tin tài khoản hiện tại từ Token (GET /api/v1/auth/me)
    * @returns {Promise<object>}

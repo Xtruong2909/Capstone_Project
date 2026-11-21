@@ -38,13 +38,12 @@ def _ordered(
     for row in rows:
         if row.time_bucket.tzinfo is None:
             raise ValueError("time_bucket must include timezone")
-        row = row.model_copy(update={"time_bucket": row.time_bucket.astimezone(UTC)})
-        key = (*_scope(row), row.time_bucket)
+        key = (*_scope(row), row.time_bucket.astimezone(UTC))
         if key in seen:
             raise ValueError("Duplicate time_bucket in the same recording session")
         seen.add(key)
         ordered.append(row)
-    return sorted(ordered, key=lambda row: row.time_bucket)
+    return sorted(ordered, key=lambda row: row.time_bucket.astimezone(UTC))
 
 
 def _scope(row: TrafficObservation) -> tuple:
@@ -75,7 +74,9 @@ def build_training_features(
             if not _observed(row):
                 segment.clear()
                 continue
-            if segment and row.time_bucket - segment[-1].time_bucket != MINUTE:
+            if segment and (
+                row.time_bucket.astimezone(UTC) - segment[-1].time_bucket.astimezone(UTC)
+            ) != MINUTE:
                 segment.clear()
             segment.append(row)
             if len(segment) < 10:
@@ -113,7 +114,10 @@ def build_prediction_features(
     history = rows[-5:]
     if len(history) != 5 or not all(_observed(row) for row in history):
         raise ValueError("Need five observed consecutive minutes for prediction")
-    if any(right.time_bucket - left.time_bucket != MINUTE for left, right in pairwise(history)):
+    if any(
+        right.time_bucket.astimezone(UTC) - left.time_bucket.astimezone(UTC) != MINUTE
+        for left, right in pairwise(history)
+    ):
         raise ValueError("Latest five minutes are not continuous; missing minutes are not filled")
     current = history[-1]
     features, x = _lags(history)
