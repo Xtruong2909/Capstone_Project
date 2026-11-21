@@ -405,12 +405,15 @@
 .de-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .de-form .form-field { display: grid; gap: 8px; font-size: 13px; color: #475569; }
 .de-form > button { justify-self: start; }
-.de-dropzone { display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 30px 20px; border: 2px dashed #b7d5e8; border-radius: 14px; background: #f5fbff; color: #3e83a7; text-align: center; }
+.de-dropzone { display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 36px 20px; border: 2px dashed #93c5fd; border-radius: 14px; background: #f8fbff; color: #1d4ed8; text-align: center; cursor: pointer; transition: all 0.2s ease-in-out; }
+.de-dropzone:hover, .de-dropzone.is-active { border-color: #2563eb; background: #eff6ff; box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08); }
 .de-dropzone span { font-size: 12px; }
 .de-dropzone input { max-width: 100%; }
-.de-selected-files { max-height: 220px; overflow: auto; border: 1px solid #e2ebf5; border-radius: 10px; }
+.de-selected-files { max-height: 260px; overflow-y: auto; border: 1px solid #e2ebf5; border-radius: 10px; }
 .de-selected-files > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 16px; border-bottom: 1px solid #eef2f7; font-size: 13px; overflow-wrap: anywhere; }
 .de-selected-files small { white-space: nowrap; color: #7b91a9; }
+.de-file-remove-btn { display: grid; place-items: center; width: 32px; height: 32px; border: 0; background: transparent; color: #94a3b8; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.de-file-remove-btn:hover { background: #fee2e2; color: #dc2626; }
 .de-job { padding: 20px; }
 .de-job__title { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
 .de-job progress, .de-form progress { width: 100%; height: 10px; accent-color: #2563eb; }

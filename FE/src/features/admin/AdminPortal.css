@@ -443,6 +443,13 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  transition: margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: margin-left;
+}
+
+.adm-sidebar:hover + .adm-workspace,
+.adm-sidebar:focus-within + .adm-workspace {
+  margin-left: 268px;
 }
 
 .adm-topbar {
@@ -1373,7 +1380,9 @@
 }
 
 @media (max-width: 768px) {
-  .adm-sidebar {
+  .adm-sidebar,
+  .adm-sidebar:hover,
+  .adm-sidebar:focus-within {
     width: 80px;
   }
   .adm-sidebar__brand-info,
@@ -1384,7 +1393,9 @@
   .adm-logout-btn span {
     display: none;
   }
-  .adm-workspace {
+  .adm-workspace,
+  .adm-sidebar:hover + .adm-workspace,
+  .adm-sidebar:focus-within + .adm-workspace {
     margin-left: 80px;
   }
   .adm-canvas {
