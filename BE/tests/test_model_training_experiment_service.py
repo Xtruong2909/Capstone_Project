@@ -45,7 +45,7 @@ def test_experiment_group_is_resolved_from_training_source() -> None:
     assert repository.get_experiment_group_id(db, experiment) == other_group_id
 
     experiment.dataset_id = None
-    experiment.configuration = {"dataset_version_id": str(uuid4())}
+    experiment.configuration = {"dataset_file_id": str(uuid4())}
     assert repository.get_experiment_group_id(db, experiment) == other_group_id
 
 
@@ -202,10 +202,10 @@ def test_experiment_listing_includes_accessible_records_and_paginates(
 
     total, data = service.list_experiments(
         MagicMock(),
-        SimpleNamespace(id=uuid4()),
+        SimpleNamespace(id=uuid4(), role_id="admin"),
         split_id=None,
         status=None,
-        dataset_version_id=None,
+        dataset_file_id=None,
         page=2,
         page_size=1,
     )

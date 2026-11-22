@@ -65,7 +65,7 @@ def test_large_trajectory_fast_path_matches_scalar_report(
         assert check.status == "completed"
         reports.append({
             k: v for k, v in check.report.items()
-            if k not in {"dataset_id", "dataset_version_id", "generated_at"}
+            if k not in {"dataset_id", "dataset_file_id", "generated_at"}
         })
         issues.append([
             (item.row_number, item.issue_type, item.column_name, item.message, item.observed_value)
@@ -134,7 +134,7 @@ def _run_file_check(
     check = SimpleNamespace(
         id=uuid4(),
         dataset_id=uuid4(),
-        dataset_version_id=uuid4(),
+        dataset_file_id=uuid4(),
         status="queued",
         progress_percent=0,
         processed_rows=0,
@@ -146,8 +146,8 @@ def _run_file_check(
     )
     session = FakeSession(check)
     monkeypatch.setattr(data_quality_service, "SessionLocal", lambda: session)
-    version = SimpleNamespace(id=check.dataset_version_id, file_format=file_format)
-    _run_check(check.id, path, version, mappings or {}, outlier_rules=outlier_rules)
+    dataset_file = SimpleNamespace(id=check.dataset_file_id, file_format=file_format)
+    _run_check(check.id, path, dataset_file, mappings or {}, outlier_rules=outlier_rules)
     return check, session
 
 
@@ -726,15 +726,15 @@ def test_quality_worker_forwards_outlier_configuration(
     check, session = _run_file_check(monkeypatch, path)
     check.status = "queued"
     check.recording_session_id = None
-    version = SimpleNamespace(id=check.dataset_version_id, file_format="CSV")
+    dataset_file = SimpleNamespace(id=check.dataset_file_id, file_format="CSV")
     monkeypatch.setattr(
-        data_quality_service.crud_dataset, "get_dataset_version",
-        lambda *args: (object(), version),
+        data_quality_service.crud_dataset, "get_dataset_file",
+        lambda *args: (object(), dataset_file),
     )
-    monkeypatch.setattr(data_quality_service, "_version_path", lambda version: path)
+    monkeypatch.setattr(data_quality_service, "_file_path", lambda dataset_file: path)
     monkeypatch.setattr(data_quality_service, "_get_mappings", lambda *args: {})
     monkeypatch.setattr(data_quality_service.crud_dataset,
-                        "list_all_version_sessions", lambda db, version_id: [])
+                        "list_all_file_sessions", lambda db, file_id: [])
 
     data_quality_service.run_data_quality_check(check.id, outlier_rules=[_outlier_rule("speed")])
 

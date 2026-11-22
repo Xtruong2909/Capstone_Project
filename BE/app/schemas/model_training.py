@@ -29,7 +29,7 @@ class Hyperparameters(BaseModel):
     def validate_features(self) -> Self:
         value = self.max_features
         if isinstance(value, bool):
-            raise ValueError("max_features must not be boolean")  # noqa: TRY004 - Pydantic validation
+            raise ValueError("max_features must not be boolean")
         if isinstance(value, int) and not 1 <= value <= 5:
             raise ValueError("Integer max_features must be between 1 and 5")
         if isinstance(value, float) and (not math.isfinite(value) or not 0 < value <= 1):
@@ -42,7 +42,7 @@ class TrainingSplitInput(BaseModel):
     # experiment_request. Ignore those; recompute eligibility from actual timestamps.
     model_config = ConfigDict(extra="ignore")
     # Accept IDs in pasted old responses, but do not ask for a duplicate in Swagger.
-    dataset_version_id: SkipJsonSchema[UUID | None] = None
+    dataset_file_id: SkipJsonSchema[UUID | None] = None
     roi_identifier: str = Field(min_length=1, max_length=64)
     recording_session_id: str = Field(min_length=1, max_length=255)
     train_ratio: Literal[0.7] = 0.7
@@ -62,7 +62,7 @@ class TrainingSplitInput(BaseModel):
 
 
 class TrainingSplit(TrainingSplitInput):
-    dataset_version_id: UUID
+    dataset_file_id: UUID
 
     @model_validator(mode="after")
     def validate_split(self) -> Self:
@@ -90,7 +90,7 @@ class TrainingSplit(TrainingSplitInput):
                     raise ValueError("Each X row needs 5 lags and each y row needs 3 targets")
                 # Reuse the split service's validated sample contract, without re-splitting.
                 SplitSample(
-                    dataset_version_id=self.dataset_version_id,
+                    dataset_file_id=self.dataset_file_id,
                     roi_identifier=self.roi_identifier,
                     recording_session_id=self.recording_session_id,
                     history_start_time=histories[i] if histories else origin - timedelta(minutes=4),
@@ -125,7 +125,7 @@ class TrainingSplit(TrainingSplitInput):
 
 class TrainingExperimentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     split_id: UUID | None = None
     split_result: TrainingSplit | None = None
     model: Literal["RANDOM_FOREST"] = "RANDOM_FOREST"
@@ -137,8 +137,8 @@ class TrainingExperimentRequest(BaseModel):
     def validate_source(self) -> Self:
         if (self.split_id is None) == (self.split_result is None):
             raise ValueError("Supply exactly one of split_id or split_result")
-        if self.split_result and self.split_result.dataset_version_id != self.dataset_version_id:
-            raise ValueError("Dataset version does not match split_result")
+        if self.split_result and self.split_result.dataset_file_id != self.dataset_file_id:
+            raise ValueError("Dataset dataset_file does not match split_result")
         return self
 
 
@@ -181,9 +181,47 @@ class ComparisonExperiment(BaseModel):
     improvement_vs_baselines: dict[str, dict[str, MetricImprovement]]
 
 
+class BestOverallRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    split_id: UUID
+    experiment_ids: list[UUID] | None = Field(default=None, min_length=2, max_length=20)
+
+    @model_validator(mode="after")
+    def unique_experiment_ids(self) -> Self:
+        if self.experiment_ids is not None and len(set(self.experiment_ids)) != len(self.experiment_ids):
+            raise ValueError("Experiment IDs must be distinct")
+        return self
+
+
+class OverallExperimentScore(BaseModel):
+    experiment_id: UUID
+    experiment_name: str
+    average_rmse: float = Field(ge=0, allow_inf_nan=False)
+    average_mae: float = Field(ge=0, allow_inf_nan=False)
+    prediction_time_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    model_ids: dict[str, UUID] = Field(default_factory=dict)
+
+
+class BestOverallSelection(BaseModel):
+    split_id: UUID
+    evaluation_partition: Literal["TEST"] = "TEST"
+    criterion: Literal["average_rmse"] = "average_rmse"
+    forecast_horizons: list[int] = Field(default_factory=lambda: [1, 3, 5])
+    scope: Literal["compared_experiments", "completed_experiments_in_split"] = "compared_experiments"
+    selected_experiment_id: UUID
+    selected_model_ids: dict[str, UUID]
+    average_rmse: float = Field(ge=0, allow_inf_nan=False)
+    average_mae: float = Field(ge=0, allow_inf_nan=False)
+    ranking: list[OverallExperimentScore]
+    selection_saved: bool = False
+    selected_at: datetime | None = None
+    excluded_experiment_ids: list[UUID] = Field(default_factory=list)
+
+
 class ExperimentComparisonResponse(BaseModel):
     forecast_horizons: list[int]
     experiments: list[ComparisonExperiment]
+    best_overall: BestOverallSelection | None = None
 
 
 class Prediction(BaseModel):
@@ -238,7 +276,7 @@ class TrainingExperimentResponse(BaseModel):
     experiment_id: UUID
     experiment_name: str
     name: str | None = None
-    dataset_version_id: UUID | None
+    dataset_file_id: UUID | None
     group_id: UUID | None = None
     split_id: UUID
     train_samples: int | None = None
@@ -264,6 +302,7 @@ class TrainingExperimentResponse(BaseModel):
     library_versions: dict[str, str]
     logs: list[TrainingLogEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    best_overall_selection: BestOverallSelection | None = None
     error: str | None
     created_at: datetime
     completed_at: datetime | None = None

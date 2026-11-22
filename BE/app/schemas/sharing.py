@@ -22,7 +22,7 @@ class ShareItemResponse(BaseModel):
     share_id: UUID
     resource_type: str
     resource_id: UUID
-    resource_version_id: UUID | None = None
+    resource_file_id: UUID | None = None
     visible_sections: list[str]
     created_at: datetime
     updated_at: datetime
@@ -100,7 +100,7 @@ class SharedResourceData(BaseModel):
     resource_id: UUID
     item_id: UUID
     name: str | None = None
-    resource_version_id: UUID | None = None
+    resource_file_id: UUID | None = None
     visible_sections: list[str]
     data: dict[str, Any] = Field(default_factory=dict)
 

@@ -51,7 +51,7 @@ class PredictionResult(Base):
     experiment_id = Column(UUID(as_uuid=True), ForeignKey("model_training_experiments.id"), nullable=False)
     model_id = Column(UUID(as_uuid=True), ForeignKey("experiment_trained_models.model_id"), nullable=False)
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id"), nullable=False)
-    dataset_version_id = Column(UUID(as_uuid=True), ForeignKey("dataset_versions.id"), nullable=False)
+    dataset_file_id = Column(UUID(as_uuid=True), ForeignKey("dataset_files.id"), nullable=False)
     session_id = Column(UUID(as_uuid=True), ForeignKey("recording_sessions.id"), nullable=False)
     horizon = Column(Integer, nullable=False)
     forecast_origin_time = Column(DateTime(timezone=True), nullable=False)

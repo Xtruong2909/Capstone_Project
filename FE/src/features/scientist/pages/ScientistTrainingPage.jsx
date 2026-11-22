@@ -42,12 +42,12 @@ function TrainingStep({ number, icon: Icon, title, description, state, headerAct
 }
 
 export default function ScientistTrainingPage() {
-  const { groupId, datasetId, versionId } = useParams()
+  const { groupId, datasetId, fileId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedSessionId = searchParams.get('sessionId') || ''
   const { groups, isLoading: groupsLoading, error: groupsError, reload: reloadGroups } = useApprovedGroups()
   const { datasets, isLoading: datasetsLoading, error: datasetsError, reload: reloadDatasets } = useApprovedDatasets()
-  const dataset = datasets.find((item) => item.dataset_id === datasetId && item.version_id === versionId)
+  const dataset = datasets.find((item) => item.dataset_id === datasetId && item.file_id === fileId)
   const activeGroupId = groupId || dataset?.group_id
   const group = groups.find((item) => item.group_id === activeGroupId)
   const { datasets: groupDatasets } = useGroupDatasets(activeGroupId)

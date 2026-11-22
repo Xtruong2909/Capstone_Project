@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models.dataset import Dataset, DatasetAccessGrant, DatasetVersion
+from app.models.dataset import Dataset, DatasetAccessGrant, DatasetFile
 from app.models.experiment import ForecastResult
 from app.models.model_training import (
     FinalModel,
@@ -19,9 +19,9 @@ from app.models.model_training import (
 from app.models.user import User
 
 
-def save_split(db: Session, version_id: UUID, fingerprint: str, payload: dict) -> ModelTrainingSplit:
+def save_split(db: Session, file_id: UUID, fingerprint: str, payload: dict) -> ModelTrainingSplit:
     db.execute(insert(ModelTrainingSplit).values(
-        id=uuid4(), dataset_version_id=version_id, fingerprint=fingerprint, payload=payload,
+        id=uuid4(), dataset_file_id=file_id, fingerprint=fingerprint, payload=payload,
     ).on_conflict_do_nothing(index_elements=["fingerprint"]))
     return db.scalar(select(ModelTrainingSplit).where(ModelTrainingSplit.fingerprint == fingerprint))
 
@@ -30,11 +30,11 @@ def get_split(db: Session, split_id: UUID) -> ModelTrainingSplit | None:
     return db.get(ModelTrainingSplit, split_id)
 
 
-def lock_dataset_for_experiment(db: Session, version_id: UUID) -> UUID | None:
+def lock_dataset_for_experiment(db: Session, file_id: UUID) -> UUID | None:
     return db.scalar(
         select(Dataset.id)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-        .where(DatasetVersion.id == version_id)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .where(DatasetFile.id == file_id)
         .with_for_update(of=Dataset)
     )
 
@@ -70,11 +70,11 @@ def get_experiment(db: Session, experiment_id: UUID) -> ModelTrainingExperiment 
     return db.get(ModelTrainingExperiment, experiment_id)
 
 
-def list_completed_forests(db: Session, version_id: UUID) -> list[ModelTrainingExperiment]:
-    """Candidates are scoped by the saved split, not an untrusted JSON version field."""
+def list_completed_forests(db: Session, file_id: UUID) -> list[ModelTrainingExperiment]:
+    """Candidates are scoped by the saved split, not an untrusted JSON dataset_file field."""
     query = (select(ModelTrainingExperiment)
              .join(ModelTrainingSplit)
-             .where(ModelTrainingSplit.dataset_version_id == version_id)
+             .where(ModelTrainingSplit.dataset_file_id == file_id)
              .where(ModelTrainingExperiment.status == "COMPLETED")
              .where(ModelTrainingExperiment.configuration["model"].astext == "RANDOM_FOREST")
              .order_by(ModelTrainingExperiment.number))
@@ -106,14 +106,16 @@ def save_final_forecasts(
     db.commit()
 
 
-def list_experiments(db: Session, user: User, version_id: UUID | None, skip: int,
+def list_experiments(db: Session, user: User, file_id: UUID | None, skip: int,
                      limit: int) -> list[ModelTrainingExperiment]:
-    query = select(ModelTrainingExperiment).join(ModelTrainingSplit).join(DatasetVersion)
+    query = select(ModelTrainingExperiment).join(ModelTrainingSplit).join(DatasetFile)
+    if user.role_id == "data_scientist":
+        query = query.where(ModelTrainingExperiment.created_by == user.id)
     if user.role_id != "admin":
         query = query.where(select(DatasetAccessGrant.id).where(
-            DatasetAccessGrant.dataset_id == DatasetVersion.dataset_id,
+            DatasetAccessGrant.dataset_id == DatasetFile.dataset_id,
             DatasetAccessGrant.user_id == user.id,
         ).exists())
-    if version_id is not None:
-        query = query.where(ModelTrainingSplit.dataset_version_id == version_id)
+    if file_id is not None:
+        query = query.where(ModelTrainingSplit.dataset_file_id == file_id)
     return list(db.scalars(query.order_by(ModelTrainingExperiment.number.desc()).offset(skip).limit(limit)))

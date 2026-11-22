@@ -24,8 +24,8 @@ const QUICK_PROMPTS = [
   'Sự khác nhau giữa chỉ số MAE và RMSE trong đánh giá mô hình?',
 ]
 
-function extractVersionIdFromPath(pathname = '') {
-  const match = pathname.match(/\/scientist\/datasets\/[^/]+\/versions\/([^/]+)/)
+function extractFileIdFromPath(pathname = '') {
+  const match = pathname.match(/\/scientist\/datasets\/[^/]+\/files\/([^/]+)/)
   return match ? match[1] : null
 }
 
@@ -176,8 +176,8 @@ function renderAssistantResult(msg) {
  */
 export default function AiAssistantChatWidget() {
   const location = useLocation()
-  const activeVersionId = useMemo(
-    () => extractVersionIdFromPath(location.pathname),
+  const activeFileId = useMemo(
+    () => extractFileIdFromPath(location.pathname),
     [location.pathname]
   )
   const activeGroupId = useMemo(
@@ -201,25 +201,25 @@ export default function AiAssistantChatWidget() {
   const threadEndRef = useRef(null)
 
   const { messages, isSending, sendRequest, clearMessages } = useAiAssistant(
-    activeVersionId,
+    activeFileId,
     activeGroupId,
     activeAggregationId,
   )
-  const { experiments, reloadExperiments } = useModelTrainingExperiments(activeGroupId || activeVersionId)
+  const { experiments, reloadExperiments } = useModelTrainingExperiments(activeGroupId || activeFileId)
 
   const completedExperiments = useMemo(
     () => experiments.filter((e) => e.status === 'COMPLETED' &&
       (!activeGroupId || String(e.group_id) === activeGroupId) &&
-      (!activeVersionId || String(e.dataset_version_id) === activeVersionId)),
-    [experiments, activeGroupId, activeVersionId]
+      (!activeFileId || String(e.dataset_file_id) === activeFileId)),
+    [experiments, activeGroupId, activeFileId]
   )
 
-  // Refresh experiment list when opening widget on a dataset version route
+  // Refresh experiment list when opening widget on a dataset route
   useEffect(() => {
-    if (isOpen && (activeVersionId || activeGroupId)) {
+    if (isOpen && (activeFileId || activeGroupId)) {
       reloadExperiments()
     }
-  }, [isOpen, activeVersionId, activeGroupId, reloadExperiments])
+  }, [isOpen, activeFileId, activeGroupId, reloadExperiments])
 
   const effectiveSelectedExpId = useMemo(() => {
     if (
@@ -282,7 +282,7 @@ export default function AiAssistantChatWidget() {
       await sendRequest({
         action: 'CHAT',
         message: trimmed,
-        datasetVersionId: activeVersionId || undefined,
+        datasetFileId: activeFileId || undefined,
       })
       return
     }
@@ -300,7 +300,7 @@ export default function AiAssistantChatWidget() {
       await sendRequest({
         action: 'EXPERIMENT_ANALYSIS',
         experimentIds: [effectiveSelectedExpId],
-        datasetVersionId: activeVersionId || undefined,
+        datasetFileId: activeFileId || undefined,
         message: extraMsg,
         userDisplayLabel: extraMsg ? `${label}: ${extraMsg}` : label,
       })
@@ -320,7 +320,7 @@ export default function AiAssistantChatWidget() {
       await sendRequest({
         action: 'MODEL_RECOMMENDATION',
         experimentIds: [effectiveSelectedExpId],
-        datasetVersionId: activeVersionId || undefined,
+        datasetFileId: activeFileId || undefined,
         message: extraMsg,
         userDisplayLabel: label,
       })
@@ -340,7 +340,7 @@ export default function AiAssistantChatWidget() {
       await sendRequest({
         action: 'EXPERIMENT_COMPARISON',
         experimentIds: effectiveCompareExpIds,
-        datasetVersionId: activeVersionId || undefined,
+        datasetFileId: activeFileId || undefined,
         message: extraMsg,
         userDisplayLabel: `So sánh các thí nghiệm: ${names}`,
       })
@@ -355,7 +355,7 @@ export default function AiAssistantChatWidget() {
       await sendRequest({
         action: 'FORECAST_EXPLANATION',
         predictionId: pid,
-        datasetVersionId: activeVersionId || undefined,
+        datasetFileId: activeFileId || undefined,
         message: extraMsg,
         userDisplayLabel: `Giải thích kết quả dự báo #${pid}`,
       })
@@ -369,7 +369,7 @@ export default function AiAssistantChatWidget() {
     await sendRequest({
       action: 'CHAT',
       message: promptText,
-      datasetVersionId: activeVersionId || undefined,
+      datasetFileId: activeFileId || undefined,
     })
   }
 
@@ -605,7 +605,7 @@ export default function AiAssistantChatWidget() {
               <div className="sci-ai-empty-state">
                 <p>Em có thể giúp gì cho Anh/Chị?</p>
                 <div className="sci-ai-suggestions">
-                  {(activeVersionId || activeGroupId) && (
+                  {(activeFileId || activeGroupId) && (
                     <button
                       type="button"
                       className="sci-ai-suggestion-chip"

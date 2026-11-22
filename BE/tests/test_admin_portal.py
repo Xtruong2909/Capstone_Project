@@ -16,7 +16,7 @@ from app.core.deps import get_current_user
 from app.crud import crud_dataset_access
 from app.database.database import get_db
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetAccessGrant, DatasetGroup, DatasetVersion
+from app.models.dataset import Dataset, DatasetAccessGrant, DatasetFile, DatasetGroup
 from app.models.experiment import Experiment
 from app.models.user import User
 from app.services import admin_monitoring_service
@@ -26,7 +26,7 @@ from app.services import admin_monitoring_service
 def portal():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     metadata = MetaData()
-    for model in (User, Dataset, DatasetGroup, DatasetVersion, DatasetAccessGrant, AuditLog):
+    for model in (User, Dataset, DatasetGroup, DatasetFile, DatasetAccessGrant, AuditLog):
         Table(model.__tablename__, metadata, *[
             Column(column.name, JSON() if isinstance(column.type, JSONB) else column.type,
                    primary_key=column.primary_key)
@@ -40,12 +40,12 @@ def portal():
                       is_active=i != 0, hashed_password="unused", created_at=now) for i in range(6)]
         dataset = Dataset(id=uuid4(), name="Athens traffic", code="test", source="test",
                           location_name="Athens")
-        versions = [DatasetVersion(id=uuid4(), dataset_id=dataset.id, version_tag=f"v{i}",
+        dataset_files = [DatasetFile(id=uuid4(), dataset_id=dataset.id, 
                                    file_format="CSV", total_records=100,
                                    approval_status=status, created_at=now,
                                    submitted_by=users[0].id, submitted_at=now)
                     for i, status in enumerate(["SUBMITTED", "APPROVED", "REJECTED"])]
-        db.add_all([*users, dataset, *versions, DatasetAccessGrant(
+        db.add_all([*users, dataset, *dataset_files, DatasetAccessGrant(
             id=uuid4(), dataset_id=dataset.id, user_id=users[0].id,
             granted_by=users[5].id, created_at=now,
         )])
@@ -91,8 +91,53 @@ def test_grants_and_summary_use_database_counts(portal) -> None:
     summary = client.get("/admin/portal/summary").json()
     assert summary["total_users"] == 6
     assert summary["active_users"] == 5
-    assert summary["approved_versions"] == summary["pending_approvals"] == 1
+    assert summary["approved_files"] == summary["pending_approvals"] == 1
     assert summary["total_access_grants"] == 1
+
+
+def test_batch_grants_group_by_real_batch_and_user_before_pagination(portal) -> None:
+    client, _, app = portal
+    db = app.dependency_overrides[get_db]()
+    users = list(db.scalars(select(User).order_by(User.email)))
+    # Equal display names must not merge different batch IDs.
+    groups = [DatasetGroup(id=uuid4(), name="Batch 5", source=f"batch-{i}") for i in range(2)]
+    db.add_all(groups)
+    for index, group in enumerate(groups):
+        for number in range(4):
+            dataset = Dataset(id=uuid4(), name=f"batch-{index}-dataset-{number}",
+                              code=f"grant-{index}-{number}", source="test", group_id=group.id)
+            db.add(dataset)
+            # First user has full access, second user only one dataset in the first batch.
+            db.add(DatasetAccessGrant(dataset_id=dataset.id, user_id=users[0].id))
+            if index == 0 and number == 0:
+                db.add(DatasetAccessGrant(dataset_id=dataset.id, user_id=users[1].id))
+    db.commit()
+    result = client.get("/admin/portal/batch-access-grants").json()
+    assert result["total"] == 4  # Two batches/user0, batch0/user1, and existing ungrouped grant.
+    batch_rows = [row for row in result["items"] if row["group_id"]]
+    assert len(batch_rows) == 3
+    assert all(row["total_datasets"] == 4 for row in batch_rows)
+    full = [row for row in batch_rows if row["user_id"] == str(users[0].id)]
+    assert len(full) == 2 and all(row["granted_datasets"] == 4 for row in full)
+    partial = next(row for row in batch_rows if row["user_id"] == str(users[1].id))
+    assert partial["granted_datasets"] == 1
+    assert partial["dataset_id"] is None
+    legacy = next(row for row in result["items"] if row["group_id"] is None)
+    assert legacy["dataset_id"] and legacy["dataset_name"] == "Athens traffic"
+    assert legacy["granted_datasets"] == legacy["total_datasets"] == 1
+    pages = [client.get(f"/admin/portal/batch-access-grants?page_size=1&page={page}").json()
+             for page in range(1, 5)]
+    keys = [(item["items"][0]["group_id"] or item["items"][0]["dataset_id"],
+             item["items"][0]["user_id"]) for item in pages]
+    assert all(item["total"] == 4 and len(item["items"]) == 1 for item in pages)
+    assert len(set(keys)) == 4
+    searched = client.get("/admin/portal/batch-access-grants?search=person1").json()
+    assert searched["total"] == 1 and searched["items"][0]["granted_datasets"] == 1
+    assert client.get("/admin/portal/batch-access-grants?search=missing").json()["items"] == []
+    assert client.get("/admin/portal/batch-access-grants?page_size=101").status_code == 422
+    actor = app.dependency_overrides[get_current_user]()
+    actor.role_id = "data_engineer"
+    assert client.get("/admin/portal/batch-access-grants").status_code == 403
 
 
 def test_eligible_dataset_and_batch_users_only_include_scientists(portal) -> None:
@@ -120,9 +165,9 @@ def test_batch_catalog_counts_before_pagination_and_filters_datasets(portal) -> 
             dataset = Dataset(id=uuid4(), name=f"Dataset {index}-{number}",
                               code=f"batch-{index}-{number}", source="test", group_id=group.id)
             db.add(dataset)
-            for version in range(2):
-                db.add(DatasetVersion(id=uuid4(), dataset_id=dataset.id,
-                                      version_tag=f"v{version}", file_format="CSV",
+            for dataset_file in range(2):
+                db.add(DatasetFile(id=uuid4(), dataset_id=dataset.id,
+                                       file_format="CSV",
                                       total_records=10, approval_status="APPROVED",
                                       approval_note=f"Approved batch {index}"))
     db.commit()
@@ -132,7 +177,7 @@ def test_batch_catalog_counts_before_pagination_and_filters_datasets(portal) -> 
     items = [page["items"][0] for page in pages]
     assert len({item["group_id"] for item in items}) == 3
     second = next(item for item in items if item["group_id"] == str(groups[1].id))
-    assert second["dataset_count"] == 2 and second["version_count"] == 4
+    assert second["dataset_count"] == 2 and second["file_count"] == 4
     assert second["approval_status"] == "APPROVED"
     assert second["approval_notes"] == ["Approved batch 1"]
     first = next(item for item in items if item["group_id"] == str(groups[0].id))
@@ -151,9 +196,9 @@ def test_batch_catalog_counts_before_pagination_and_filters_datasets(portal) -> 
 def test_batch_status_and_notes_respect_status_filter(portal) -> None:
     client, _, app = portal
     db = app.dependency_overrides[get_db]()
-    versions = list(db.scalars(select(DatasetVersion)))
-    for version in versions:
-        version.approval_note = "  Approved quality  " if version.approval_status == "APPROVED" else " "
+    dataset_files = list(db.scalars(select(DatasetFile)))
+    for dataset_file in dataset_files:
+        dataset_file.approval_note = "  Approved quality  " if dataset_file.approval_status == "APPROVED" else " "
     db.commit()
     all_statuses = client.get("/admin/portal/dataset-groups").json()["items"][0]
     assert all_statuses["approval_status"] == "MIXED"
@@ -184,7 +229,7 @@ def test_experiment_page_has_stable_order_and_respects_offset(monkeypatch) -> No
         id=uuid4(), name=f"Experiment {i}", model_type="RANDOM_FOREST",
         target_variable="traffic_flow", temporal_aggregation_sec=60,
         status="COMPLETED", execution_time_sec=None, creator=None,
-        dataset_version=None, evaluation_metric=None, created_at=now,
+        dataset_file=None, evaluation_metric=None, created_at=now,
     ) for i in range(3)]
     rows.sort(key=lambda item: str(item.id), reverse=True)
     repo = admin_monitoring_service.crud_admin

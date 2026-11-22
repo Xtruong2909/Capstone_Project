@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.crud import crud_dataset
 from app.crud.crud_recording_metadata import resolve_original_filename
 from app.crud.crud_traffic_time import traffic_time_query
-from app.models.dataset import DatasetVersion
+from app.models.dataset import DatasetFile
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 from app.schemas.traffic_aggregation import TrafficAggregationRecord
 from app.services.audit_log_service import record_audit_event
@@ -30,10 +30,10 @@ METERS_PER_SECOND_TO_KMH = 3.6
 logger = logging.getLogger(__name__)
 
 
-def _recording_start(db: Session, version: DatasetVersion) -> datetime | None:
+def _recording_start(db: Session, dataset_file: DatasetFile) -> datetime | None:
     filename = resolve_original_filename(
-        db, dataset_id=version.dataset_id, version_id=version.id,
-        original_filename=version.original_filename,
+        db, dataset_id=dataset_file.dataset_id, file_id=dataset_file.id,
+        original_filename=dataset_file.original_filename,
     )
     return recording_start_from_filename(filename)
 
@@ -50,15 +50,15 @@ def _log_timing(stage: str, started_at: float, **extra: Any) -> None:
     )
 
 
-def _resolve_dataset_version_path(version: DatasetVersion) -> Path:
+def _resolve_dataset_file_path(dataset_file: DatasetFile) -> Path:
     stored_path = (
-        version.data_file_path
-        or version.csv_file_path
-        or version.parquet_file_path
-        or version.geojson_file_path
+        dataset_file.data_file_path
+        or dataset_file.csv_file_path
+        or dataset_file.parquet_file_path
+        or dataset_file.geojson_file_path
     )
     if not stored_path:
-        raise HTTPException(status_code=404, detail="Dataset version does not contain a file path")
+        raise HTTPException(status_code=404, detail="Dataset dataset_file does not contain a file path")
 
     path = Path(stored_path)
     if not path.is_absolute():
@@ -159,8 +159,8 @@ def _is_header_row(row: dict[str, Any]) -> bool:
     return bool(normalized) and all(value == key for key, value in normalized.items())
 
 
-def _iter_rows_from_version(version: DatasetVersion) -> Iterator[dict[str, Any]]:
-    stored_path = _resolve_dataset_version_path(version)
+def _iter_rows_from_file(dataset_file: DatasetFile) -> Iterator[dict[str, Any]]:
+    stored_path = _resolve_dataset_file_path(dataset_file)
     suffix = stored_path.suffix.lower()
 
     if suffix == ".parquet":
@@ -205,11 +205,11 @@ def _iter_rows_from_version(version: DatasetVersion) -> Iterator[dict[str, Any]]
             return
         return
 
-    raise HTTPException(status_code=415, detail=f"Unsupported dataset format for aggregation: {suffix or version.file_format}")
+    raise HTTPException(status_code=415, detail=f"Unsupported dataset format for aggregation: {suffix or dataset_file.file_format}")
 
 
-def _read_rows_from_version(version: DatasetVersion) -> list[dict[str, Any]]:
-    return list(_iter_rows_from_version(version))
+def _read_rows_from_file(dataset_file: DatasetFile) -> list[dict[str, Any]]:
+    return list(_iter_rows_from_file(dataset_file))
 
 
 def aggregate_time_series_rows(
@@ -278,9 +278,9 @@ def aggregate_time_series_rows(
     return aggregated
 
 
-def _to_db_row(dataset_version_id: UUID, bucket: dict[str, Any]) -> TrafficTimeSeries:
+def _to_db_row(dataset_file_id: UUID, bucket: dict[str, Any]) -> TrafficTimeSeries:
     return TrafficTimeSeries(
-        dataset_version_id=dataset_version_id,
+        dataset_file_id=dataset_file_id,
         time_bucket=bucket["time_bucket"],
         aggregation_interval=bucket["aggregation_interval"],
         roi_identifier=bucket["roi_identifier"],
@@ -294,7 +294,7 @@ def build_traffic_aggregation(
     db: Session,
     *,
     dataset_id: UUID,
-    version_id: UUID | None = None,
+    file_id: UUID | None = None,
     aggregation_interval: int = 60,
     roi_identifier: str = "MAIN_ROI",
     replace_existing: bool = False,
@@ -304,41 +304,41 @@ def build_traffic_aggregation(
         "traffic aggregation started",
         extra={
             "dataset_id": str(dataset_id),
-            "version_id": str(version_id) if version_id else None,
+            "file_id": str(file_id) if file_id else None,
             "aggregation_interval": aggregation_interval,
             "roi_identifier": roi_identifier,
             "replace_existing": replace_existing,
         },
     )
 
-    dataset, version = (
-        crud_dataset.get_dataset_version(db, dataset_id, version_id)
-        if version_id is not None
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    dataset, dataset_file = (
+        crud_dataset.get_dataset_file(db, dataset_id, file_id)
+        if file_id is not None
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
-    if dataset is None or version is None:
-        raise HTTPException(status_code=404, detail="Dataset version was not found")
+    if dataset is None or dataset_file is None:
+        raise HTTPException(status_code=404, detail="Dataset dataset_file was not found")
 
     resolve_started = time.perf_counter()
-    rows_iterator = _iter_rows_from_version(version)
-    recording_start = _recording_start(db, version)
+    rows_iterator = _iter_rows_from_file(dataset_file)
+    recording_start = _recording_start(db, dataset_file)
     buckets = aggregate_time_series_rows(
         rows_iterator,
         aggregation_interval=aggregation_interval,
         roi_identifier=roi_identifier,
         recording_start=recording_start,
     )
-    _log_timing("read_and_aggregate_rows", resolve_started, dataset_id=str(dataset.id), version_id=str(version.id))
+    _log_timing("read_and_aggregate_rows", resolve_started, dataset_id=str(dataset.id), file_id=str(dataset_file.id))
 
     if replace_existing:
         query_started = time.perf_counter()
         db.query(TrafficTimeSeries).filter(
-            TrafficTimeSeries.dataset_version_id == version.id,
+            TrafficTimeSeries.dataset_file_id == dataset_file.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         ).delete()
         existing_bucket_times: set[datetime] = set()
-        _log_timing("delete_existing_rows", query_started, dataset_id=str(dataset.id), version_id=str(version.id))
+        _log_timing("delete_existing_rows", query_started, dataset_id=str(dataset.id), file_id=str(dataset_file.id))
     else:
         query_started = time.perf_counter()
         existing_bucket_times = {
@@ -346,14 +346,14 @@ def build_traffic_aggregation(
             for row in (
                 db.query(TrafficTimeSeries.time_bucket)
                 .filter(
-                    TrafficTimeSeries.dataset_version_id == version.id,
+                    TrafficTimeSeries.dataset_file_id == dataset_file.id,
                     TrafficTimeSeries.aggregation_interval == aggregation_interval,
                     TrafficTimeSeries.roi_identifier == roi_identifier,
                 )
                 .all()
             )
         }
-        _log_timing("fetch_existing_bucket_times", query_started, dataset_id=str(dataset.id), version_id=str(version.id))
+        _log_timing("fetch_existing_bucket_times", query_started, dataset_id=str(dataset.id), file_id=str(dataset_file.id))
 
     new_rows: list[TrafficTimeSeries] = []
     persisted_count = 0
@@ -361,17 +361,17 @@ def build_traffic_aggregation(
     for bucket in buckets:
         if not replace_existing and bucket["time_bucket"] in existing_bucket_times:
             continue
-        new_rows.append(_to_db_row(version.id, bucket))
+        new_rows.append(_to_db_row(dataset_file.id, bucket))
         persisted_count += 1
 
     if new_rows:
         db.add_all(new_rows)
         db.commit()
-    _log_timing("persist_new_rows", persist_started, dataset_id=str(dataset.id), version_id=str(version.id), rows_to_persist=len(new_rows))
-    _log_timing("total_aggregation", total_started, dataset_id=str(dataset.id), version_id=str(version.id), records_created=persisted_count)
+    _log_timing("persist_new_rows", persist_started, dataset_id=str(dataset.id), file_id=str(dataset_file.id), rows_to_persist=len(new_rows))
+    _log_timing("total_aggregation", total_started, dataset_id=str(dataset.id), file_id=str(dataset_file.id), records_created=persisted_count)
     return {
         "dataset_id": dataset.id,
-        "dataset_version_id": version.id,
+        "dataset_file_id": dataset_file.id,
         "aggregation_interval": aggregation_interval,
         "roi_identifier": roi_identifier,
         "records_created": persisted_count,
@@ -421,7 +421,7 @@ def run_traffic_aggregation_job(
     *,
     db_session_factory,
     dataset_id: UUID,
-    version_id: UUID,
+    file_id: UUID,
     aggregation_interval: int,
     roi_identifier: str,
     replace_existing: bool = False,
@@ -450,7 +450,7 @@ def run_traffic_aggregation_job(
         "traffic aggregation background job started",
         extra={
             "dataset_id": str(dataset_id),
-            "version_id": str(version_id),
+            "file_id": str(file_id),
             "aggregation_interval": aggregation_interval,
             "roi_identifier": roi_identifier,
             "job_id": str(job_id) if job_id else None,
@@ -460,7 +460,7 @@ def run_traffic_aggregation_job(
         result = build_traffic_aggregation(
             job_db,
             dataset_id=dataset_id,
-            version_id=version_id,
+            file_id=file_id,
             aggregation_interval=aggregation_interval,
             roi_identifier=roi_identifier,
             replace_existing=replace_existing,
@@ -473,7 +473,7 @@ def run_traffic_aggregation_job(
                 progress_percent=100,
                 records_created=result["records_created"],
                 metadata={
-                    "dataset_version_id": str(version_id),
+                    "dataset_file_id": str(file_id),
                     "aggregation_interval": aggregation_interval,
                     "roi_identifier": roi_identifier,
                     "records_created": result["records_created"],
@@ -490,13 +490,13 @@ def run_traffic_aggregation_job(
             ip_address=ip_address,
             details={
                 "dataset_id": str(dataset_id),
-                "dataset_version_id": str(version_id),
+                "dataset_file_id": str(file_id),
                 "aggregation_interval": aggregation_interval,
                 "roi_identifier": roi_identifier,
                 "records_created": result["records_created"],
             },
         )
-        _log_timing("background_job_total", started_at, dataset_id=str(dataset_id), version_id=str(version_id), job_id=str(job_id) if job_id else None)
+        _log_timing("background_job_total", started_at, dataset_id=str(dataset_id), file_id=str(file_id), job_id=str(job_id) if job_id else None)
     except Exception as exc:
         if job is not None:
             _update_traffic_job_status(
@@ -506,7 +506,7 @@ def run_traffic_aggregation_job(
                 progress_percent=100,
                 error_message=str(exc),
                 metadata={
-                    "dataset_version_id": str(version_id),
+                    "dataset_file_id": str(file_id),
                     "aggregation_interval": aggregation_interval,
                     "roi_identifier": roi_identifier,
                 },
@@ -522,7 +522,7 @@ def run_traffic_aggregation_job(
             ip_address=ip_address,
             details={
                 "dataset_id": str(dataset_id),
-                "dataset_version_id": str(version_id),
+                "dataset_file_id": str(file_id),
                 "error_type": type(exc).__name__,
             },
         )
@@ -530,7 +530,7 @@ def run_traffic_aggregation_job(
             "traffic aggregation background job failed",
             extra={
                 "dataset_id": str(dataset_id),
-                "version_id": str(version_id),
+                "file_id": str(file_id),
                 "aggregation_interval": aggregation_interval,
                 "roi_identifier": roi_identifier,
                 "job_id": str(job_id) if job_id else None,
@@ -552,22 +552,22 @@ def get_traffic_aggregation_status(
     db: Session,
     *,
     dataset_id: UUID,
-    version_id: UUID | None = None,
+    file_id: UUID | None = None,
     aggregation_interval: int = 60,
     roi_identifier: str = "MAIN_ROI",
 ) -> dict[str, Any]:
-    _, version = (
-        crud_dataset.get_dataset_version(db, dataset_id, version_id)
-        if version_id is not None
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    _, dataset_file = (
+        crud_dataset.get_dataset_file(db, dataset_id, file_id)
+        if file_id is not None
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
-    if version is None:
-        raise HTTPException(status_code=404, detail="Dataset version was not found")
+    if dataset_file is None:
+        raise HTTPException(status_code=404, detail="Dataset dataset_file was not found")
 
     latest = (
         db.query(TrafficTimeSeries)
         .filter(
-            TrafficTimeSeries.dataset_version_id == version.id,
+            TrafficTimeSeries.dataset_file_id == dataset_file.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         )
@@ -577,7 +577,7 @@ def get_traffic_aggregation_status(
     records_count = (
         db.query(TrafficTimeSeries)
         .filter(
-            TrafficTimeSeries.dataset_version_id == version.id,
+            TrafficTimeSeries.dataset_file_id == dataset_file.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         )
@@ -585,7 +585,7 @@ def get_traffic_aggregation_status(
     )
     return {
         "dataset_id": dataset_id,
-        "dataset_version_id": version.id,
+        "dataset_file_id": dataset_file.id,
         "aggregation_interval": aggregation_interval,
         "roi_identifier": roi_identifier,
         "records_count": records_count,
@@ -598,7 +598,7 @@ def preview_traffic_aggregation(
     db: Session,
     *,
     dataset_id: UUID,
-    version_id: UUID | None = None,
+    file_id: UUID | None = None,
     aggregation_interval: int = 60,
     roi_identifier: str = "MAIN_ROI",
     start_time: datetime | None = None,
@@ -606,22 +606,22 @@ def preview_traffic_aggregation(
     page: int = 1,
     page_size: int = 20,
 ) -> dict[str, Any]:
-    _, version = (
-        crud_dataset.get_dataset_version(db, dataset_id, version_id)
-        if version_id is not None
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    _, dataset_file = (
+        crud_dataset.get_dataset_file(db, dataset_id, file_id)
+        if file_id is not None
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
-    if version is None:
-        raise HTTPException(status_code=404, detail="Dataset version was not found")
+    if dataset_file is None:
+        raise HTTPException(status_code=404, detail="Dataset dataset_file was not found")
 
-    recording_start = _recording_start(db, version)
+    recording_start = _recording_start(db, dataset_file)
     query = (
         traffic_time_query(
             db, recording_start=recording_start, start_time=start_time,
             end_time=end_time, descending=False,
         )
         .filter(
-            TrafficTimeSeries.dataset_version_id == version.id,
+            TrafficTimeSeries.dataset_file_id == dataset_file.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         )
@@ -639,7 +639,7 @@ def preview_traffic_aggregation(
     ]
     return {
         "dataset_id": dataset_id,
-        "dataset_version_id": version.id,
+        "dataset_file_id": dataset_file.id,
         "roi_identifier": roi_identifier,
         "aggregation_interval": aggregation_interval,
         "items": page_items,
@@ -654,27 +654,27 @@ def get_traffic_chart_data(
     db: Session,
     *,
     dataset_id: UUID,
-    version_id: UUID | None = None,
+    file_id: UUID | None = None,
     aggregation_interval: int = 60,
     roi_identifier: str = "MAIN_ROI",
     start_time: datetime | None = None,
     end_time: datetime | None = None,
 ) -> dict[str, Any]:
-    _, version = (
-        crud_dataset.get_dataset_version(db, dataset_id, version_id)
-        if version_id is not None
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    _, dataset_file = (
+        crud_dataset.get_dataset_file(db, dataset_id, file_id)
+        if file_id is not None
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
-    if version is None:
-        raise HTTPException(status_code=404, detail="Dataset version was not found")
+    if dataset_file is None:
+        raise HTTPException(status_code=404, detail="Dataset dataset_file was not found")
 
-    recording_start = _recording_start(db, version)
+    recording_start = _recording_start(db, dataset_file)
     query = (
         traffic_time_query(
             db, recording_start=recording_start, start_time=start_time, end_time=end_time,
         )
         .filter(
-            TrafficTimeSeries.dataset_version_id == version.id,
+            TrafficTimeSeries.dataset_file_id == dataset_file.id,
             TrafficTimeSeries.aggregation_interval == aggregation_interval,
             TrafficTimeSeries.roi_identifier == roi_identifier,
         )
@@ -683,7 +683,7 @@ def get_traffic_chart_data(
     rows = query.all()
     return {
         "dataset_id": dataset_id,
-        "dataset_version_id": version.id,
+        "dataset_file_id": dataset_file.id,
         "aggregation_interval": aggregation_interval,
         "roi_identifier": roi_identifier,
         "time_labels": [

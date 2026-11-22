@@ -25,7 +25,7 @@ from app.database.database import Base
 class ModelTrainingSplit(Base):
     __tablename__ = "model_training_splits"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    dataset_version_id = Column(UUID(as_uuid=True), ForeignKey("dataset_versions.id"), nullable=False, index=True)
+    dataset_file_id = Column(UUID(as_uuid=True), ForeignKey("dataset_files.id"), nullable=False, index=True)
     fingerprint = Column(String(64), nullable=False, unique=True)
     payload = Column(JSONB, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -214,8 +214,8 @@ class FinalModel(Base):
         UUID(as_uuid=True), ForeignKey("model_training_experiments.id"),
         nullable=False, unique=True,
     )
-    dataset_version_id = Column(
-        UUID(as_uuid=True), ForeignKey("dataset_versions.id"), nullable=False,
+    dataset_file_id = Column(
+        UUID(as_uuid=True), ForeignKey("dataset_files.id"), nullable=False,
     )
     split_id = Column(UUID(as_uuid=True), ForeignKey("model_training_splits.id"), nullable=False)
     roi_identifier = Column(String(64), nullable=False)

@@ -32,7 +32,7 @@ class AssistantRequest(BaseModel):
         default=None, description="ID lần dự báo từ POST /api/prediction/forecasts",
     )
     model_id: UUID | None = None
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     aggregation_id: UUID | None = Field(
         default=None, description="ID lượt tổng hợp thời gian của nhóm Dataset",
     )

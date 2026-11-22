@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getScientistSession } from '../services/scientistSession'
 import { scientistService } from '../services/scientistService'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
 
-const scientistDataCache = {
-  approvedGroups: null,
-  groupDatasets: new Map(),
-  approvedDatasets: new Map(),
-  datasetSessions: new Map(),
-  datasetPreviews: new Map(),
-}
-const datasetPreviewRequests = new Set()
-
-function prefetchDatasetPreview(datasetId, versionId, sessionId, page, pageSize, representation) {
+function prefetchDatasetPreview(session, datasetId, fileId, sessionId, page, pageSize, representation) {
+  const scientistDataCache = session.datasets
+  const datasetPreviewRequests = session.previewRequests
   if (page < 1) return
-  const key = `${datasetId}:${versionId}:${sessionId}:${page}:${pageSize}:${representation}`
+  const key = `${datasetId}:${fileId}:${sessionId}:${page}:${pageSize}:${representation}`
   if (scientistDataCache.datasetPreviews.has(key) || datasetPreviewRequests.has(key)) return
   datasetPreviewRequests.add(key)
-  scientistService.getDatasetPreview(datasetId, versionId, { sessionId, page, pageSize, representation })
+  scientistService.getDatasetPreview(datasetId, fileId, { sessionId, page, pageSize, representation })
     .then((data) => scientistDataCache.datasetPreviews.set(key, data))
     .catch(() => {})
     .finally(() => datasetPreviewRequests.delete(key))
 }
 
 export function useApprovedGroups() {
+  const session = getScientistSession()
+  const scientistDataCache = session.datasets
   const [groups, setGroups] = useState(() => scientistDataCache.approvedGroups || [])
   const [isLoading, setIsLoading] = useState(() => !scientistDataCache.approvedGroups)
   const [error, setError] = useState(null)
@@ -43,11 +39,16 @@ export function useApprovedGroups() {
       if (currentRequest === requestId.current) setIsLoading(false)
     }
   }, [])
-  useEffect(() => { if (!scientistDataCache.approvedGroups) reload() }, [reload])
+  useEffect(() => {
+    if (!scientistDataCache.approvedGroups) reload()
+    return () => { requestId.current++ }
+  }, [reload])
   return { groups, isLoading, error, reload }
 }
 
 export function useGroupDatasets(groupId) {
+  const session = getScientistSession()
+  const scientistDataCache = session.datasets
   const cachedDatasets = groupId ? scientistDataCache.groupDatasets.get(groupId) : null
   const [datasets, setDatasets] = useState(() => cachedDatasets || [])
   const [isLoading, setIsLoading] = useState(() => Boolean(groupId) && !cachedDatasets)
@@ -91,19 +92,21 @@ export function useGroupDatasets(groupId) {
 }
 
 export function useGroupSessionMetadata(datasets) {
+  const session = getScientistSession()
+  const scientistDataCache = session.datasets
   const [sessionsById, setSessionsById] = useState({})
-  const datasetKey = datasets.map((dataset) => `${dataset.dataset_id}:${dataset.version_id}`).join('|')
+  const datasetKey = datasets.map((dataset) => `${dataset.dataset_id}:${dataset.file_id}`).join('|')
 
   useEffect(() => {
     if (!datasetKey) { setSessionsById({}); return }
     let cancelled = false
     setSessionsById({})
     Promise.allSettled(datasetKey.split('|').map((entry) => {
-      const [datasetId, versionId] = entry.split(':')
-      const cached = scientistDataCache.datasetSessions.get(`${datasetId}:${versionId}`)
+      const [datasetId, fileId] = entry.split(':')
+      const cached = scientistDataCache.datasetSessions.get(`${datasetId}:${fileId}`)
       if (cached) return Promise.resolve(cached)
-      return scientistService.listDatasetSessions(datasetId, versionId).then((sessions) => {
-        scientistDataCache.datasetSessions.set(`${datasetId}:${versionId}`, sessions)
+      return scientistService.listDatasetSessions(datasetId, fileId).then((sessions) => {
+        scientistDataCache.datasetSessions.set(`${datasetId}:${fileId}`, sessions)
         return sessions
       })
     })).then((results) => {
@@ -121,6 +124,8 @@ export function useGroupSessionMetadata(datasets) {
 }
 
 export function useApprovedDatasets(search = '') {
+  const session = getScientistSession()
+  const scientistDataCache = session.datasets
   const cacheKey = search.trim()
   const cachedDatasets = scientistDataCache.approvedDatasets.get(cacheKey)
   const [datasets, setDatasets] = useState(() => cachedDatasets || [])
@@ -152,18 +157,20 @@ export function useApprovedDatasets(search = '') {
   return { datasets, isLoading, error, reload }
 }
 
-export function useDatasetSessions(datasetId, versionId) {
-  const baseKey = datasetId && versionId ? `${datasetId}:${versionId}` : null
+export function useDatasetSessions(datasetId, fileId) {
+  const session = getScientistSession()
+  const scientistDataCache = session.datasets
+  const baseKey = datasetId && fileId ? `${datasetId}:${fileId}` : null
   const cachedSessions = baseKey ? scientistDataCache.datasetSessions.get(baseKey) : null
   const [sessions, setSessions] = useState(() => cachedSessions || [])
   const [isLoading, setIsLoading] = useState(() => Boolean(baseKey) && !cachedSessions)
   const [error, setError] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [loadedKey, setLoadedKey] = useState(() => cachedSessions ? `${baseKey}:0` : null)
-  const requestKey = datasetId && versionId ? `${datasetId}:${versionId}:${refreshKey}` : null
+  const requestKey = datasetId && fileId ? `${datasetId}:${fileId}:${refreshKey}` : null
 
   useEffect(() => {
-    if (!datasetId || !versionId) return
+    if (!datasetId || !fileId) return
     let cancelled = false
     const cached = refreshKey === 0 ? scientistDataCache.datasetSessions.get(baseKey) : null
     if (cached) {
@@ -175,12 +182,12 @@ export function useDatasetSessions(datasetId, versionId) {
     setIsLoading(true)
     setError(null)
     setSessions([])
-    scientistService.listDatasetSessions(datasetId, versionId)
+    scientistService.listDatasetSessions(datasetId, fileId)
       .then((data) => { if (!cancelled) { scientistDataCache.datasetSessions.set(baseKey, data); setSessions(data) } })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Failed to load sessions.')) })
       .finally(() => { if (!cancelled) { setLoadedKey(requestKey); setIsLoading(false) } })
     return () => { cancelled = true }
-  }, [baseKey, datasetId, versionId, refreshKey, requestKey])
+  }, [baseKey, datasetId, fileId, refreshKey, requestKey])
 
   return {
     sessions: loadedKey === requestKey ? sessions : [],
@@ -190,9 +197,11 @@ export function useDatasetSessions(datasetId, versionId) {
   }
 }
 
-export function useDatasetPreview(datasetId, versionId, { sessionId, page, pageSize, representation }) {
-  const previewKey = datasetId && versionId && sessionId
-    ? `${datasetId}:${versionId}:${sessionId}:${page}:${pageSize}:${representation}` : null
+export function useDatasetPreview(datasetId, fileId, { sessionId, page, pageSize, representation }) {
+  const session = getScientistSession()
+  const scientistDataCache = session.datasets
+  const previewKey = datasetId && fileId && sessionId
+    ? `${datasetId}:${fileId}:${sessionId}:${page}:${pageSize}:${representation}` : null
   const cachedPreview = previewKey ? scientistDataCache.datasetPreviews.get(previewKey) : null
   const [preview, setPreview] = useState(() => cachedPreview || null)
   const [isLoading, setIsLoading] = useState(() => Boolean(previewKey) && !cachedPreview)
@@ -200,7 +209,7 @@ export function useDatasetPreview(datasetId, versionId, { sessionId, page, pageS
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
-    if (!datasetId || !versionId || !sessionId) {
+    if (!datasetId || !fileId || !sessionId) {
       setPreview(null)
       return
     }
@@ -208,9 +217,9 @@ export function useDatasetPreview(datasetId, versionId, { sessionId, page, pageS
     if (cached) {
       setPreview(cached)
       setIsLoading(false)
-      prefetchDatasetPreview(datasetId, versionId, sessionId, page - 1, pageSize, representation)
+      prefetchDatasetPreview(session, datasetId, fileId, sessionId, page - 1, pageSize, representation)
       if (cached?.pagination?.has_more) {
-        prefetchDatasetPreview(datasetId, versionId, sessionId, page + 1, pageSize, representation)
+        prefetchDatasetPreview(session, datasetId, fileId, sessionId, page + 1, pageSize, representation)
       }
       return
     }
@@ -219,14 +228,14 @@ export function useDatasetPreview(datasetId, versionId, { sessionId, page, pageS
     setError(null)
     setPreview(null)
     scientistService
-      .getDatasetPreview(datasetId, versionId, { sessionId, page, pageSize, representation })
+      .getDatasetPreview(datasetId, fileId, { sessionId, page, pageSize, representation })
       .then((data) => {
         if (cancelled) return
         scientistDataCache.datasetPreviews.set(previewKey, data)
         setPreview(data)
-        prefetchDatasetPreview(datasetId, versionId, sessionId, page - 1, pageSize, representation)
+        prefetchDatasetPreview(session, datasetId, fileId, sessionId, page - 1, pageSize, representation)
         if (data?.pagination?.has_more) {
-          prefetchDatasetPreview(datasetId, versionId, sessionId, page + 1, pageSize, representation)
+          prefetchDatasetPreview(session, datasetId, fileId, sessionId, page + 1, pageSize, representation)
         }
       })
       .catch(
@@ -237,7 +246,7 @@ export function useDatasetPreview(datasetId, versionId, { sessionId, page, pageS
     return () => {
       cancelled = true
     }
-  }, [datasetId, versionId, sessionId, page, pageSize, representation, refreshKey, previewKey])
+  }, [datasetId, fileId, sessionId, page, pageSize, representation, refreshKey, previewKey])
 
   return { preview, isLoading, error, reload: () => setRefreshKey((value) => value + 1) }
 }

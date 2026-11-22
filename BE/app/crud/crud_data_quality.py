@@ -15,12 +15,12 @@ def insert_issues(db: Session, issues: list[dict[str, Any]]) -> None:
 
 def get_active_check(
     db: Session,
-    dataset_version_id: UUID,
+    dataset_file_id: UUID,
 ) -> DataQualityCheck | None:
     return (
         db.query(DataQualityCheck)
         .filter(
-            DataQualityCheck.dataset_version_id == dataset_version_id,
+            DataQualityCheck.dataset_file_id == dataset_file_id,
             DataQualityCheck.status.in_(("queued", "running")),
         )
         .first()
@@ -29,12 +29,12 @@ def get_active_check(
 
 def get_latest_completed_check(
     db: Session,
-    dataset_version_id: UUID,
+    dataset_file_id: UUID,
 ) -> DataQualityCheck | None:
     return (
         db.query(DataQualityCheck)
         .filter(
-            DataQualityCheck.dataset_version_id == dataset_version_id,
+            DataQualityCheck.dataset_file_id == dataset_file_id,
             DataQualityCheck.status == "completed",
             DataQualityCheck.report.is_not(None),
         )

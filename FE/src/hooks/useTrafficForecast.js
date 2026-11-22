@@ -285,7 +285,7 @@ export function useOneMinuteVehicleAggregation(datasetId) {
  * POST /api/feature-engineering/training hook for the Training page.
  * Automatically ensures 60s temporal aggregation exists if initial sample_count is 0.
  */
-export function useTrainingFeatureEngineering(datasetId, versionId) {
+export function useTrainingFeatureEngineering(datasetId, fileId) {
   const [featureData, setFeatureData] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -294,13 +294,13 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
 
   useEffect(() => {
     const requestId = ++requestRef.current
-    const savedRoi = trainingFeatureState.read(datasetId, versionId)
+    const savedRoi = trainingFeatureState.read(datasetId, fileId)
     setFeatureData(null)
     setRoiInput(savedRoi || 'MAIN_ROI')
     setIsLoading(Boolean(savedRoi))
     setError(null)
     if (savedRoi) {
-      trafficForecastService.prepareTrainingFeatures(versionId, savedRoi)
+      trafficForecastService.prepareTrainingFeatures(fileId, savedRoi)
         .then((data) => {
           if (requestId === requestRef.current) setFeatureData(data)
         })
@@ -314,17 +314,17 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
         })
     }
     return () => { requestRef.current += 1 }
-  }, [datasetId, versionId])
+  }, [datasetId, fileId])
 
   const generateTrainingFeatures = useCallback(
     async (roiIdentifier = 'MAIN_ROI') => {
-      if (!versionId) return null
+      if (!fileId) return null
       const requestId = ++requestRef.current
       setIsLoading(true)
       setError(null)
 
       try {
-        let data = await trafficForecastService.prepareTrainingFeatures(versionId, roiIdentifier)
+        let data = await trafficForecastService.prepareTrainingFeatures(fileId, roiIdentifier)
         if (requestId !== requestRef.current) return null
 
         // If no samples were returned because 60s aggregation hasn't been generated yet,
@@ -353,13 +353,13 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
               throw new Error(currentJob.error_message || 'Aggregation job failed.')
             }
             if (currentJob.status === 'completed') {
-              data = await trafficForecastService.prepareTrainingFeatures(versionId, roiIdentifier)
+              data = await trafficForecastService.prepareTrainingFeatures(fileId, roiIdentifier)
             }
           }
         }
 
         if (requestId !== requestRef.current) return null
-        trainingFeatureState.save(datasetId, versionId, roiIdentifier)
+        trainingFeatureState.save(datasetId, fileId, roiIdentifier)
         setRoiInput(roiIdentifier)
         setFeatureData(data)
         return data
@@ -371,7 +371,7 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
         if (requestId === requestRef.current) setIsLoading(false)
       }
     },
-    [datasetId, versionId]
+    [datasetId, fileId]
   )
 
   return {
@@ -387,9 +387,9 @@ export function useTrainingFeatureEngineering(datasetId, versionId) {
 /**
  * POST /api/train-test-split/training hook for Step 2 (70/30 Chronological Split).
  */
-export function useTrainTestSplit(datasetId, versionId) {
+export function useTrainTestSplit(datasetId, fileId) {
   const [splitData, setSplitData] = useState(() =>
-    trainingFeatureState.readSplit(datasetId, versionId)
+    trainingFeatureState.readSplit(datasetId, fileId)
   )
   const [isSplitting, setIsSplitting] = useState(false)
   const [splitError, setSplitError] = useState(null)
@@ -397,10 +397,10 @@ export function useTrainTestSplit(datasetId, versionId) {
 
   useEffect(() => {
     requestRef.current += 1
-    setSplitData(trainingFeatureState.readSplit(datasetId, versionId))
+    setSplitData(trainingFeatureState.readSplit(datasetId, fileId))
     setIsSplitting(false)
     setSplitError(null)
-  }, [datasetId, versionId])
+  }, [datasetId, fileId])
 
   const runTrainTestSplit = useCallback(
     async (featureResponse, { trainRatio = 0.7, splitStrategy = 'chronological' } = {}) => {
@@ -418,7 +418,7 @@ export function useTrainTestSplit(datasetId, versionId) {
         })
         if (requestId !== requestRef.current) return null
         setSplitData(result)
-        trainingFeatureState.saveSplit(datasetId, versionId, result)
+        trainingFeatureState.saveSplit(datasetId, fileId, result)
         return result
       } catch (err) {
         if (requestId !== requestRef.current) return null
@@ -430,7 +430,7 @@ export function useTrainTestSplit(datasetId, versionId) {
         if (requestId === requestRef.current) setIsSplitting(false)
       }
     },
-    [datasetId, versionId]
+    [datasetId, fileId]
   )
 
   return {
@@ -450,7 +450,7 @@ export function useTrainTestSplit(datasetId, versionId) {
  * - GET  /api/model-training/experiments/{experiment_id}
  * - POST /api/model-training/experiments/compare
  */
-export function useModelTrainingExperiments(versionId) {
+export function useModelTrainingExperiments(fileId) {
   const [experiments, setExperiments] = useState([])
   const [isLoadingList, setIsLoadingList] = useState(false)
   const [listError, setListError] = useState(null)
@@ -471,7 +471,7 @@ export function useModelTrainingExperiments(versionId) {
   const detailReqRef = useRef(0)
 
   const reloadExperiments = useCallback(async () => {
-    if (!versionId) return []
+    if (!fileId) return []
     const reqId = ++listReqRef.current
     setIsLoadingList(true)
     setListError(null)
@@ -493,7 +493,7 @@ export function useModelTrainingExperiments(versionId) {
     } finally {
       if (reqId === listReqRef.current) setIsLoadingList(false)
     }
-  }, [versionId])
+  }, [fileId])
 
   useEffect(() => {
     setExperiments([])
@@ -503,10 +503,10 @@ export function useModelTrainingExperiments(versionId) {
     setDetailError(null)
     setComparisonData(null)
     setCompareError(null)
-    if (versionId) {
+    if (fileId) {
       reloadExperiments()
     }
-  }, [versionId, reloadExperiments])
+  }, [fileId, reloadExperiments])
 
   const runExperiment = useCallback(
     async (params) => {
@@ -602,7 +602,7 @@ export function useModelTrainingExperiments(versionId) {
  * POST /api/feature-engineering/prediction hook for the Prediction page.
  * Extracts the latest 5 continuous lag features (X) and target forecast timestamps (+1, +3, +5 min).
  */
-export function usePredictionFeatureEngineering(datasetId, versionId) {
+export function usePredictionFeatureEngineering(datasetId, fileId) {
   const [featureData, setFeatureData] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -611,14 +611,14 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
 
   useEffect(() => {
     const requestId = ++requestRef.current
-    const savedRoi = trainingFeatureState.readPredictionRoi(datasetId, versionId)
+    const savedRoi = trainingFeatureState.readPredictionRoi(datasetId, fileId)
     setFeatureData(null)
     setRoiInput(savedRoi || 'MAIN_ROI')
     setIsLoading(Boolean(savedRoi))
     setError(null)
-    if (savedRoi && versionId) {
+    if (savedRoi && fileId) {
       trafficForecastService
-        .preparePredictionFeatures(versionId, savedRoi)
+        .preparePredictionFeatures(fileId, savedRoi)
         .then((data) => {
           if (requestId === requestRef.current) setFeatureData(data)
         })
@@ -639,11 +639,11 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
     return () => {
       requestRef.current += 1
     }
-  }, [datasetId, versionId])
+  }, [datasetId, fileId])
 
   const generatePredictionFeatures = useCallback(
     async (roiIdentifier = 'MAIN_ROI') => {
-      if (!versionId) return null
+      if (!fileId) return null
       const requestId = ++requestRef.current
       setIsLoading(true)
       setError(null)
@@ -651,7 +651,7 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
       try {
         let data
         try {
-          data = await trafficForecastService.preparePredictionFeatures(versionId, roiIdentifier)
+          data = await trafficForecastService.preparePredictionFeatures(fileId, roiIdentifier)
         } catch (initialErr) {
           // If 60s aggregation hasn't been generated yet, automatically run aggregation and retry
           if (datasetId) {
@@ -682,7 +682,7 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
               }
               if (currentJob.status === 'completed') {
                 data = await trafficForecastService.preparePredictionFeatures(
-                  versionId,
+                  fileId,
                   roiIdentifier
                 )
               }
@@ -695,7 +695,7 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
         }
 
         if (requestId !== requestRef.current) return null
-        trainingFeatureState.savePredictionRoi(datasetId, versionId, roiIdentifier)
+        trainingFeatureState.savePredictionRoi(datasetId, fileId, roiIdentifier)
         setRoiInput(roiIdentifier)
         setFeatureData(data)
         return data
@@ -712,7 +712,7 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
         if (requestId === requestRef.current) setIsLoading(false)
       }
     },
-    [datasetId, versionId]
+    [datasetId, fileId]
   )
 
   return {
@@ -728,9 +728,9 @@ export function usePredictionFeatureEngineering(datasetId, versionId) {
 /**
  * POST /api/model-training/predict hook for forecasting +1, +3, +5 minutes.
  */
-export function useTrafficPrediction(datasetId, versionId) {
+export function useTrafficPrediction(datasetId, fileId) {
   const [forecastData, setForecastData] = useState(() =>
-    trainingFeatureState.readForecast(datasetId, versionId)
+    trainingFeatureState.readForecast(datasetId, fileId)
   )
   const [isPredicting, setIsPredicting] = useState(false)
   const [predictError, setPredictError] = useState(null)
@@ -739,17 +739,17 @@ export function useTrafficPrediction(datasetId, versionId) {
 
   useEffect(() => {
     requestRef.current += 1
-    setForecastData(trainingFeatureState.readForecast(datasetId, versionId))
+    setForecastData(trainingFeatureState.readForecast(datasetId, fileId))
     setIsPredicting(false)
     setPredictError(null)
     setPredictErrorCode(null)
-  }, [datasetId, versionId])
+  }, [datasetId, fileId])
 
   const runTrafficPrediction = useCallback(
-    async ({ datasetVersionId, splitId, experimentId } = {}) => {
-      const targetVersionId = datasetVersionId || versionId
-      if (!targetVersionId && !experimentId) {
-        setPredictError('Cần cung cấp dataset_version_id hoặc experiment_id để dự báo.')
+    async ({ datasetFileId, splitId, experimentId } = {}) => {
+      const targetFileId = datasetFileId || fileId
+      if (!targetFileId && !experimentId) {
+        setPredictError('Cần cung cấp dataset_file_id hoặc experiment_id để dự báo.')
         return null
       }
       const requestId = ++requestRef.current
@@ -758,13 +758,13 @@ export function useTrafficPrediction(datasetId, versionId) {
       setPredictErrorCode(null)
       try {
         const result = await trafficForecastService.predictTrafficFlow({
-          datasetVersionId: targetVersionId,
+          datasetFileId: targetFileId,
           splitId: splitId || undefined,
           experimentId: experimentId || undefined,
         })
         if (requestId !== requestRef.current) return null
         setForecastData(result)
-        trainingFeatureState.saveForecast(datasetId, versionId, result)
+        trainingFeatureState.saveForecast(datasetId, fileId, result)
         return result
       } catch (err) {
         if (requestId !== requestRef.current) return null
@@ -782,7 +782,7 @@ export function useTrafficPrediction(datasetId, versionId) {
         if (requestId === requestRef.current) setIsPredicting(false)
       }
     },
-    [datasetId, versionId]
+    [datasetId, fileId]
   )
 
   return {
@@ -799,7 +799,7 @@ export function useTrafficPrediction(datasetId, versionId) {
 /**
  * POST /api/ai/assistant hook for the floating Gemini AI Assistant chat box.
  */
-export function useAiAssistant(defaultVersionId, defaultGroupId, defaultAggregationId) {
+export function useAiAssistant(defaultFileId, defaultGroupId, defaultAggregationId) {
   const lastGroupIdRef = useRef(defaultGroupId)
   useEffect(() => {
     if (defaultGroupId) lastGroupIdRef.current = defaultGroupId
@@ -831,7 +831,7 @@ export function useAiAssistant(defaultVersionId, defaultGroupId, defaultAggregat
       predictionId,
       forecastId,
       modelId,
-      datasetVersionId,
+      datasetFileId,
       groupId,
       aggregationId,
       userDisplayLabel,
@@ -877,9 +877,9 @@ export function useAiAssistant(defaultVersionId, defaultGroupId, defaultAggregat
           predictionId,
           forecastId,
           modelId,
-          datasetVersionId: datasetVersionId ?? defaultVersionId,
+          datasetFileId: datasetFileId ?? defaultFileId,
           groupId: groupId ?? defaultGroupId ??
-            ((datasetVersionId ?? defaultVersionId) ? undefined : lastGroupIdRef.current),
+            ((datasetFileId ?? defaultFileId) ? undefined : lastGroupIdRef.current),
           aggregationId: aggregationId ?? defaultAggregationId,
         })
         const aiMsg = {
@@ -913,7 +913,7 @@ export function useAiAssistant(defaultVersionId, defaultGroupId, defaultAggregat
         setIsSending(false)
       }
     },
-    [defaultVersionId, defaultGroupId, defaultAggregationId]
+    [defaultFileId, defaultGroupId, defaultAggregationId]
   )
 
   const clearMessages = useCallback(() => {

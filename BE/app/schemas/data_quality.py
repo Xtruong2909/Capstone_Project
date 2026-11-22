@@ -53,16 +53,16 @@ class DataQualityCheckRequest(BaseModel):
         extra="forbid",
         json_schema_extra={
             "examples": [
-                {"dataset_version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+                {"dataset_file_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
                  "outlier_rules": []},
-                {"dataset_version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+                {"dataset_file_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
                  "session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c",
                  "outlier_rules": []},
             ]
         },
     )
 
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     session_id: UUID | None = None
     outlier_rules: list[DataQualityOutlierRule] = Field(default_factory=list, max_length=4)
 
@@ -76,7 +76,7 @@ class DataQualityCheckRequest(BaseModel):
 class DataQualityCheckStatus(BaseModel):
     check_id: UUID
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     session_id: UUID | None = None
     status: QualityCheckStatus
     progress_percent: int = Field(ge=0, le=100)
@@ -133,7 +133,7 @@ class DataQualitySessionSummary(BaseModel):
 class DataQualityReport(BaseModel):
     check_id: UUID
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     status: Literal["completed"]
     validation_status: Literal["PASS", "WARNING", "FAIL"] = "PASS"
     session_id: UUID | None = None

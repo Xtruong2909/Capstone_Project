@@ -17,7 +17,7 @@ from app.core.deps import get_current_user
 from app.crud import crud_sharing
 from app.database.database import SessionLocal, engine, get_db
 from app.main import app
-from app.models.dataset import DatasetVersion
+from app.models.dataset import DatasetFile
 from app.models.lag_feature import LagFeatureSplit
 from app.models.model_training import ModelTrainingExperiment
 from app.models.prediction import PredictionRun
@@ -34,7 +34,7 @@ def user(role: str = "data_scientist") -> SimpleNamespace:
 def item(kind: str = "EXPERIMENT", sections: list[str] | None = None) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(), share_id=uuid4(), resource_type=kind, resource_id=uuid4(),
-        resource_version_id=None, visible_sections=sections or ["experiment_summary"],
+        resource_file_id=None, visible_sections=sections or ["experiment_summary"],
         created_at=NOW, updated_at=NOW,
     )
 
@@ -340,19 +340,19 @@ def test_resource_not_found_and_duplicate_item() -> None:
     assert error.value.detail["code"] == "DUPLICATE_SHARE_ITEM"
 
 
-def test_dataset_share_pins_approved_version() -> None:
+def test_dataset_share_pins_approved_file() -> None:
     actor = user()
     selected = {"resource_type": "DATASET", "resource_id": uuid4(),
                 "visible_sections": ["metadata"]}
     dataset = SimpleNamespace(id=selected["resource_id"])
-    version = SimpleNamespace(id=uuid4(), dataset_id=dataset.id, approval_status="APPROVED")
+    dataset_file = SimpleNamespace(id=uuid4(), dataset_id=dataset.id, approval_status="APPROVED")
     with (
         patch.object(crud_sharing, "get_dataset", return_value=dataset),
-        patch.object(crud_sharing, "get_latest_approved_version", return_value=version),
+        patch.object(crud_sharing, "get_latest_approved_file", return_value=dataset_file),
         patch.object(sharing_service, "check_dataset_access"),
     ):
         sharing_service.validate_and_check_items(MagicMock(), [selected], actor)
-    assert selected["resource_version_id"] == version.id
+    assert selected["resource_file_id"] == dataset_file.id
 
 
 def test_experiment_cannot_be_shared_by_another_scientist() -> None:
@@ -428,7 +428,7 @@ def test_business_user_cannot_bypass_share_with_internal_read_apis(api) -> None:
     actor.role_id = "business_user"
     assert client.get(f"/api/model-training/experiments/{uuid4()}").status_code == 403
     assert client.get("/api/v1/datasets/approved").status_code == 403
-    assert client.get(f"/api/v1/datasets/{uuid4()}/versions").status_code == 403
+    assert client.get(f"/api/v1/datasets/{uuid4()}/files").status_code == 403
 
 
 def test_postgres_share_round_trip_with_rollback() -> None:
@@ -472,8 +472,8 @@ def test_postgres_reads_each_saved_resource_without_exposing_paths() -> None:
     """Read real existing results, including large sections, through the BU allowlists."""
     try:
         with SessionLocal() as db:
-            version = db.scalars(select(DatasetVersion).where(
-                DatasetVersion.approval_status == "APPROVED",
+            dataset_file = db.scalars(select(DatasetFile).where(
+                DatasetFile.approval_status == "APPROVED",
             ).limit(1)).first()
             split = db.scalars(select(LagFeatureSplit).limit(1)).first()
             experiment = db.scalars(select(ModelTrainingExperiment).where(
@@ -482,10 +482,10 @@ def test_postgres_reads_each_saved_resource_without_exposing_paths() -> None:
             prediction = db.scalars(select(PredictionRun).where(
                 PredictionRun.status == "COMPLETED",
             ).limit(1)).first()
-            if not all((version, split, experiment, prediction)):
+            if not all((dataset_file, split, experiment, prediction)):
                 pytest.skip("Complete real results not available for all four resource types")
             examples = [
-                ("DATASET", version.dataset_id, version.id,
+                ("DATASET", dataset_file.dataset_id, dataset_file.id,
                  ["metadata", "statistics", "sessions", "traffic_flow_chart"]),
                 ("TRAIN_TEST", split.id, None,
                  ["split_summary", "train_test_counts", "session_distribution", "split_configuration"]),
@@ -496,10 +496,10 @@ def test_postgres_reads_each_saved_resource_without_exposing_paths() -> None:
                  ["forecast_summary", "model_information", "lag_features",
                   "forecast_results", "forecast_chart"]),
             ]
-            for kind, resource_id, version_id, sections in examples:
+            for kind, resource_id, file_id, sections in examples:
                 selected = item(kind, sections)
                 selected.resource_id = resource_id
-                selected.resource_version_id = version_id
+                selected.resource_file_id = file_id
                 result = sharing_service._ASSEMBLERS[kind](db, selected)
                 assert set(result) == set(sections)
                 assert "file_path" not in str(result)

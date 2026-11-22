@@ -78,14 +78,14 @@ def _require_resource(db: Session, user: User, item: dict[str, Any]) -> None:
             check_dataset_access(user, dataset.id, db)
         except HTTPException as exc:
             raise _error("SHARE_ACCESS_DENIED", "Không có quyền chia sẻ Dataset", 403) from exc
-        pinned_id = item.get("resource_version_id")
-        version = (
-            repo.get_version(db, pinned_id) if pinned_id else
-            repo.get_latest_approved_version(db, dataset.id)
+        pinned_id = item.get("resource_file_id")
+        dataset_file = (
+            repo.get_file(db, pinned_id) if pinned_id else
+            repo.get_latest_approved_file(db, dataset.id)
         )
-        if version is None or version.dataset_id != dataset.id or version.approval_status != "APPROVED":
-            raise _error("RESOURCE_NOT_SHAREABLE", "Dataset chưa có phiên bản đã duyệt", 422)
-        item["resource_version_id"] = version.id
+        if dataset_file is None or dataset_file.dataset_id != dataset.id or dataset_file.approval_status != "APPROVED":
+            raise _error("RESOURCE_NOT_SHAREABLE", "Dataset chưa có dữ liệu đã duyệt", 422)
+        item["resource_file_id"] = dataset_file.id
     elif kind == "TRAIN_TEST":
         split = repo.get_split(db, resource_id)
         if split is None:
@@ -138,7 +138,7 @@ def _require_resource(db: Session, user: User, item: dict[str, Any]) -> None:
 
 
 def validate_and_check_items(db: Session, items_data: list[dict[str, Any]], user: User) -> None:
-    """Validate every resource before either transaction; pin the approved Dataset version."""
+    """Validate every resource before either transaction; pin the approved Dataset dataset_file."""
     seen: set[tuple[str, UUID]] = set()
     for item in items_data:
         kind = item["resource_type"]
@@ -169,7 +169,7 @@ def require_published_share(db: Session, share_id: UUID) -> SharedReport:
             {
                 "resource_type": item.resource_type,
                 "resource_id": item.resource_id,
-                "resource_version_id": item.resource_version_id,
+                "resource_file_id": item.resource_file_id,
                 "visible_sections": item.visible_sections,
             }
             for item in share.items
@@ -227,7 +227,7 @@ def available_resources(
 
 
 def _shareable_group_datasets(db: Session, user: User, group_id: UUID) -> list[dict[str, Any]]:
-    """Use every approved dataset version visible to this scientist in a batch."""
+    """Use every approved dataset visible to this scientist in a batch."""
     result: list[dict[str, Any]] = []
     for dataset in repo.list_group_datasets(db, group_id):
         item = {
@@ -256,7 +256,7 @@ def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
             "name": group.name or f"Batch {str(group.id)[:8]}",
             "dataset_count": len(datasets),
             "session_count": sum(_dataset_session_page(
-                db, item["resource_id"], item["resource_version_id"], 1, 1,
+                db, item["resource_id"], item["resource_file_id"], 1, 1,
             )[0] for item in datasets),
             "shared_dataset_count": len(active),
             "is_shared": len(active) == len(datasets),
@@ -385,12 +385,12 @@ def count_unshared_resources(db: Session, user: User) -> int:
 
 
 def _dataset_session_page(
-    db: Session, dataset_id: UUID, version_id: UUID, page: int, page_size: int,
+    db: Session, dataset_id: UUID, file_id: UUID, page: int, page_size: int,
 ) -> tuple[int, list[dict[str, Any]]]:
     dataset = repo.get_dataset(db, dataset_id)
     if dataset is not None and dataset.drone_id and dataset.recording_date:
         result = list_recording_sessions(
-            db, dataset_id, version_id, page=page, page_size=page_size,
+            db, dataset_id, file_id, page=page, page_size=page_size,
         )
         return result.total, [{
             "session_id": str(row.session_id),
@@ -403,7 +403,7 @@ def _dataset_session_page(
                 row.scheduled_end, recording_start_from_filename(row.original_filename),
             ).isoformat(),
         } for row in result.sessions]
-    total, rows = repo.page_dataset_sessions(db, version_id, page, page_size)
+    total, rows = repo.page_dataset_sessions(db, file_id, page, page_size)
     return total, [{
         "session_id": str(row.id),
         "session_name": row.original_filename,
@@ -458,14 +458,14 @@ def page_item_section(
     if section not in item.visible_sections or section not in allowed:
         raise _error("SHARE_ACCESS_DENIED", "Nội dung này chưa được chia sẻ", 403)
     if item.resource_type == "DATASET":
-        if item.resource_version_id is None:
+        if item.resource_file_id is None:
             raise _not_found()
         if section == "sessions":
             total, data = _dataset_session_page(
-                db, item.resource_id, item.resource_version_id, page, page_size,
+                db, item.resource_id, item.resource_file_id, page, page_size,
             )
         else:
-            total, rows = repo.page_traffic_bins(db, item.resource_version_id, page, page_size)
+            total, rows = repo.page_traffic_bins(db, item.resource_file_id, page, page_size)
             data = [_traffic_row(row) for row in rows]
     elif item.resource_type == "EXPERIMENT":
         total, rows = repo.page_experiment_predictions(db, item.resource_id, page, page_size)
@@ -493,20 +493,20 @@ def page_item_section(
 
 def _dataset_sections(db: Session, item: SharedReportItem) -> dict[str, Any]:
     dataset = repo.get_dataset(db, item.resource_id)
-    version = repo.get_version(db, item.resource_version_id)
+    dataset_file = repo.get_file(db, item.resource_file_id)
     result: dict[str, Any] = {}
     if "metadata" in item.visible_sections:
         result["metadata"] = {
             "dataset_id": str(dataset.id), "dataset_name": dataset.name,
-            "dataset_version_id": str(version.id), "version_tag": version.version_tag,
+            "dataset_file_id": str(dataset_file.id),
             "source": dataset.source, "recording_date": (
                 dataset.recording_date.isoformat() if dataset.recording_date else None
             ),
         }
     if "statistics" in item.visible_sections:
-        session_count = _dataset_session_page(db, dataset.id, version.id, 1, 1)[0]
+        session_count = _dataset_session_page(db, dataset.id, dataset_file.id, 1, 1)[0]
         result["statistics"] = {
-            "dataset_version_id": str(version.id), "total_records": version.total_records,
+            "dataset_file_id": str(dataset_file.id), "total_records": dataset_file.total_records,
             "session_count": session_count,
         }
     for section in ("sessions", "traffic_flow_chart"):
@@ -640,7 +640,7 @@ def assemble_shared_result_detail(db: Session, share: SharedReport) -> dict[str,
                 "resource_id": item.resource_id,
                 "name": (managed_resource_name(db, item, f"Thí nghiệm {str(item.resource_id)[:8]}")
                          if item.resource_type == "EXPERIMENT" else None),
-                "resource_version_id": item.resource_version_id,
+                "resource_file_id": item.resource_file_id,
                 "visible_sections": item.visible_sections,
                 "data": _ASSEMBLERS[item.resource_type](db, item),
             }

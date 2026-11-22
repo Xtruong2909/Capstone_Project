@@ -177,7 +177,7 @@ def test_exported_normalized_parquet_preview_does_not_warn_about_missing_rule(
     monkeypatch,
 ) -> None:
     dataset_id = uuid4()
-    version_id = uuid4()
+    file_id = uuid4()
     parquet_path = tmp_path / "normalized.parquet"
     pq.write_table(
         pa.table(
@@ -190,8 +190,8 @@ def test_exported_normalized_parquet_preview_does_not_warn_about_missing_rule(
         ),
         parquet_path,
     )
-    version = SimpleNamespace(
-        id=version_id,
+    dataset_file = SimpleNamespace(
+        id=file_id,
         file_format="PARQUET",
         original_filename="normalized.parquet",
         file_size_bytes=parquet_path.stat().st_size,
@@ -212,19 +212,19 @@ def test_exported_normalized_parquet_preview_does_not_warn_about_missing_rule(
 
     monkeypatch.setattr(
         dataset_preview_service.crud_dataset,
-        "get_dataset_version",
-        lambda db, requested_dataset_id, requested_version_id: (dataset, version),
+        "get_dataset_file",
+        lambda db, requested_dataset_id, requested_file_id: (dataset, dataset_file),
     )
     monkeypatch.setattr(
         dataset_preview_service,
         "_resolve_file_path",
-        lambda requested_version: parquet_path,
+        lambda requested_file: parquet_path,
     )
 
     preview = dataset_preview_service.get_dataset_preview(
         FakeDb(),
         dataset_id=dataset_id,
-        dataset_version_id=version_id,
+        dataset_file_id=file_id,
         page=1,
         page_size=20,
         representation="normalized",

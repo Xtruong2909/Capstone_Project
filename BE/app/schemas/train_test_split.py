@@ -40,7 +40,7 @@ class SplitFeatureConfiguration(FeatureConfiguration):
 
 class TrainTestSplitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str = Field(default="MAIN_ROI", min_length=1, max_length=64)
     recording_session_id: str | None = Field(
         default=None, min_length=1, max_length=255,
@@ -76,7 +76,7 @@ class TrainTestSplitRequest(BaseModel):
 
 class TrainTestSplitResponse(BaseModel):
     split_id: UUID | None = None
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str
     recording_session_id: str
     train_ratio: float

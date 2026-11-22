@@ -8,14 +8,14 @@ from app.models.traffic import TrafficTimeSeries
 
 
 def read_feature_series(
-    db: Session, *, version_id: UUID, roi_identifier: str,
+    db: Session, *, file_id: UUID, roi_identifier: str,
     recording_start: datetime | None, latest_only: bool = False,
 ) -> list[TrafficTimeSeries]:
     query = traffic_time_query(
         db, recording_start=recording_start, start_time=None, end_time=None,
         descending=latest_only,
     ).filter(
-        TrafficTimeSeries.dataset_version_id == version_id,
+        TrafficTimeSeries.dataset_file_id == file_id,
         TrafficTimeSeries.roi_identifier == roi_identifier,
         TrafficTimeSeries.aggregation_interval == 60,
     )

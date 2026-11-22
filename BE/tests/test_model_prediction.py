@@ -22,7 +22,7 @@ from app.services.feature_engineering_service import build_prediction_features
 
 def make_history() -> tuple[TrainingSplit, list[TrafficObservation]]:
     start = datetime(2018, 10, 24, 6, 30, tzinfo=UTC)
-    version_id = uuid4()
+    file_id = uuid4()
 
     def flow(timestamp: datetime) -> float:
         minute = int((timestamp - start).total_seconds() // 60)
@@ -32,14 +32,14 @@ def make_history() -> tuple[TrainingSplit, list[TrafficObservation]]:
     x = [[flow(origin - timedelta(minutes=i)) for i in range(5)] for origin in origins]
     y = [[flow(origin + timedelta(minutes=h)) for h in (1, 3, 5)] for origin in origins]
     split = TrainingSplit(
-        dataset_version_id=version_id, roi_identifier="MAIN_ROI",
-        recording_session_id=str(version_id),
+        dataset_file_id=file_id, roi_identifier="MAIN_ROI",
+        recording_session_id=str(file_id),
         X_train=x[:7], y_train=y[:7], X_test=x[7:], y_test=y[7:],
         train_times=origins[:7], test_times=origins[7:],
     )
     observations = [TrafficObservation(
-        dataset_version_id=version_id, roi_identifier="MAIN_ROI",
-        recording_session_id=str(version_id), time_bucket=start + timedelta(minutes=i),
+        dataset_file_id=file_id, roi_identifier="MAIN_ROI",
+        recording_session_id=str(file_id), time_bucket=start + timedelta(minutes=i),
         traffic_flow=flow(start + timedelta(minutes=i)),
     ) for i in range(19)]
     return split, observations
@@ -50,7 +50,7 @@ def make_experiment(
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(), number=number, name=f"Ex-{number:03d}", split_id=split_id,
-        configuration={"dataset_version_id": str(split.dataset_version_id),
+        configuration={"dataset_file_id": str(split.dataset_file_id),
                        "model": "RANDOM_FOREST", "forecast_horizons": [1, 3, 5],
                        "hyperparameters": parameters.model_dump()},
         evaluation={"evaluation_mode": "exploratory",
@@ -118,7 +118,7 @@ def setup_prediction(
     artifact = tmp_path / "final.joblib"
     joblib.dump(models, artifact)
     final = SimpleNamespace(
-        id=uuid4(), experiment_id=candidate.id, dataset_version_id=split.dataset_version_id,
+        id=uuid4(), experiment_id=candidate.id, dataset_file_id=split.dataset_file_id,
         split_id=split_id, roi_identifier=split.roi_identifier,
         recording_session_id=split.recording_session_id,
         artifact_path=artifact.name, artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
@@ -128,18 +128,18 @@ def setup_prediction(
     )
     saved = MagicMock()
     monkeypatch.setenv("FINAL_MODEL_DIR", str(tmp_path))
-    monkeypatch.setattr(service, "require_version", lambda db, version, user, training: None)
-    monkeypatch.setattr(service.repository, "list_completed_forests", lambda db, version: [candidate])
+    monkeypatch.setattr(service, "require_file", lambda db, dataset_file, user, training: None)
+    monkeypatch.setattr(service.repository, "list_completed_forests", lambda db, dataset_file: [candidate])
     monkeypatch.setattr(service.repository, "get_validation_result",
                         lambda db, key: validation(3, 4))
     monkeypatch.setattr(service.repository, "get_final_model", lambda db, key: final)
     monkeypatch.setattr(service.repository, "get_split", lambda db, key: SimpleNamespace(
-        dataset_version_id=split.dataset_version_id, payload=split.model_dump(mode="json"),
+        dataset_file_id=split.dataset_file_id, payload=split.model_dump(mode="json"),
     ))
     monkeypatch.setattr(service.repository, "save_final_forecasts", saved)
     monkeypatch.setattr(service, "prepare_features",
                         lambda db, request, user, prediction: features)
-    request = ModelPredictionRequest(dataset_version_id=split.dataset_version_id, split_id=split_id)
+    request = ModelPredictionRequest(dataset_file_id=split.dataset_file_id, split_id=split_id)
     return request, candidate, final, features, saved
 
 
@@ -150,7 +150,7 @@ def test_predict_loads_existing_model_and_persists_three_forecasts(
     monkeypatch.setattr(RandomForestRegressor, "fit", lambda *args, **kwargs: pytest.fail(
         "Predict must never refit a model",
     ))
-    result = service.predict_experiment(MagicMock(), request, SimpleNamespace())
+    result = service.predict_experiment(MagicMock(), request, SimpleNamespace(role_id="admin"))
     assert result.experiment_id == candidate.id
     assert result.model_id == final.id
     assert result.source_experiment_official_evaluation_eligible is False
@@ -184,7 +184,7 @@ def test_missing_final_model_returns_clear_error(
     request, _, _, _, _ = setup_prediction(monkeypatch, tmp_path)
     monkeypatch.setattr(service.repository, "get_final_model", lambda db, key: None)
     with pytest.raises(HTTPException) as error:
-        service.predict_experiment(MagicMock(), request, SimpleNamespace())
+        service.predict_experiment(MagicMock(), request, SimpleNamespace(role_id="admin"))
     assert error.value.status_code == 409
     assert error.value.detail["code"] == "FINAL_MODEL_NOT_AVAILABLE"
 
@@ -202,7 +202,7 @@ def test_prediction_rejects_artifact_with_changed_checksum(
     request, _, final, _, saved = setup_prediction(monkeypatch, tmp_path)
     final.artifact_sha256 = "0" * 64
     with pytest.raises(HTTPException, match="checksum"):
-        service.predict_experiment(MagicMock(), request, SimpleNamespace())
+        service.predict_experiment(MagicMock(), request, SimpleNamespace(role_id="admin"))
     saved.assert_not_called()
 
 

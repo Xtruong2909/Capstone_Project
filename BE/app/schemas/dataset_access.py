@@ -78,7 +78,6 @@ class ApprovedDatasetResponse(BaseModel):
     location_name: str
     recording_date: date | None = None
     drone_id: str | None = None
-    version_id: UUID
-    version_tag: str
+    file_id: UUID
     approval_status: str
     approved_by: UUID | None

@@ -8,7 +8,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 class FeatureRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     # Hide the optional selector in Swagger while preserving existing clients.
     roi_identifier: SkipJsonSchema[str] = Field(default="MAIN_ROI", min_length=1, max_length=64)
 
@@ -22,7 +22,7 @@ class FeatureConfiguration(BaseModel):
 
 
 class TrafficObservation(BaseModel):
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str = "MAIN_ROI"
     recording_session_id: str
     time_bucket: datetime
@@ -51,7 +51,7 @@ class TargetTimes(BaseModel):
 
 
 class TrainingSample(BaseModel):
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str
     recording_session_id: str
     history_start_time: datetime
@@ -64,7 +64,7 @@ class TrainingSample(BaseModel):
 
 
 class TrainingFeatureResponse(BaseModel):
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str
     configuration: FeatureConfiguration = Field(default_factory=FeatureConfiguration)
     feature_order: list[str] = Field(default_factory=lambda: [f"lag_{i}" for i in range(1, 6)])
@@ -74,7 +74,7 @@ class TrainingFeatureResponse(BaseModel):
 
 
 class PredictionFeatureResponse(BaseModel):
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str
     recording_session_id: str
     configuration: FeatureConfiguration = Field(default_factory=FeatureConfiguration)

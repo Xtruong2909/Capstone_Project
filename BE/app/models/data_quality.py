@@ -21,8 +21,8 @@ class DataQualityCheck(Base):
     __tablename__ = "data_quality_checks"
     __table_args__ = (
         Index(
-            "uq_data_quality_active_version",
-            "dataset_version_id",
+            "uq_data_quality_active_file",
+            "dataset_file_id",
             unique=True,
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
@@ -35,9 +35,9 @@ class DataQualityCheck(Base):
         nullable=False,
         index=True,
     )
-    dataset_version_id = Column(
+    dataset_file_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        ForeignKey("dataset_files.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

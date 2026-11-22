@@ -25,10 +25,10 @@ def _client() -> TestClient:
 def test_run_returns_processing_with_all_session_ids(monkeypatch) -> None:
     group_id = uuid4()
     dataset_id = uuid4()
-    version_id = uuid4()
+    file_id = uuid4()
     session_ids = [uuid4() for _ in range(5)]
     job = SimpleNamespace(
-        id=uuid4(), dataset_id=dataset_id, dataset_version_id=version_id,
+        id=uuid4(), dataset_id=dataset_id, dataset_file_id=file_id,
         job_metadata={"group_id": str(group_id)}, aggregation_interval=60,
         status="PROCESSING", total_sessions=5, completed_sessions=0, failed_sessions=0,
     )
@@ -53,7 +53,7 @@ def test_run_returns_processing_with_all_session_ids(monkeypatch) -> None:
     assert len(response.json()["sessions"]) == 5
     assert response.json()["group_id"] == str(group_id)
     assert response.json()["total_datasets"] == 1
-    assert response.json()["dataset_version_id"] == str(version_id)
+    assert response.json()["dataset_file_id"] == str(file_id)
 
 
 def test_results_accepts_full_and_filtered_pagination(monkeypatch) -> None:
@@ -61,7 +61,7 @@ def test_results_accepts_full_and_filtered_pagination(monkeypatch) -> None:
     group_id = uuid4()
     dataset_id = uuid4()
     session_id = uuid4()
-    version_id = uuid4()
+    file_id = uuid4()
     captured = []
 
     def results(
@@ -73,7 +73,7 @@ def test_results_accepts_full_and_filtered_pagination(monkeypatch) -> None:
             "aggregation_id": aggregation_id,
             "group_id": group_id,
             "dataset_id": dataset_id,
-            "dataset_version_id": version_id,
+            "dataset_file_id": file_id,
             "aggregation_interval": 60,
             "status": "COMPLETED",
             "session_id": selected_session,
@@ -112,7 +112,7 @@ def test_combined_results_needs_only_aggregation_id(monkeypatch) -> None:
     aggregation_id = uuid4()
     group_id = uuid4()
     dataset_id = uuid4()
-    version_id = uuid4()
+    file_id = uuid4()
     session_id = uuid4()
     captured = []
 
@@ -122,7 +122,7 @@ def test_combined_results_needs_only_aggregation_id(monkeypatch) -> None:
             "aggregation_id": aggregation_id,
             "group_id": group_id,
             "dataset_id": dataset_id,
-            "dataset_version_id": version_id,
+            "dataset_file_id": file_id,
             "aggregation_interval": 60,
             "status": "COMPLETED",
             "timezone": "Europe/Athens",
@@ -198,7 +198,7 @@ def test_openapi_contains_ds_aggregation_and_lag_routes() -> None:
     request_schema = main_app.openapi()["components"]["schemas"][request_ref.rsplit("/", 1)[-1]]
     assert set(request_schema["required"]) == {"group_id"}
     assert "dataset_id" not in request_schema["properties"]
-    assert "dataset_version_id" not in request_schema["properties"]
+    assert "dataset_file_id" not in request_schema["properties"]
     assert not any(
         path.startswith("/api/v1/datasets/traffic/aggregation") for path in paths
     )

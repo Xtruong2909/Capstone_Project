@@ -7,6 +7,7 @@ from app.core.deps import get_current_user, require_data_engineer
 from app.database.database import get_db
 from app.models.user import User
 from app.services.dataset_access_service import check_dataset_access
+from app.services.dataset_ownership_service import require_owned_dataset
 
 
 def require_dataset_reader(
@@ -16,10 +17,19 @@ def require_dataset_reader(
 ) -> User:
     if current_user.role_id == "business_user":
         raise HTTPException(403, "Hãy xem Dataset qua Kết quả được chia sẻ")
-    # Preserve the existing data-engineering workflow and its separate role.
     if current_user.role_id == "data_engineer":
-        return require_data_engineer(current_user)
+        require_owned_dataset(db, dataset_id, current_user)
+        return current_user
     check_dataset_access(current_user, dataset_id, db)
+    return current_user
+
+
+def require_dataset_engineer(
+    dataset_id: UUID,
+    current_user: User = Depends(require_data_engineer),
+    db: Session = Depends(get_db),
+) -> User:
+    require_owned_dataset(db, dataset_id, current_user)
     return current_user
 
 

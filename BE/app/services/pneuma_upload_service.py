@@ -23,7 +23,7 @@ from app.core.config import (
 )
 from app.crud import crud_dataset
 from app.database.database import SessionLocal
-from app.models.dataset import Dataset, DatasetVersion, RecordingSession
+from app.models.dataset import Dataset, DatasetFile, RecordingSession
 from app.schemas.dataset import (
     DatasetBatchUploadResponse,
     DatasetUploadGroup,
@@ -163,6 +163,8 @@ def _persist_group(
     try:
         crud_dataset.lock_dataset_upload(db, name)
         dataset = crud_dataset.get_dataset_by_name(db, name)
+        if dataset is not None and dataset.created_by != creator_id:
+            raise ValueError("Dataset đã thuộc tài khoản khác; không thể thêm hoặc thay đổi dữ liệu")
         metadata = staged[0].metadata
         if dataset is not None and (
             (dataset.drone_id is None and dataset.source.lower() != "pneuma")
@@ -178,6 +180,9 @@ def _persist_group(
             metadata.drone_id,
         )
         if group_name is not None:
+            if (group.name != group_name
+                    and crud_dataset.group_has_other_owners(db, group.id, creator_id)):
+                raise ValueError("Không thể đổi tên batch đang chứa Dataset của tài khoản khác")
             group.name = group_name
         if dataset is None:
             dataset_id = uuid4()
@@ -237,25 +242,30 @@ def _persist_group(
                     "Metadata không khớp Dataset hiện có: " + ", ".join(conflicts)
                     + ". Để trống các trường tùy chọn khi upload thêm Session."
                 )
-        version_id = None
+        file_id = None
         if pending:
-            version_number, version_tag = crud_dataset.get_next_upload_version(db, dataset.id)
-            version_id = uuid4()
+            current_info = crud_dataset.get_dataset_latest_file(db, dataset.id)
+            current_file = current_info[1] if current_info else None
+            file_id = current_file.id if current_file else uuid4()
             first = pending[0][1]
             session_count = len(existing) + len(pending)
             single_file_path = first.file_path if session_count == 1 else None
-            version = DatasetVersion(
-                id=version_id, dataset_id=dataset.id, version_tag=version_tag,
-                version_number=version_number, data_file_path=single_file_path,
-                csv_file_path=single_file_path,
-                original_filename=first.original_filename if session_count == 1 else None,
-                file_format="CSV", file_size_bytes=(
+            dataset_file = current_file or DatasetFile(id=file_id, dataset_id=dataset.id)
+            for field, value in {
+                "csv_file_path": single_file_path,
+                "data_file_path": single_file_path,
+                "parquet_file_path": None,
+                "original_filename": first.original_filename if session_count == 1 else None,
+                "file_format": "CSV", "file_size_bytes": (
                     sum(session.file_size for session in existing)
                     + sum(session.file_size for _, session in pending)
                 ),
-                approval_status="PENDING",
-            )
-            db.add(version)
+                "approval_status": "PENDING",
+            }.items():
+                setattr(dataset_file, field, value)
+            dataset_file.total_records = 0
+            dataset_file.submitted_by = dataset_file.submitted_at = dataset_file.approved_by = dataset_file.approval_note = None
+            db.add(dataset_file)
             for item, session in pending:
                 destination = DATASET_UPLOAD_DIR / session.file_path
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -263,13 +273,13 @@ def _persist_group(
                 moved.append(destination)
                 crud_dataset.add_recording_session(db, session)
             db.flush()
-            crud_dataset.link_version_sessions(
-                db, version_id, [session.id for session in existing]
+            crud_dataset.link_file_sessions(
+                db, file_id, [session.id for session in existing]
                 + [session.id for _, session in pending],
             )
         else:
-            latest = crud_dataset.get_dataset_latest_version(db, dataset.id)
-            version_id = latest[1].id if latest else None
+            latest = crud_dataset.get_dataset_latest_file(db, dataset.id)
+            file_id = latest[1].id if latest else None
         db.commit()
         for item, session in pending:
             item.result.status = "UPLOADED"
@@ -278,7 +288,7 @@ def _persist_group(
             record_audit_event(
                 action="UPLOAD_DATASET", module="Dataset", status="SUCCESS",
                 description="pNEUMA recording sessions uploaded", user_id=creator_id,
-                resource_id=version_id, ip_address=ip_address,
+                resource_id=file_id, ip_address=ip_address,
                 details={"dataset_name": name, "file_count": len(pending)},
             )
         all_sessions = sorted(
@@ -288,7 +298,7 @@ def _persist_group(
         pending_ids = {session.id for _, session in pending}
         session_count = len(all_sessions)
         return DatasetUploadGroup(
-            name=name, dataset_id=dataset.id, version_id=version_id,
+            name=name, dataset_id=dataset.id, file_id=file_id,
             group_id=group.id, group_name=group.name,
             recording_date=metadata.recording_date, drone_id=metadata.drone_id,
             session_count=session_count,

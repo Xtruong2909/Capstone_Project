@@ -1,6 +1,7 @@
+import { readEngineerStorage, writeEngineerStorage } from '../../../services/engineerStorage'
+
 export const ALLOWED_EXTENSIONS = ['.csv', '.json', '.xls', '.xlsx', '.parquet']
 export const MAX_UPLOAD_SIZE_BYTES = 2.5 * 1024 ** 3 // 2.5 GiB, matching the backend default
-export const LINEAGE_STORAGE_KEY = 'pneuma_de_version_lineage_v1'
 export const RECORD_CACHE_STORAGE_KEY = 'pneuma_de_record_counts_v1'
 
 export const SAMPLE_PNEUMA_CSV_CONTENT = [
@@ -25,25 +26,24 @@ export function formatBytes(bytes) {
 export function formatStructureLabel(structure) {
   switch (structure) {
     case 'pneuma_trajectory':
-      return 'pNEUMA UAV Trajectory'
+      return 'Quỹ đạo UAV pNEUMA'
     case 'generic_csv':
-      return 'Standard CSV'
+      return 'CSV tiêu chuẩn'
     case 'generic_parquet':
       return 'Apache Parquet'
     case 'generic_json':
       return 'JSON'
     case 'generic_xlsx':
     case 'generic_xls':
-      return 'Excel Spreadsheet'
+      return 'Bảng tính Excel'
     default:
-      return structure || 'Unknown'
+      return structure || 'Chưa xác định'
   }
 }
 
 export function loadJsonStorage(key, fallback = {}) {
   try {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : fallback
+    return readEngineerStorage(key, fallback)
   } catch {
     return fallback
   }
@@ -51,15 +51,10 @@ export function loadJsonStorage(key, fallback = {}) {
 
 export function saveJsonStorage(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    writeEngineerStorage(key, value)
   } catch {
     // Ignore storage quota errors
   }
-}
-
-export function resolveEffectiveVersionTag(item, versionLineageMap = {}) {
-  if (!item) return 'v1.0'
-  return versionLineageMap[item.dataset_id]?.customVersionTag || item.version_tag || 'v1.0'
 }
 
 export function resolveEffectiveRecordCount(item, recordCountsMap = {}) {
@@ -76,7 +71,7 @@ export function resolveEffectiveApprovalNote(item) {
     return 'Approved by Administrator: Meets pNEUMA UAV trajectory schema and quality requirements.'
   }
   if (item.approval_status === 'REJECTED') {
-    return 'Rejected by Administrator: Schema or trajectory quality issues detected. Please clean and upload a new version iteration.'
+    return 'Rejected by Administrator: Schema or trajectory quality issues detected. Please clean and upload a new dataset_file iteration.'
   }
   return 'Awaiting Administrator review and quality sign-off.'
 }

@@ -26,7 +26,12 @@ export const authService = {
   },
 
   async logout() {
-    const response = await apiClient.post('/auth/logout')
+    const response = await apiClient.post('/auth/logout', undefined, { timeout: 10000 })
+    return response.data
+  },
+
+  async changeInitialPassword(newPassword) {
+    const response = await apiClient.post('/auth/change-password', { new_password: newPassword })
     return response.data
   },
 

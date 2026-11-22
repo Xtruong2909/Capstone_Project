@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.crud import crud_dataset
-from app.models.dataset import Dataset, DatasetVersion, RecordingSession
+from app.models.dataset import Dataset, DatasetFile, RecordingSession
 from app.models.user import User
 from app.schemas.dataset import (
     DatasetPreviewColumn,
@@ -44,14 +44,14 @@ def _is_recording_dataset(dataset: Dataset | None) -> bool:
     return dataset is not None and dataset.drone_id is not None and dataset.recording_date is not None
 
 
-def _summary(dataset: Dataset, version: DatasetVersion, count: int) -> UploadedDatasetSummary:
+def _summary(dataset: Dataset, dataset_file: DatasetFile, count: int) -> UploadedDatasetSummary:
     return UploadedDatasetSummary(
         dataset_id=dataset.id, group_id=dataset.group_id,
         group_name=dataset.group.name if dataset.group is not None else None,
-        name=dataset.name, version_id=version.id,
-        version=version.version_tag, drone_id=dataset.drone_id,
+        name=dataset.name, file_id=dataset_file.id,
+        drone_id=dataset.drone_id,
         recording_date=dataset.recording_date, total_sessions=count,
-        approval_status=version.approval_status,
+        approval_status=dataset_file.approval_status,
     )
 
 
@@ -66,7 +66,10 @@ def list_datasets_in_group(db: Session, group_id: UUID, user: User) -> GroupData
     group = crud_dataset.get_dataset_group_by_id(db, group_id)
     if group is None:
         raise DatasetPreviewNotFoundError("Không tìm thấy nhóm Dataset")
-    datasets = crud_dataset.list_group_datasets(db, group_id, visible_user_id)
+    owner_scope = {"owner_id": user.id} if user.role_id == "data_engineer" else {}
+    datasets = crud_dataset.list_group_datasets(db, group_id, visible_user_id, **owner_scope)
+    if user.role_id == "data_engineer" and not datasets:
+        raise DatasetPreviewNotFoundError("Không tìm thấy nhóm Dataset thuộc tài khoản của bạn")
     if visible_user_id is not None and not datasets:
         raise DatasetPreviewNotFoundError("Không tìm thấy nhóm Dataset được cấp quyền")
     items: list[UploadedDatasetSummary] = []
@@ -74,15 +77,15 @@ def list_datasets_in_group(db: Session, group_id: UUID, user: User) -> GroupData
         if not _is_recording_dataset(dataset):
             continue
         pair = (
-            crud_dataset.get_dataset_latest_approved_version(db, dataset.id)
+            crud_dataset.get_dataset_latest_approved_file(db, dataset.id)
             if visible_user_id is not None
-            else crud_dataset.get_dataset_latest_version(db, dataset.id)
+            else crud_dataset.get_dataset_latest_file(db, dataset.id)
         )
         if pair is None:
             continue
-        version = pair[1]
-        linked_count = crud_dataset.get_version_session_counts(db, [version.id]).get(version.id, 0)
-        items.append(_summary(dataset, version, _effective_session_count(db, version, linked_count)))
+        dataset_file = pair[1]
+        linked_count = crud_dataset.get_file_session_counts(db, [dataset_file.id]).get(dataset_file.id, 0)
+        items.append(_summary(dataset, dataset_file, _effective_session_count(db, dataset_file, linked_count)))
     if visible_user_id is not None and not items:
         raise DatasetPreviewNotFoundError("Không tìm thấy Dataset đã duyệt được cấp quyền")
     return GroupDatasetListResponse(
@@ -90,20 +93,20 @@ def list_datasets_in_group(db: Session, group_id: UUID, user: User) -> GroupData
     )
 
 
-def resolve_group_dataset_version(
+def resolve_group_dataset_file(
     db: Session, group_id: UUID, dataset_id: UUID, user: User,
-) -> DatasetVersion:
-    """Select the newest version visible to this reader after checking group membership."""
+) -> DatasetFile:
+    """Select the newest dataset_file visible to this reader after checking group membership."""
     dataset = crud_dataset.get_dataset_by_id(db, dataset_id)
     if not _is_recording_dataset(dataset) or dataset.group_id != group_id:
         raise DatasetPreviewNotFoundError("Dataset không thuộc nhóm đã chọn")
     pair = (
-        crud_dataset.get_dataset_latest_approved_version(db, dataset_id)
+        crud_dataset.get_dataset_latest_approved_file(db, dataset_id)
         if user.role_id in ("data_scientist", "business_user")
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
     if pair is None:
-        raise DatasetPreviewNotFoundError("Không tìm thấy phiên bản Dataset phù hợp")
+        raise DatasetPreviewNotFoundError("Không tìm thấy dữ liệu Dataset phù hợp")
     return pair[1]
 
 
@@ -124,28 +127,33 @@ def list_uploaded_datasets(
     datasets, total = crud_dataset.list_uploaded_datasets(
         db, search=search, page=page, page_size=page_size,
         visible_user_id=visible_user_id,
+        **({"owner_id": user.id} if user.role_id == "data_engineer" else {}),
         group_id=group_id,
         drone_id=drone_id,
         recording_date_from=recording_date_from,
         recording_date_to=recording_date_to,
     )
-    versions = crud_dataset.get_latest_versions_for_datasets(
+    dataset_files = crud_dataset.get_latest_files_for_datasets(
         db, [dataset.id for dataset in datasets],
     )
-    counts = crud_dataset.get_version_session_counts(
-        db, [version.id for version in versions.values()],
+    counts = crud_dataset.get_file_session_counts(
+        db, [dataset_file.id for dataset_file in dataset_files.values()],
     )
     grouped: dict[UUID, list[UploadedDatasetSummary]] = {}
     first_dataset: dict[UUID, Dataset] = {}
     for dataset in datasets:
-        version = versions.get(dataset.id)
-        if dataset.group_id is None or version is None:
+        dataset_file = dataset_files.get(dataset.id)
+        if dataset.group_id is None or dataset_file is None:
             continue
         first_dataset.setdefault(dataset.group_id, dataset)
         grouped.setdefault(dataset.group_id, []).append(_summary(
-            dataset, version,
-            _effective_session_count(db, version, counts.get(version.id, 0)),
+            dataset, dataset_file,
+            _effective_session_count(db, dataset_file, counts.get(dataset_file.id, 0)),
         ))
+    approval_counts = crud_dataset.get_group_approval_counts(
+        db, list(grouped), owner_id=user.id if user.role_id == "data_engineer" else None,
+        visible_user_id=visible_user_id,
+    )
     return UploadedDatasetListResponse(
         groups=[UploadedDatasetGroupSummary(
             group_id=key,
@@ -155,6 +163,9 @@ def list_uploaded_datasets(
             drone_id=first_dataset[key].drone_id,
             dataset_count=len(items),
             total_sessions=sum(item.total_sessions for item in items),
+            approval_status=(next(iter(approval_counts[key])) if len(approval_counts.get(key, {})) == 1
+                             else "MIXED" if approval_counts.get(key) else "UNKNOWN"),
+            approval_counts=approval_counts.get(key, {}),
             datasets=items if group_id is not None else None,
         ) for key, items in grouped.items()],
         total=total, page=page, page_size=page_size,
@@ -165,18 +176,19 @@ def get_uploaded_dataset_detail(db: Session, dataset_id: UUID, user: User) -> Up
     dataset = crud_dataset.get_dataset_by_id(db, dataset_id)
     if not _is_recording_dataset(dataset):
         raise DatasetPreviewNotFoundError("Không tìm thấy Dataset pNEUMA đã upload")
-    pair = crud_dataset.get_dataset_latest_version(db, dataset_id)
+    pair = crud_dataset.get_dataset_latest_file(db, dataset_id)
     if pair is None:
-        raise DatasetPreviewNotFoundError("Dataset chưa có phiên bản")
-    _, version = pair
-    linked_count = crud_dataset.get_version_session_counts(db, [version.id]).get(version.id, 0)
-    count = _effective_session_count(db, version, linked_count)
+        raise DatasetPreviewNotFoundError("Dataset chưa có dữ liệu")
+    _, dataset_file = pair
+    linked_count = crud_dataset.get_file_session_counts(db, [dataset_file.id]).get(dataset_file.id, 0)
+    count = _effective_session_count(db, dataset_file, linked_count)
     related: list[UploadedDatasetSummary] = []
     if dataset.group_id is not None:
         visible_user_id = user.id if user.role_id in ("data_scientist", "business_user") else None
-        members = crud_dataset.list_group_datasets(db, dataset.group_id, visible_user_id)
-        latest = crud_dataset.get_latest_versions_for_datasets(db, [item.id for item in members])
-        counts = crud_dataset.get_version_session_counts(db, [item.id for item in latest.values()])
+        members = crud_dataset.list_group_datasets(db, dataset.group_id, visible_user_id,
+            **({"owner_id": user.id} if user.role_id == "data_engineer" else {}))
+        latest = crud_dataset.get_latest_files_for_datasets(db, [item.id for item in members])
+        counts = crud_dataset.get_file_session_counts(db, [item.id for item in latest.values()])
         related = [
             _summary(item, latest[item.id], _effective_session_count(
                 db, latest[item.id], counts.get(latest[item.id].id, 0),
@@ -184,24 +196,24 @@ def get_uploaded_dataset_detail(db: Session, dataset_id: UUID, user: User) -> Up
             for item in members if item.id in latest
         ]
     return UploadedDatasetDetail(
-        **_summary(dataset, version, count).model_dump(),
+        **_summary(dataset, dataset_file, count).model_dump(),
         source=dataset.source, location_name=dataset.location_name,
         description=dataset.description,
         related_datasets=related,
     )
 
 
-def _get_version(db: Session, dataset_id: UUID, version_id: UUID) -> DatasetVersion:
-    pair = crud_dataset.get_dataset_version(db, dataset_id, version_id)
+def _get_file(db: Session, dataset_id: UUID, file_id: UUID) -> DatasetFile:
+    pair = crud_dataset.get_dataset_file(db, dataset_id, file_id)
     if pair is None or not _is_recording_dataset(pair[0]):
-        raise DatasetPreviewNotFoundError("Không tìm thấy phiên bản Dataset pNEUMA")
+        raise DatasetPreviewNotFoundError("Không tìm thấy dữ liệu Dataset pNEUMA")
     return pair[1]
 
 
 def _session_provenance(
-    db: Session, version: DatasetVersion,
+    db: Session, dataset_file: DatasetFile,
 ) -> tuple[list[UUID], UUID | None]:
-    history = crud_dataset.get_cleaning_history_by_version(db, version.id)
+    history = crud_dataset.get_cleaning_history_by_file(db, dataset_file.id)
     parameters = getattr(history, "parameters", None) or {}
     if not isinstance(parameters, dict):
         return [], None
@@ -212,52 +224,52 @@ def _session_provenance(
         except (TypeError, ValueError):
             continue
     try:
-        source_version_id = UUID(str(parameters.get("source_version_id")))
+        source_file_id = UUID(str(parameters.get("source_file_id")))
     except (TypeError, ValueError):
-        source_version_id = None
-    return source_session_ids, source_version_id
+        source_file_id = None
+    return source_session_ids, source_file_id
 
 
-def _effective_session_count(db: Session, version: DatasetVersion, linked_count: int) -> int:
-    """Keep the Dataset list accurate after export creates a derived version."""
+def _effective_session_count(db: Session, dataset_file: DatasetFile, linked_count: int) -> int:
+    """Keep the Dataset list accurate after export creates a derived dataset_file."""
     if linked_count:
         return linked_count
-    source_session_ids, source_version_id = _session_provenance(db, version)
+    source_session_ids, source_file_id = _session_provenance(db, dataset_file)
     if source_session_ids:
         return len(set(source_session_ids))
-    if source_version_id and source_version_id != version.id:
-        return crud_dataset.get_version_session_counts(db, [source_version_id]).get(
-            source_version_id, 0,
+    if source_file_id and source_file_id != dataset_file.id:
+        return crud_dataset.get_file_session_counts(db, [source_file_id]).get(
+            source_file_id, 0,
         )
     return 0
 
 
-def _get_recording_session_for_version(
-    db: Session, dataset_id: UUID, version_id: UUID, session_id: UUID,
+def _get_recording_session_for_file(
+    db: Session, dataset_id: UUID, file_id: UUID, session_id: UUID,
 ) -> RecordingSession | None:
-    session = crud_dataset.get_version_session(db, version_id, session_id)
+    session = crud_dataset.get_file_session(db, file_id, session_id)
     if session is not None:
         return session if session.dataset_id == dataset_id else None
 
-    version = _get_version(db, dataset_id, version_id)
-    source_session_ids, source_version_id = _session_provenance(db, version)
+    dataset_file = _get_file(db, dataset_id, file_id)
+    source_session_ids, source_file_id = _session_provenance(db, dataset_file)
     if source_session_ids:
         if session_id not in source_session_ids:
             return None
         return crud_dataset.get_dataset_session_by_id(db, dataset_id, session_id)
-    if source_version_id and source_version_id != version_id:
-        if crud_dataset.get_dataset_version(db, dataset_id, source_version_id) is None:
+    if source_file_id and source_file_id != file_id:
+        if crud_dataset.get_dataset_file(db, dataset_id, source_file_id) is None:
             return None
-        return crud_dataset.get_version_session(db, source_version_id, session_id)
+        return crud_dataset.get_file_session(db, source_file_id, session_id)
     return None
 
 
 def _session_detail(
-    session: RecordingSession, version_id: UUID, group_id: UUID | None,
+    session: RecordingSession, file_id: UUID, group_id: UUID | None,
 ) -> RecordingSessionDetail:
     return RecordingSessionDetail(
         session_id=session.id, dataset_id=session.dataset_id,
-        group_id=group_id, version_id=version_id,
+        group_id=group_id, file_id=file_id,
         original_filename=session.original_filename, drone_id=session.drone_id,
         recording_date=session.recording_date, file_size=session.file_size,
         scheduled_start=session.scheduled_start, scheduled_end=session.scheduled_end,
@@ -268,43 +280,43 @@ def _session_detail(
 
 
 def list_recording_sessions(
-    db: Session, dataset_id: UUID, version_id: UUID, *, page: int, page_size: int,
+    db: Session, dataset_id: UUID, file_id: UUID, *, page: int, page_size: int,
 ) -> RecordingSessionListResponse:
-    version = _get_version(db, dataset_id, version_id)
-    sessions, total = crud_dataset.list_version_sessions(db, version_id, page, page_size)
+    dataset_file = _get_file(db, dataset_id, file_id)
+    sessions, total = crud_dataset.list_file_sessions(db, file_id, page, page_size)
     if total == 0:
-        source_session_ids, source_version_id = _session_provenance(db, version)
+        source_session_ids, source_file_id = _session_provenance(db, dataset_file)
         if source_session_ids:
             sessions, total = crud_dataset.list_dataset_sessions_by_ids(
                 db, dataset_id, source_session_ids, page, page_size,
             )
         elif (
-            source_version_id
-            and source_version_id != version_id
-            and crud_dataset.get_dataset_version(db, dataset_id, source_version_id) is not None
+            source_file_id
+            and source_file_id != file_id
+            and crud_dataset.get_dataset_file(db, dataset_id, source_file_id) is not None
         ):
-            sessions, total = crud_dataset.list_version_sessions(
-                db, source_version_id, page, page_size,
+            sessions, total = crud_dataset.list_file_sessions(
+                db, source_file_id, page, page_size,
             )
     dataset = crud_dataset.get_dataset_by_id(db, dataset_id)
     group_id = dataset.group_id if dataset is not None else None
     return RecordingSessionListResponse(
-        dataset_id=dataset_id, version_id=version_id, total=total,
+        dataset_id=dataset_id, file_id=file_id, total=total,
         page=page, page_size=page_size,
-        sessions=[_session_detail(session, version_id, group_id) for session in sessions],
+        sessions=[_session_detail(session, file_id, group_id) for session in sessions],
     )
 
 
 def get_recording_session_detail(
-    db: Session, dataset_id: UUID, version_id: UUID, session_id: UUID,
+    db: Session, dataset_id: UUID, file_id: UUID, session_id: UUID,
 ) -> RecordingSessionDetail:
-    session = _get_recording_session_for_version(
-        db, dataset_id, version_id, session_id,
+    session = _get_recording_session_for_file(
+        db, dataset_id, file_id, session_id,
     )
     if session is None or session.dataset_id != dataset_id:
-        raise DatasetPreviewNotFoundError("Không tìm thấy Recording Session trong phiên bản")
+        raise DatasetPreviewNotFoundError("Không tìm thấy Recording Session trong dữ liệu")
     dataset = crud_dataset.get_dataset_by_id(db, dataset_id)
-    return _session_detail(session, version_id, dataset.group_id if dataset is not None else None)
+    return _session_detail(session, file_id, dataset.group_id if dataset is not None else None)
 
 
 def _bounded_lines(source: TextIO):
@@ -384,15 +396,15 @@ def _read_raw_csv_page(path: Path, *, page: int, page_size: int,
 
 
 def preview_recording_session(
-    db: Session, dataset_id: UUID, version_id: UUID, session_id: UUID,
+    db: Session, dataset_id: UUID, file_id: UUID, session_id: UUID,
     *, page: int, limit: int, column_offset: int = 0,
     representation: str = "normalized",
 ) -> RecordingSessionPreviewResponse:
-    session = _get_recording_session_for_version(
-        db, dataset_id, version_id, session_id,
+    session = _get_recording_session_for_file(
+        db, dataset_id, file_id, session_id,
     )
     if session is None:
-        raise DatasetPreviewNotFoundError("Không tìm thấy Recording Session trong phiên bản")
+        raise DatasetPreviewNotFoundError("Không tìm thấy Recording Session trong dữ liệu")
     dataset = crud_dataset.get_dataset_by_id(db, dataset_id)
     if not session.original_filename.lower().endswith(".csv"):
         raise DatasetPreviewFormatError("Recording Session không phải file CSV")
@@ -429,8 +441,8 @@ def preview_recording_session(
     except (UnicodeDecodeError, csv.Error, OSError, ValueError) as exc:
         raise DatasetPreviewReadError("Không đọc được CSV của Recording Session") from exc
     response = RecordingSessionPreviewResponse(
-        session_id=session.id, dataset_id=dataset_id, version_id=version_id,
-        dataset_version_id=version_id, dataset_name=dataset.name,
+        session_id=session.id, dataset_id=dataset_id, file_id=file_id,
+        dataset_file_id=file_id, dataset_name=dataset.name,
         original_filename=session.original_filename, columns=columns,
         file_format="csv", file_size=session.file_size, status=session.upload_status,
         detected_structure=detected_structure,

@@ -34,13 +34,13 @@ def experiments(db: Session = Depends(get_db), user: User = Depends(get_current_
 @router.get("/sessions", response_model=PredictionSessionsResponse,
             summary="Danh sách phiên ghi hình đã tổng hợp và khả năng dự báo")
 def sessions(
-    dataset_id: UUID | None = None, dataset_version_id: UUID | None = None,
+    dataset_id: UUID | None = None, dataset_file_id: UUID | None = None,
     experiment_id: UUID | None = None, eligible_only: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ) -> PredictionSessionsResponse:
     return service.list_sessions(
-        db, user, dataset_id=dataset_id, dataset_version_id=dataset_version_id,
+        db, user, dataset_id=dataset_id, dataset_file_id=dataset_file_id,
         experiment_id=experiment_id, eligible_only=eligible_only,
         page=page, page_size=page_size,
     )

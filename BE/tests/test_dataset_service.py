@@ -126,7 +126,7 @@ def test_concurrent_duplicate_name_returns_clear_conflict(
     )
     monkeypatch.setattr(
         dataset_service.crud_dataset,
-        "create_dataset_version",
+        "create_dataset_file",
         raise_duplicate_name,
     )
     metadata = DatasetUploadMetadata(

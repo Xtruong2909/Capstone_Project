@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dataset_access import require_dataset_reader
+from app.core.dataset_access import require_dataset_engineer, require_dataset_reader
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.user import User
@@ -41,7 +41,7 @@ def list_group_columns(
     current_user: User = Depends(require_data_engineer),
 ) -> GroupDatasetColumnsResponse:
     try:
-        return get_group_dataset_columns(db, group_id)
+        return get_group_dataset_columns(db, group_id, owner_id=current_user.id)
     except DatasetMappingNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except DatasetMappingReadError as exc:
@@ -55,7 +55,7 @@ def list_group_columns(
     description=(
         "Kiểm tra cấu trúc cột của mọi Session trong nhóm trước khi lưu. "
         "Request body là mapping chung đầy đủ, thay thế mapping cũ của từng Dataset. "
-        "Lưu cho phiên bản mới nhất của từng Dataset trong một giao dịch."
+        "Lưu cho dữ liệu nhất của từng Dataset trong một giao dịch."
     ),
 )
 def update_group_column_mappings(
@@ -87,7 +87,7 @@ def read_group_column_mappings(
     current_user: User = Depends(require_data_engineer),
 ) -> GroupDatasetMappingsResponse:
     try:
-        return get_group_dataset_mappings(db, group_id)
+        return get_group_dataset_mappings(db, group_id, owner_id=current_user.id)
     except DatasetMappingNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except DatasetMappingConflictError as exc:
@@ -102,9 +102,9 @@ def read_group_column_mappings(
     response_model=DatasetColumnsResponse,
     summary="Lấy cấu trúc cột dùng chung cho các session",
     description=(
-        "Đọc cấu trúc từ các Recording Session trong Dataset Version mới nhất. "
+        "Đọc cấu trúc từ các Recording Session trong Dataset File mới nhất. "
         "Các session phải có cùng danh sách cột để dùng một mapping chung. "
-        "Mapping đã lưu được tái sử dụng khi version mới vẫn tương thích."
+        "Mapping đã lưu được tái sử dụng khi dataset_file mới vẫn tương thích."
     ),
 )
 def list_dataset_columns(
@@ -132,8 +132,8 @@ def list_dataset_columns(
     response_model=DatasetColumnMappingsResponse,
     summary="Ánh xạ cột một lần cho toàn bộ session",
     description=(
-        "Tạo hoặc cập nhật mapping ở cấp Dataset Version. Mapping áp dụng cho tất cả "
-        "session trong version có cùng cấu trúc cột; version tiếp theo sẽ kế thừa "
+        "Tạo hoặc cập nhật mapping ở cấp Dataset File. Mapping áp dụng cho tất cả "
+        "session trong dataset_file có cùng cấu trúc cột; dataset_file tiếp theo sẽ kế thừa "
         "mapping nếu tên các cột nguồn vẫn tương thích."
     ),
 )
@@ -141,7 +141,7 @@ def update_dataset_column_mappings(
     dataset_id: UUID,
     payload: DatasetColumnMappingsPatch,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_data_engineer),
+    current_user: User = Depends(require_dataset_engineer),
 ) -> DatasetColumnMappingsResponse:
     try:
         return patch_dataset_column_mappings(
@@ -173,8 +173,8 @@ def update_dataset_column_mappings(
     response_model=DatasetColumnMappingsResponse,
     summary="Lấy mapping dùng chung của Dataset",
     description=(
-        "Trả mapping đang áp dụng cho toàn bộ session của Dataset Version mới nhất. "
-        "Mapping từ version trước được dùng lại khi cấu trúc cột vẫn tương thích."
+        "Trả mapping đang áp dụng cho toàn bộ session của Dataset File mới nhất. "
+        "Mapping từ dataset_file trước được dùng lại khi cấu trúc cột vẫn tương thích."
     ),
 )
 def read_dataset_column_mappings(

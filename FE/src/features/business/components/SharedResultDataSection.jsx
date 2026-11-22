@@ -1,8 +1,8 @@
 import { formatAthensRecordingDateTime, formatRecordingDateTime, formatTrafficFlow } from '../../scientist/utils/formatters'
 
 const LABELS = {
-  dataset_id: 'Dataset', dataset_name: 'Tên dataset', dataset_version_id: 'Phiên bản dataset',
-  version_tag: 'Mã phiên bản', source: 'Nguồn dữ liệu', recording_date: 'Ngày ghi hình',
+  dataset_id: 'Dataset', dataset_name: 'Tên dataset', dataset_file_id: 'dữ liệu dataset',
+source: 'Nguồn dữ liệu', recording_date: 'Ngày ghi hình',
   total_records: 'Tổng bản ghi', session_count: 'Số phiên ghi hình',
   session_id: 'Phiên ghi hình', session_name: 'Phiên ghi hình',
   scheduled_start: 'Bắt đầu', scheduled_end: 'Kết thúc',
@@ -67,7 +67,7 @@ function number(value, digits = 0) {
 function valueText(value, key = '') {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'Có' : 'Không'
-  if (key === 'session_id' || key === 'dataset_id' || key === 'dataset_version_id' || key === 'split_id' || key === 'experiment_id' || key === 'forecast_id' || key === 'feature_generation_id' || key === 'model_id') return String(value).slice(0, 8)
+  if (key === 'session_id' || key === 'dataset_id' || key === 'dataset_file_id' || key === 'split_id' || key === 'experiment_id' || key === 'forecast_id' || key === 'feature_generation_id' || key === 'model_id') return String(value).slice(0, 8)
   if (key === 'recording_date' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split('-')
     return `${day}/${month}/${year}`

@@ -12,8 +12,7 @@ from app.schemas.dataset import DatasetPreviewResponse
 
 class DatasetNormalizeResult(BaseModel):
     dataset_id: UUID
-    source_version_id: UUID
-    source_version_tag: str
+    source_file_id: UUID
     staging_id: UUID
     status: str = Field(default="normalized")
     source_session_count: int = Field(ge=1)
@@ -24,39 +23,35 @@ class DatasetNormalizeResult(BaseModel):
     normalized_columns: list[str]
     preview: DatasetPreviewResponse
     message: str = Field(
-        default="Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất phiên bản mới (Export)."
+        default="Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất dữ liệu (Export)."
     )
 
 
 # =====================================================================
-# BƯỚC 5: XUẤT PHIÊN BẢN MỚI (EXPORT NORMALIZED DATASET)
+# BƯỚC 5: XUẤT dữ liệu (EXPORT NORMALIZED DATASET)
 # =====================================================================
 
 class DatasetExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     staging_id: UUID | None = Field(
         default=None,
         description="ID kết quả Normalize cần xuất; để trống sẽ dùng kết quả gần nhất của Dataset.",
     )
-    new_version_tag: str | None = Field(
-        default=None,
-        description="Tag phiên bản mới; để trống hệ thống tự chọn tag chưa được dùng.",
-    )
     export_format: Literal["PARQUET", "CSV"] = Field(
         default="PARQUET",
-        description="Định dạng file Dataset Version được tạo.",
+        description="Định dạng file Dataset File được tạo.",
     )
 class DatasetExportResult(BaseModel):
     dataset_id: UUID
-    source_version_id: UUID
+    source_file_id: UUID
     source_session_count: int = Field(ge=1)
-    version_id: UUID
-    version_tag: str
+    file_id: UUID
     file_format: str
     file_size_bytes: int
     total_records: int
     cleaning_history_id: int
     message: str = Field(
-        default="Đã xuất và tạo phiên bản dataset mới thành công."
+        default="Đã xuất và tạo dữ liệu dataset mới thành công."
     )
 
 
@@ -65,8 +60,8 @@ class GroupProcessingDatasetResult(BaseModel):
     dataset_name: str
     status: Literal["PENDING", "RUNNING", "COMPLETED", "FAILED"]
     session_count: int = 0
-    source_version_id: UUID | None = None
-    version_id: UUID | None = None
+    source_file_id: UUID | None = None
+    file_id: UUID | None = None
     records_before: int | None = None
     records_after: int | None = None
     error_message: str | None = None
@@ -83,11 +78,21 @@ class GroupProcessingJobResponse(BaseModel):
     results: list[GroupProcessingDatasetResult] = Field(default_factory=list)
 
 
+class NormalizationResultPreview(BaseModel):
+    dataset_id: UUID
+    dataset_name: str
+    is_pneuma: bool
+    records_before: int | None = None
+    records_after: int
+    source_columns: list[str] = Field(default_factory=list)
+    preview: DatasetPreviewResponse
+
+
 # =====================================================================
 # BƯỚC 6: BÁO CÁO XỬ LÝ TỔNG HỢP (PROCESSING REPORT)
 # =====================================================================
 
-class DatasetVersionSessionSummary(BaseModel):
+class DatasetFileSessionSummary(BaseModel):
     session_id: UUID
     original_filename: str
     drone_id: str
@@ -103,12 +108,10 @@ class ProcessingReportResponse(BaseModel):
     dataset_id: UUID
     dataset_name: str
     dataset_code: str
-    version_id: UUID
-    version_tag: str
-    source_version_id: UUID | None = None
-    source_version_tag: str | None = None
+    file_id: UUID
+    source_file_id: UUID | None = None
     source_session_count: int = 0
-    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
+    source_sessions: list[DatasetFileSessionSummary] = Field(default_factory=list)
     file_format: str
     file_size_bytes: int
     file_size_mb: float
@@ -120,82 +123,85 @@ class ProcessingReportResponse(BaseModel):
     created_at: datetime
 
 
-class DatasetVersionSubmitRequest(BaseModel):
+class DatasetFileSubmitRequest(BaseModel):
     note: str | None = Field(
         default=None,
-        description="Ghi chú gửi cho admin xem xét phiên bản dataset",
+        description="Ghi chú gửi cho admin xem xét dữ liệu dataset",
     )
 
 
-class DatasetVersionSubmitResponse(BaseModel):
+class DatasetFileSubmitResponse(BaseModel):
     dataset_id: UUID
     dataset_name: str | None = None
-    version_id: UUID
-    version_tag: str
+    file_id: UUID
     approval_status: str
-    source_version_id: UUID | None = None
-    source_version_tag: str | None = None
+    source_file_id: UUID | None = None
     source_session_count: int = 0
-    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
+    source_sessions: list[DatasetFileSessionSummary] = Field(default_factory=list)
     submitted_by: UUID
     submitted_at: datetime
     message: str
 
 
-class DatasetVersionResubmitRequest(BaseModel):
+class DatasetFileResubmitRequest(BaseModel):
     note: str | None = Field(
         default=None,
-        description="Ghi chú khi data engineer gửi lại phiên bản sau khi sửa theo phản hồi từ admin",
+        description="Ghi chú khi data engineer gửi lại dữ liệu sau khi sửa theo phản hồi từ admin",
     )
 
 
-class DatasetVersionResubmitResponse(BaseModel):
+class DatasetFileResubmitResponse(BaseModel):
     dataset_id: UUID
     dataset_name: str | None = None
-    version_id: UUID
-    version_tag: str
+    file_id: UUID
     approval_status: str
-    source_version_id: UUID | None = None
-    source_version_tag: str | None = None
+    source_file_id: UUID | None = None
     source_session_count: int = 0
-    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
+    source_sessions: list[DatasetFileSessionSummary] = Field(default_factory=list)
     submitted_by: UUID
     submitted_at: datetime
     message: str
 
 
-class DatasetVersionListItem(BaseModel):
+class DatasetFileListItem(BaseModel):
     dataset_id: UUID
     dataset_name: str | None = None
+    code: str | None = None
+    source: str | None = None
+    description: str | None = None
+    location_name: str | None = None
+    capture_date: date | None = None
+    recording_date: date | None = None
     group_id: UUID | None = None
     group_name: str | None = None
-    version_id: UUID
-    version_tag: str
+    file_id: UUID
+
+    original_filename: str | None = None
+    filename: str | None = None
     file_format: str | None = None
     file_size_bytes: int = 0
     total_records: int = 0
-    source_version_id: UUID | None = None
-    source_version_tag: str | None = None
+    total_records_known: bool = False
+    source_file_id: UUID | None = None
     source_session_count: int = 0
-    source_sessions: list[DatasetVersionSessionSummary] = Field(default_factory=list)
+    source_sessions: list[DatasetFileSessionSummary] = Field(default_factory=list)
     approval_status: str
     submitted_by: UUID | None = None
     submitted_at: datetime | None = None
     approved_by: UUID | None = None
     approval_note: str | None = None
     created_at: datetime
+    updated_at: datetime | None = None
 
 
-class DatasetVersionStatusResponse(BaseModel):
+class DatasetFileStatusResponse(BaseModel):
     dataset_id: UUID
     dataset_name: str | None = None
-    version_id: UUID
-    version_tag: str
+    file_id: UUID
     approval_status: str
-    source_version_id: UUID | None = None
-    source_version_tag: str | None = None
+    source_file_id: UUID | None = None
     source_session_count: int = 0
-    source_sessions: list["DatasetVersionSessionSummary"] = Field(default_factory=list)
+    source_sessions: list["DatasetFileSessionSummary"] = Field(default_factory=list)
     submitted_by: UUID | None = None
     submitted_at: datetime | None = None
     approved_by: UUID | None = None
@@ -203,14 +209,14 @@ class DatasetVersionStatusResponse(BaseModel):
     message: str | None = None
 
 
-class GroupDatasetVersionsResponse(BaseModel):
+class GroupDatasetFilesResponse(BaseModel):
     group_id: UUID
     total_datasets: int
-    total_versions: int
-    versions: list[DatasetVersionListItem] = Field(default_factory=list)
+    total_files: int
+    dataset_files: list[DatasetFileListItem] = Field(default_factory=list)
 
 
-class GroupVersionSubmitRequest(BaseModel):
+class GroupFileSubmitRequest(BaseModel):
     model_config = ConfigDict(json_schema_extra={"example": {"comment": "Đã kiểm tra dữ liệu, nhờ Admin duyệt nhóm."}})
 
     comment: str | None = Field(
@@ -220,12 +226,12 @@ class GroupVersionSubmitRequest(BaseModel):
     )
 
 
-class GroupVersionStatusResponse(BaseModel):
+class GroupFileStatusResponse(BaseModel):
     group_id: UUID
     staging_id: UUID
     total_datasets: int
     approval_status: Literal["PENDING", "SUBMITTED", "APPROVED", "REJECTED", "MIXED"]
-    versions: list[DatasetVersionStatusResponse] = Field(default_factory=list)
+    dataset_files: list[DatasetFileStatusResponse] = Field(default_factory=list)
     message: str | None = None
 
 

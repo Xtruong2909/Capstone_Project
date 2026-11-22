@@ -34,7 +34,7 @@ from app.schemas.model_prediction import (
 )
 from app.schemas.model_training import Hyperparameters, TrainingSplit
 from app.services.feature_engineering_service import prepare_features
-from app.services.model_training_service import require_version
+from app.services.model_training_service import require_file
 
 HORIZONS = (1, 3, 5)
 FEATURE_ORDER = [f"lag_{index}" for index in range(1, 6)]
@@ -87,16 +87,22 @@ def _resolve_scope(
     anchor = repository.get_experiment(db, payload.experiment_id) if payload.experiment_id else None
     if payload.experiment_id and anchor is None:
         raise HTTPException(404, "Experiment not found")
-    version_id = UUID(anchor.configuration["dataset_version_id"]) if anchor else payload.dataset_version_id
-    if version_id is None:
-        raise HTTPException(422, "dataset_version_id is required")
-    require_version(db, version_id, user, training=True)
-    if anchor and payload.dataset_version_id and payload.dataset_version_id != version_id:
-        raise HTTPException(422, "Experiment and dataset_version_id do not match")
+    from app.services.scientist_ownership_service import require_scientist_owner
+
+    if anchor is not None:
+        require_scientist_owner(user, anchor.created_by)
+    file_id = UUID(anchor.configuration["dataset_file_id"]) if anchor else payload.dataset_file_id
+    if file_id is None:
+        raise HTTPException(422, "dataset_file_id is required")
+    require_file(db, file_id, user, training=True)
+    if anchor and payload.dataset_file_id and payload.dataset_file_id != file_id:
+        raise HTTPException(422, "Experiment and dataset_file_id do not match")
     if anchor and payload.split_id and payload.split_id != anchor.split_id:
         raise HTTPException(422, "Experiment and split_id do not match")
     requested_split = anchor.split_id if anchor else payload.split_id
-    candidates = repository.list_completed_forests(db, version_id)
+    candidates = repository.list_completed_forests(db, file_id)
+    if user.role_id == "data_scientist":
+        candidates = [item for item in candidates if item.created_by == user.id]
     if requested_split is None:
         distinct_splits = {experiment.split_id for experiment in candidates}
         if len(distinct_splits) > 1:
@@ -107,7 +113,7 @@ def _resolve_scope(
     scoped = [experiment for experiment in candidates if experiment.split_id == requested_split]
     if not scoped:
         raise HTTPException(404, "No completed Random Forest experiments exist for this split")
-    return version_id, requested_split, scoped
+    return file_id, requested_split, scoped
 
 
 def _load_models(final: FinalModel, parameters: Hyperparameters) -> dict[int, RandomForestRegressor]:
@@ -161,10 +167,10 @@ def _validate_features(
     features: PredictionFeatureResponse, split: TrainingSplit, final: FinalModel,
 ) -> None:
     origin = features.latest_time_bucket.astimezone(UTC)
-    if (features.dataset_version_id != split.dataset_version_id
+    if (features.dataset_file_id != split.dataset_file_id
             or features.roi_identifier != split.roi_identifier
             or features.recording_session_id != split.recording_session_id
-            or final.dataset_version_id != split.dataset_version_id
+            or final.dataset_file_id != split.dataset_file_id
             or final.roi_identifier != split.roi_identifier
             or final.recording_session_id != split.recording_session_id
             or final.split_id is None):
@@ -218,7 +224,7 @@ def predict_experiment(
 ) -> ModelPredictionResponse:
     """No fitting occurs here: read Validation, fitted forests and current observations."""
     try:
-        version_id, split_id, candidates = _resolve_scope(db, payload, user)
+        file_id, split_id, candidates = _resolve_scope(db, payload, user)
         selected = select_best_experiment(db, candidates)
         final = repository.get_final_model(db, selected.id)
         if final is None:
@@ -228,7 +234,7 @@ def predict_experiment(
                 "experiment_id": str(selected.id),
             })
         stored_split = repository.get_split(db, split_id)
-        if stored_split is None or stored_split.dataset_version_id != version_id:
+        if stored_split is None or stored_split.dataset_file_id != file_id:
             raise HTTPException(409, "The chosen Experiment's saved split is unavailable")
         try:
             split = TrainingSplit.model_validate(stored_split.payload)
@@ -236,11 +242,11 @@ def predict_experiment(
             final_parameters = Hyperparameters.model_validate(final.hyperparameters)
         except (ValidationError, KeyError) as exc:
             raise HTTPException(409, "Stored Final Model or Experiment configuration is invalid") from exc
-        if (split.dataset_version_id != version_id or final.experiment_id != selected.id
+        if (split.dataset_file_id != file_id or final.experiment_id != selected.id
                 or final.split_id != split_id or final_parameters != parameters):
             raise HTTPException(409, "Final Model provenance does not match the chosen Experiment")
         features = prepare_features(
-            db, FeatureRequest(dataset_version_id=version_id, roi_identifier=split.roi_identifier),
+            db, FeatureRequest(dataset_file_id=file_id, roi_identifier=split.roi_identifier),
             user, prediction=True,
         )
         if not isinstance(features, PredictionFeatureResponse):
@@ -265,7 +271,7 @@ def predict_experiment(
             values.append((horizon, target_time, rounded))
         repository.save_final_forecasts(db, final.id, origin, values)
         return ModelPredictionResponse(
-            experiment_id=selected.id, model_id=final.id, dataset_version_id=version_id,
+            experiment_id=selected.id, model_id=final.id, dataset_file_id=file_id,
             last_observed_time=origin,
             last_observed_flow=features.x[0],
             source_experiment_evaluation_mode=selected.evaluation["evaluation_mode"],

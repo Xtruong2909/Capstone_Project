@@ -1,19 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getScientistSession, scientistWorkflowKey, readScientistWorkflow, writeScientistWorkflow } from '../services/scientistSession'
 import { dataScienceService } from '../services/dataScienceService'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
 
-let experimentsCache = null
-const experimentDetailCache = new Map()
-
-function readStoredWorkflow(storageKey) {
-  if (!storageKey || typeof sessionStorage === 'undefined') return {}
-  try { return JSON.parse(sessionStorage.getItem(storageKey) || '{}') || {} }
-  catch { return {} }
-}
-
 export function useScienceTraining(groupId) {
-  const storageKey = groupId ? `science-workflow:${groupId}` : null
-  const storedWorkflow = readStoredWorkflow(storageKey)
+  const storageKey = scientistWorkflowKey(groupId)
+  const storedWorkflow = readScientistWorkflow(storageKey)
   const hasStoredWorkflow = Boolean(storedWorkflow.aggregation)
   const [workflow, setWorkflow] = useState({})
   const [loadedGroupId, setLoadedGroupId] = useState(null)
@@ -29,7 +21,7 @@ export function useScienceTraining(groupId) {
     if (!groupId || !storageKey) return
     let cancelled = false
     setLoadError('')
-    const cached = readStoredWorkflow(storageKey)
+    const cached = readScientistWorkflow(storageKey)
     const hasCachedWorkflow = Boolean(cached.aggregation)
     if (hasCachedWorkflow) {
       setWorkflow(cached)
@@ -48,18 +40,17 @@ export function useScienceTraining(groupId) {
       const experiment = split?.split_id === cached.split?.split_id ? cached.experiment : null
       const next = { aggregation, features, split, experiment }
       setWorkflow(next)
-      try { sessionStorage.setItem(storageKey, JSON.stringify(next)) }
-      catch { /* Browser storage is optional; server results remain available. */ }
+      writeScientistWorkflow(storageKey, next)
     }
     restoreWorkflow()
-      .catch((err) => { if (!cancelled) setLoadError(extractErrorMessage(err, 'Không tải được kết quả huấn luyện đã lưu.')) })
+      .catch((err) => { if (!cancelled) { setWorkflow({}); writeScientistWorkflow(storageKey, {}); setLoadError(extractErrorMessage(err, 'Không tải được kết quả huấn luyện đã lưu.')) } })
       .finally(() => { if (!cancelled) setLoadedGroupId(groupId) })
     return () => { cancelled = true }
   }, [groupId, storageKey, workflowRefreshKey])
   const save = useCallback((changes) => {
     setWorkflow((current) => {
       const next = { ...current, ...changes }
-      if (storageKey) sessionStorage.setItem(storageKey, JSON.stringify(next))
+      writeScientistWorkflow(storageKey, next)
       return next
     })
   }, [storageKey])
@@ -106,6 +97,8 @@ const DEFAULT_EXPERIMENT_CONFIG = {
 }
 
 export function useExperimentSetup(splitId, groupId) {
+  const session = getScientistSession()
+  const storageKey = scientistWorkflowKey(groupId)
   const [split, setSplit] = useState(null)
   const [configuration, setConfiguration] = useState(DEFAULT_EXPERIMENT_CONFIG)
   const [loading, setLoading] = useState(Boolean(splitId))
@@ -146,18 +139,17 @@ export function useExperimentSetup(splitId, groupId) {
           ? configuration.max_features : Number(configuration.max_features)
       }
       const result = await dataScienceService.createExperiment(splitId, hyperparameters)
-      experimentsCache = null
+      session.experiments = null
       if (groupId) {
-        const storageKey = `science-workflow:${groupId}`
         try {
-          const saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}') || {}
+          const saved = readScientistWorkflow(storageKey)
           if (saved.split?.split_id === splitId) {
             const experiment = {
               experiment_id: result.experiment_id,
               experiment_name: result.experiment_name,
               status: result.status,
             }
-            sessionStorage.setItem(storageKey, JSON.stringify({ ...saved, experiment }))
+            writeScientistWorkflow(storageKey, { ...saved, experiment })
           }
         } catch { /* A stale browser cache must not hide the completed experiment. */ }
       }
@@ -396,7 +388,7 @@ export function useScienceForecastDetail(forecastId) {
   return { forecast: result.forecast, loading: false, error: result.error }
 }
 
-export function useSciencePrediction(versionId, preferredExperimentId) {
+export function useSciencePrediction(fileId, preferredExperimentId) {
   const [experiments, setExperiments] = useState([])
   const [selectedExperimentId, setSelectedExperimentId] = useState(preferredExperimentId || '')
   const [sessions, setSessions] = useState([])
@@ -409,7 +401,7 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const availableExperiments = experiments.filter((item) =>
-    !versionId || !Array.isArray(item.dataset_version_ids) || item.dataset_version_ids.includes(versionId))
+    !fileId || !Array.isArray(item.dataset_file_ids) || item.dataset_file_ids.includes(fileId))
   const experimentId = availableExperiments.some((item) => item.experiment_id === selectedExperimentId)
     ? selectedExperimentId : ''
   const selectExperiment = (id) => {
@@ -441,28 +433,28 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
   }, [selectedSessionId])
 
   useEffect(() => {
-    if (!versionId) { setSessions([]); setSessionsLoading(false); return }
+    if (!fileId) { setSessions([]); setSessionsLoading(false); return }
     let cancelled = false
     setSessionIds([])
     setSessions([])
     setSessionsLoading(true)
-    loadAllPredictionSessions({ versionId })
+    loadAllPredictionSessions({ fileId })
       .then((rows) => { if (!cancelled) setSessions(rows) })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được phiên dự báo.')) })
       .finally(() => { if (!cancelled) setSessionsLoading(false) })
     return () => { cancelled = true }
-  }, [versionId])
+  }, [fileId])
   useEffect(() => {
-    if (!experimentId || !versionId) { setCompatibleSessionIds(null); setCompatibilityLoading(false); return }
+    if (!experimentId || !fileId) { setCompatibleSessionIds(null); setCompatibilityLoading(false); return }
     let cancelled = false
     setCompatibleSessionIds(null)
     setCompatibilityLoading(true)
-    loadAllPredictionSessions({ experimentId, versionId })
+    loadAllPredictionSessions({ experimentId, fileId })
       .then((rows) => { if (!cancelled) setCompatibleSessionIds(rows.map((row) => row.session_id)) })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không kiểm tra được session của thí nghiệm.')) })
       .finally(() => { if (!cancelled) setCompatibilityLoading(false) })
     return () => { cancelled = true }
-  }, [experimentId, versionId])
+  }, [experimentId, fileId])
   const predict = async () => {
     setBusy(true); setError('')
     try {
@@ -480,29 +472,41 @@ export function useSciencePrediction(versionId, preferredExperimentId) {
 }
 
 export function useScienceExperiments(experimentId) {
+  const session = getScientistSession()
+  const experimentDetailCache = session.experimentDetails
   const cachedDetail = experimentId ? experimentDetailCache.get(experimentId) : null
-  const [experiments, setExperiments] = useState(() => experimentsCache || [])
+  const [experiments, setExperiments] = useState(() => session.experiments || [])
   const [detail, setDetail] = useState(() => cachedDetail || null)
-  const [loading, setLoading] = useState(() => !experimentsCache)
+  const [loading, setLoading] = useState(() => !session.experiments)
   const [detailLoading, setDetailLoading] = useState(() => Boolean(experimentId) && !cachedDetail)
   const [error, setError] = useState('')
+  const requestId = useRef(0)
   const reload = useCallback(async () => {
+    const currentRequest = ++requestId.current
     setLoading(true); setError('')
     try {
       const rows = []
       let page = 1
       while (true) {
         const result = await dataScienceService.listExperiments({ page })
+        if (currentRequest !== requestId.current) return
         rows.push(...result.data)
         if (page >= result.total_pages) break
         page += 1
       }
-      experimentsCache = rows
+      session.experiments = rows
       setExperiments(rows)
-    } catch (err) { setError(extractErrorMessage(err, 'Không tải được thí nghiệm.')) }
-    finally { setLoading(false) }
+    } catch (err) {
+      if (currentRequest !== requestId.current) return
+      session.experiments = null
+      setExperiments([])
+      setError(extractErrorMessage(err, 'Không tải được thí nghiệm.'))
+    } finally { if (currentRequest === requestId.current) setLoading(false) }
   }, [])
-  useEffect(() => { if (!experimentsCache) reload() }, [reload])
+  useEffect(() => {
+    if (!session.experiments) reload()
+    return () => { requestId.current++ }
+  }, [reload])
   useEffect(() => {
     if (!experimentId) { setDetail(null); return }
     const cached = experimentDetailCache.get(experimentId)
@@ -522,29 +526,66 @@ export function useScienceExperiments(experimentId) {
   return { experiments, detail, loading, detailLoading, error, reload }
 }
 
-export function useScienceExperimentComparison() {
+export function useScienceExperimentComparison(groupKey) {
+  const scopeKey = `${getScientistSession().scope || ''}:${groupKey || ''}`
   const [comparisonData, setComparisonData] = useState(null)
   const [isComparing, setIsComparing] = useState(false)
   const [compareError, setCompareError] = useState('')
+  const [resultMode, setResultMode] = useState('compare')
+  const [operationScope, setOperationScope] = useState(scopeKey)
+  const request = useRef({ sequence: 0, busy: false })
+  const clearComparison = useCallback(() => {
+    request.current.sequence++
+    request.current.busy = false
+    setOperationScope(scopeKey)
+    setComparisonData(null); setCompareError(''); setIsComparing(false)
+  }, [scopeKey])
+  useEffect(() => {
+    const current = request.current
+    current.sequence++; current.busy = false
+    return () => { current.sequence++; current.busy = false }
+  }, [scopeKey])
+
+  const runComparison = async (action, mode = 'compare') => {
+    if (request.current.busy) return null
+    request.current.busy = true
+    const sequence = ++request.current.sequence
+    setOperationScope(scopeKey)
+    setResultMode(mode)
+    setIsComparing(true); setCompareError(''); setComparisonData(null)
+    try {
+      const result = await action()
+      if (sequence !== request.current.sequence) return null
+      setComparisonData(result)
+      return result
+    } catch (err) {
+      if (sequence === request.current.sequence) {
+        setCompareError(extractErrorMessage(err, 'Không thể xếp hạng. Hãy kiểm tra Split ID, dữ liệu Test và đủ 3 horizon.'))
+      }
+      return null
+    } finally {
+      if (sequence === request.current.sequence) { request.current.busy = false; setIsComparing(false) }
+    }
+  }
 
   const compareExperiments = async (experimentIds) => {
     if (!Array.isArray(experimentIds) || experimentIds.length < 2) {
       setCompareError('Vui lòng chọn ít nhất 2 thí nghiệm hoàn thành để so sánh.')
       return null
     }
-    setIsComparing(true)
-    setCompareError('')
-    try {
-      const result = await dataScienceService.compareExperiments(experimentIds)
-      setComparisonData(result)
-      return result
-    } catch (err) {
-      setCompareError(extractErrorMessage(err, 'Không thể so sánh. Hãy chọn các thí nghiệm dùng cùng dữ liệu Test và Split ID.'))
-      return null
-    } finally {
-      setIsComparing(false)
-    }
+    return runComparison(() => dataScienceService.compareExperiments(experimentIds))
   }
 
-  return { comparisonData, isComparing, compareError, compareExperiments }
+  const selectBestOverall = (experimentIds, splitId) => {
+    if (!Array.isArray(experimentIds) || experimentIds.length < 2 || !splitId) {
+      setCompareError('Vui lòng chọn ít nhất 2 thí nghiệm hoàn thành cùng Split để tìm Best Overall.')
+      return Promise.resolve(null)
+    }
+    return runComparison(() => dataScienceService.selectBestOverall(experimentIds, splitId), 'overall')
+  }
+  return { comparisonData: operationScope === scopeKey ? comparisonData : null,
+    isComparing: operationScope === scopeKey && isComparing,
+    compareError: operationScope === scopeKey ? compareError : '',
+    resultMode: operationScope === scopeKey ? resultMode : 'compare',
+    compareExperiments, selectBestOverall, clearComparison }
 }

@@ -36,8 +36,7 @@ export const scientistService = {
         dataset_id: dataset.dataset_id,
         dataset_name: dataset.name,
         dataset_code: dataset.name,
-        version_id: dataset.version_id,
-        version_tag: dataset.version,
+        file_id: dataset.file_id,
         approval_status: dataset.approval_status,
         total_sessions: dataset.total_sessions,
         drone_id: dataset.drone_id,
@@ -45,10 +44,10 @@ export const scientistService = {
       }))
   },
 
-  /** Flatten accessible approved groups into dataset versions for Data Scientists. */
+  /** Flatten accessible approved groups into datasets for Data Scientists. */
   async listApprovedDatasets({ search = '' } = {}) {
     const groups = await scientistService.listApprovedGroups()
-    const versionsByGroup = await Promise.all(groups.map(async (group) => {
+    const datasetsByGroup = await Promise.all(groups.map(async (group) => {
       const datasets = await scientistService.listGroupDatasets(group.group_id)
       return datasets.map((dataset) => ({
         ...dataset,
@@ -56,20 +55,20 @@ export const scientistService = {
         location_name: group.group_name || '',
       }))
     }))
-    const versions = versionsByGroup.flat()
+    const dataset_files = datasetsByGroup.flat()
     const query = search.trim().toLowerCase()
     return query
-      ? versions.filter((item) => `${item.dataset_name} ${item.dataset_code} ${item.location_name}`.toLowerCase().includes(query))
-      : versions
+      ? dataset_files.filter((item) => `${item.dataset_name} ${item.dataset_code} ${item.location_name}`.toLowerCase().includes(query))
+      : dataset_files
   },
 
-  /** Recording Sessions and their paginated previews for an approved version. */
-  async listDatasetSessions(datasetId, versionId) {
+  /** Recording Sessions and their paginated previews for an approved dataset_file. */
+  async listDatasetSessions(datasetId, fileId) {
     const sessions = []
     let page = 1
     while (true) {
       const response = await apiClient.get(
-        `/datasets/${datasetId}/versions/${versionId}/sessions`,
+        `/datasets/${datasetId}/files/${fileId}/sessions`,
         { params: { page, page_size: 100 } }
       )
       sessions.push(...response.data.sessions)
@@ -81,11 +80,11 @@ export const scientistService = {
 
   async getDatasetPreview(
     datasetId,
-    versionId,
+    fileId,
     { sessionId, page = 1, pageSize = 20, representation = 'normalized' } = {}
   ) {
     const response = await apiClient.get(
-      `/datasets/${datasetId}/versions/${versionId}/sessions/${sessionId}/preview`,
+      `/datasets/${datasetId}/files/${fileId}/sessions/${sessionId}/preview`,
       { params: { page, limit: pageSize, representation } }
     )
     return response.data

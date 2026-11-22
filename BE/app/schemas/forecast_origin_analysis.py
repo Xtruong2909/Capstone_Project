@@ -15,7 +15,7 @@ class ForecastOriginSession(BaseModel):
 
 class ForecastOriginPrediction(BaseModel):
     experiment_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     session_id: UUID
     origin_time: datetime
     horizon_minutes: Literal[1, 3, 5]
@@ -35,7 +35,7 @@ class ForecastOriginMetric(BaseModel):
 
 class ForecastOriginAnalysisResponse(BaseModel):
     experiment_id: UUID
-    dataset_version_id: UUID | None
+    dataset_file_id: UUID | None
     sessions: list[ForecastOriginSession]
     selected_session_id: UUID | None
     origins: list[datetime]

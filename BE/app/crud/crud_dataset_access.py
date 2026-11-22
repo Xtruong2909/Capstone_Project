@@ -4,7 +4,7 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.sql.selectable import Exists
 
-from app.models.dataset import Dataset, DatasetAccessGrant, DatasetGroup, DatasetVersion
+from app.models.dataset import Dataset, DatasetAccessGrant, DatasetFile, DatasetGroup
 from app.models.user import User
 
 ACCESS_ROLES = ("data_scientist", "business_user")
@@ -36,10 +36,10 @@ def list_approved_groups(
 ) -> list[DatasetGroup]:
     visible_approved = (
         select(Dataset.id)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
         .where(
             Dataset.group_id == DatasetGroup.id,
-            DatasetVersion.approval_status == "APPROVED",
+            DatasetFile.approval_status == "APPROVED",
             access_filter(user_id),
         )
     )
@@ -60,10 +60,10 @@ def approved_group_dataset_ids_for_user(
 ) -> set[UUID]:
     rows = db.scalars(
         select(Dataset.id)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
         .where(
             Dataset.group_id == group_id,
-            DatasetVersion.approval_status == "APPROVED",
+            DatasetFile.approval_status == "APPROVED",
             access_filter(user_id),
         )
         .distinct()
@@ -78,8 +78,8 @@ def list_group_datasets(db: Session, group_id: UUID) -> list[Dataset]:
 
 def approved_group_dataset_ids(db: Session, group_id: UUID) -> set[UUID]:
     rows = db.scalars(
-        select(Dataset.id).join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-        .where(Dataset.group_id == group_id, DatasetVersion.approval_status == "APPROVED")
+        select(Dataset.id).join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .where(Dataset.group_id == group_id, DatasetFile.approval_status == "APPROVED")
         .distinct()
     )
     return set(rows)
@@ -122,21 +122,21 @@ def get_dataset(db: Session, dataset_id: UUID) -> Dataset | None:
     return db.get(Dataset, dataset_id)
 
 
-def has_approved_version(db: Session, dataset_id: UUID) -> bool:
+def has_approved_file(db: Session, dataset_id: UUID) -> bool:
     return bool(
         db.scalar(
             select(
                 exists().where(
-                    DatasetVersion.dataset_id == dataset_id,
-                    DatasetVersion.approval_status == "APPROVED",
+                    DatasetFile.dataset_id == dataset_id,
+                    DatasetFile.approval_status == "APPROVED",
                 )
             )
         )
     )
 
 
-def get_version(db: Session, version_id: UUID) -> DatasetVersion | None:
-    return db.get(DatasetVersion, version_id)
+def get_file(db: Session, file_id: UUID) -> DatasetFile | None:
+    return db.get(DatasetFile, file_id)
 
 
 def get_user(db: Session, user_id: UUID) -> User | None:
@@ -212,11 +212,11 @@ def accessible_datasets(
 
 def approved_datasets(
     db: Session, user: User, search: str | None, skip: int, limit: int
-) -> list[tuple[Dataset, DatasetVersion]]:
+) -> list[tuple[Dataset, DatasetFile]]:
     query = (
-        select(Dataset, DatasetVersion)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-        .where(DatasetVersion.approval_status == "APPROVED")
+        select(Dataset, DatasetFile)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .where(DatasetFile.approval_status == "APPROVED")
     )
     query = query.where(access_filter(user.id))
     if search:
@@ -224,7 +224,7 @@ def approved_datasets(
             or_(Dataset.name.ilike(f"%{search}%"), Dataset.code.ilike(f"%{search}%"))
         )
     rows = db.execute(
-        query.order_by(Dataset.created_at.desc(), DatasetVersion.created_at.desc())
+        query.order_by(Dataset.created_at.desc(), DatasetFile.created_at.desc())
         .offset(skip)
         .limit(limit)
     )

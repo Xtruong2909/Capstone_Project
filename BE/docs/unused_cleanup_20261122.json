@@ -1,0 +1,1714 @@
+{
+  "audited_on": "2026-11-22",
+  "backup_directory": "C:/Users/truon/AppData/Local/Temp/vscode-agent-codex-sandbox-15Iu0x/unused-cleanup-before-20261122",
+  "backup_database_sha256": "EAA52D7FB7ED621925D424DC67E9B88CA6B8AE9F954BECA332F9F57EC063716A",
+  "removed_files": [
+    "FE/src/features/admin/components/AdminGrantDialog.jsx",
+    "FE/src/features/engineer/components/pipeline/Step1ColumnMapping.jsx",
+    "FE/src/features/engineer/components/pipeline/Step2QualityInspection.jsx",
+    "FE/src/features/engineer/components/PipelineStepper.jsx",
+    "FE/src/features/engineer/components/PneumaSampleGeneratorModal.jsx",
+    "FE/src/features/home/components/SideOutline.jsx",
+    "FE/src/features/roles/RoleDashboardPage.jsx",
+    "FE/src/features/scientist/components/AggregationExplorer.css",
+    "FE/src/features/scientist/components/AggregationExplorer.jsx",
+    "FE/src/features/scientist/components/BarChart.jsx",
+    "FE/src/features/scientist/components/DatasetCard.jsx",
+    "FE/src/features/scientist/components/DatasetInfoPanel.jsx",
+    "FE/src/features/scientist/components/ExperimentBrowserList.jsx",
+    "FE/src/features/scientist/components/ExperimentConfigPanel.jsx",
+    "FE/src/features/scientist/components/ExperimentListDetailPanel.jsx",
+    "FE/src/features/scientist/components/ExperimentSplitSection.jsx",
+    "FE/src/features/scientist/components/LagFeatureDetailDrawer.jsx",
+    "FE/src/features/scientist/components/PredictionFeaturePanel.jsx",
+    "FE/src/features/scientist/components/TrafficPredictionPanel.jsx",
+    "FE/src/features/scientist/components/TrainingFeaturePanel.jsx",
+    "FE/src/features/scientist/components/TrainingPipelineStepper.jsx",
+    "FE/src/features/scientist/components/TrainingPreparationAccordion.jsx",
+    "FE/src/features/scientist/components/TrainTestSplitPanel.jsx",
+    "FE/src/features/scientist/utils/lagFeatureView.js",
+    "FE/src/features/scientist/utils/lagFeatureView.test.js",
+    "FE/src/features/scientist/utils/predictionLagWindows.js",
+    "FE/src/features/scientist/utils/predictionLagWindows.test.js",
+    "FE/src/hooks/useExperimentBrowser.js",
+    "FE/src/hooks/useLagFeatureTable.js",
+    "FE/src/hooks/usePredictionLagWindows.js",
+    "FE/src/hooks/useShareManagement.js",
+    "FE/src/hooks/useTrainingWorkspace.js",
+    "BE/app/api/v1/endpoints/experiments.py",
+    "BE/app/api/v1/endpoints/model_prediction.py",
+    "BE/app/api/v1/endpoints/vehicle_prediction.py",
+    "package-lock.json"
+  ],
+  "removed_columns": [
+    "forecast_results.lower_bound",
+    "forecast_results.upper_bound",
+    "recording_sessions.actual_recording_start",
+    "recording_sessions.actual_recording_end",
+    "recording_sessions.continuous_recording",
+    "recording_sessions.recording_time_source",
+    "traffic_time_series.traffic_density"
+  ],
+  "database_migration_applied": true,
+  "removed_tables": [],
+  "retained_development_tools": [
+    "src/assets/data/pneuma_sample_pool.js",
+    "src/features/engineer/utils/pneumaSampleGenerator.js",
+    "src/features/scientist/utils/formatters.test.js",
+    "src/features/scientist/utils/sortRecordingSessions.test.js"
+  ],
+  "verification": {
+    "backend_unit_suite": {
+      "passed": 823,
+      "skipped": 19,
+      "warnings": 2
+    },
+    "postgres_cleanup_suite": {
+      "passed": 9,
+      "scenarios": [
+        "NULL-only removal preserves rows",
+        "rerun is idempotent",
+        "each populated candidate refuses the entire migration, including zero/FALSE"
+      ]
+    },
+    "frontend_tests": {
+      "passed": 118,
+      "failed": 0,
+      "excluded": "test_pneuma_sample_generation.js: unchanged developer generator writes a sample CSV"
+    },
+    "frontend_build": "passed; existing bundle-size advisory remains",
+    "ruff_changed_models_and_new_tests": "passed",
+    "editor_diagnostics": "no errors in the changed models/new test",
+    "health_db": "connected",
+    "orm_live_reads": {
+      "passed": 3
+    },
+    "api_paths_before": 99,
+    "api_paths_after": 99,
+    "api_paths_changed": 0
+  },
+  "scope": {
+    "database": "Local Docker PostgreSQL database traffic_urban, public schema",
+    "source": [
+      "BE/app",
+      "BE/tests",
+      "BE/migrations",
+      "BE/init_db.sql",
+      "FE/src",
+      "FE/scripts"
+    ],
+    "method": "Cross-check runtime import graphs, tests/development entry points, ORM models, raw SQL, foreign keys, actual schema and populated-column counts.",
+    "preserved": "Existing worktree changes, historical migrations, database rows, uploads, trained-model artifacts, environment directories and used test/development tools."
+  },
+  "file_evidence": [
+    {
+      "file": "FE/src/features/admin/components/AdminGrantDialog.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "0aafeac8dddc798c99191834505d714c151b208a4fa17245fad9fc1acb6586d4"
+    },
+    {
+      "file": "FE/src/features/engineer/components/pipeline/Step1ColumnMapping.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "c95b4839f0d1e8887e9088728e64487f2e0882f4e04959fa3496cf5a93058f8f"
+    },
+    {
+      "file": "FE/src/features/engineer/components/pipeline/Step2QualityInspection.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "7897ab6a3b9a038e10c9375d03e0cc301954e6c994ab5b46f9392f30894bfa88"
+    },
+    {
+      "file": "FE/src/features/engineer/components/PipelineStepper.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "9f3942ec830e194b111b594ee96fea29f558864852de65135ed29cd49a4fed93"
+    },
+    {
+      "file": "FE/src/features/engineer/components/PneumaSampleGeneratorModal.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "699ffdb5ac9bc9d9ff272aa3689fd0fd77cfb9a4a1e0a861f86ea9b5a490e204"
+    },
+    {
+      "file": "FE/src/features/home/components/SideOutline.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "d7070c505cb2c4938b2a8148540666f1de603a3a9e84c1c9308be16449c1a428"
+    },
+    {
+      "file": "FE/src/features/roles/RoleDashboardPage.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "cbced07e5f51ef4721a751db1d25a77eba5e18b205809acdf4bf2a2bd728ca51"
+    },
+    {
+      "file": "FE/src/features/scientist/components/AggregationExplorer.css",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "4d1ad1e37ed46b50b91813c1cadf547721637e81c5504a74bbec6e88f9527cf4"
+    },
+    {
+      "file": "FE/src/features/scientist/components/AggregationExplorer.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "766fcb75cf90c70ec84c40c4ad8cbf4cd8bdd97ea5e6543a848770d6a90a5cf9"
+    },
+    {
+      "file": "FE/src/features/scientist/components/BarChart.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "896a0867d27e29f7df619d5ce92214ad4d76b9a06102a5e57c9e865f16c1f8d5"
+    },
+    {
+      "file": "FE/src/features/scientist/components/DatasetCard.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "78f411f0dd0926d1467cc6ca0c9142f2cdf36919f84fd8f771071119a1b8d045"
+    },
+    {
+      "file": "FE/src/features/scientist/components/DatasetInfoPanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "e4a8e03a59ac2c514b9199a420629286d6cf696d2c0e9a13edff64eb06090669"
+    },
+    {
+      "file": "FE/src/features/scientist/components/ExperimentBrowserList.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "33798624a30b8b21a921656b3aeffdf48094b94e0689e49d5a7514739a26f45f"
+    },
+    {
+      "file": "FE/src/features/scientist/components/ExperimentConfigPanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "aec0deef8e320628c5d49932a150b28b996d86d0994b55954408dc04af36645a"
+    },
+    {
+      "file": "FE/src/features/scientist/components/ExperimentListDetailPanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "134141f9be62188b48f6453c475706662502c59b801140ef7a348529f90bb9a7"
+    },
+    {
+      "file": "FE/src/features/scientist/components/ExperimentSplitSection.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "e42b13b43e7c19b3f82eaed940c7794cc6fc79708759d48fb89b3509c09b526e"
+    },
+    {
+      "file": "FE/src/features/scientist/components/LagFeatureDetailDrawer.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "e86c36f73cb62d39276070e4f5ddbfb23823d612279b10a5a37534091c749b31"
+    },
+    {
+      "file": "FE/src/features/scientist/components/PredictionFeaturePanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "cf67855fa09f6321870c7e82a732c51cdb3de232ca6a49b2aa313d1cb22182c4"
+    },
+    {
+      "file": "FE/src/features/scientist/components/TrafficPredictionPanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "06249326ac468899235f612c62ac51f044e7ce4dcbe996f3a88447f6cb9e4b24"
+    },
+    {
+      "file": "FE/src/features/scientist/components/TrainingFeaturePanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "f3a926a76bb0ef91eccaacd499db8e9611d3c205463117959bf8e5fae5fc1f70"
+    },
+    {
+      "file": "FE/src/features/scientist/components/TrainingPipelineStepper.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "31bebf294cd2d0f8c082cd92c0c8d8ffc847f5e96a6ab0ed22aa93b07ec09acd"
+    },
+    {
+      "file": "FE/src/features/scientist/components/TrainingPreparationAccordion.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "2c02f4a6f68a149d315def56bfa0061bc787c0ee50384a5240ed8c740d5f12dc"
+    },
+    {
+      "file": "FE/src/features/scientist/components/TrainTestSplitPanel.jsx",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "142bf8da485bf4d5a444b0ed3070c392cf78167c9f81814422779785d7292984"
+    },
+    {
+      "file": "FE/src/features/scientist/utils/lagFeatureView.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "b997576d464595d9498764d59046561dbde4a0150a0c72ad268591d906f0dff7"
+    },
+    {
+      "file": "FE/src/features/scientist/utils/lagFeatureView.test.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "557da2e4821e426a6120daf3f7407d6cafbc9adcc2b9f424a140d0267bd527c2"
+    },
+    {
+      "file": "FE/src/features/scientist/utils/predictionLagWindows.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "3aca00e44e28a5ffb0cbdb7c795eecac8778ec8f5831d7b6784ccdcc6384cf3e"
+    },
+    {
+      "file": "FE/src/features/scientist/utils/predictionLagWindows.test.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "68f2c5a2121db8bece1a32e090f0127d08df9b73a5d4e481614726d3d0d47bb1"
+    },
+    {
+      "file": "FE/src/hooks/useExperimentBrowser.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "f0dc5b94dfb4cbc225a23bcee691f3462a09871befe433184637e50cbcfb675e"
+    },
+    {
+      "file": "FE/src/hooks/useLagFeatureTable.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "d3390bdff270e544b89f9527152cfde814dbd1e234f1dcca9f3962cb5f96908e"
+    },
+    {
+      "file": "FE/src/hooks/usePredictionLagWindows.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "d2edd06e825ce7868e9da256f532184d4ca262911774a4a770286c08b4ab1dd2"
+    },
+    {
+      "file": "FE/src/hooks/useShareManagement.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "4ec73bc0c91cb9ced6593d0df6f1f5348490695a4e79516ca0580e3bbe823eae"
+    },
+    {
+      "file": "FE/src/hooks/useTrainingWorkspace.js",
+      "reason": "Unreachable from main.jsx; no external test/script consumer; removed orphan subtree together.",
+      "backup_sha256": "e71e3227d75dac3235be1a6c33cf35d4a1b545fe785f5449d5bf139cda78387c"
+    },
+    {
+      "file": "BE/app/api/v1/endpoints/experiments.py",
+      "reason": "Router never mounted or imported by application, tests or scripts; underlying tested services retained.",
+      "backup_sha256": "4a35074075250e835dbc3cf2abd07c82f7bca8a890f1f8c9be654c8cf54b63ee"
+    },
+    {
+      "file": "BE/app/api/v1/endpoints/model_prediction.py",
+      "reason": "Router never mounted or imported by application, tests or scripts; underlying tested services retained.",
+      "backup_sha256": "a8ee3b619a588a7bce31ff25186cfa152db9e16120685ecd07675edb32c530bf"
+    },
+    {
+      "file": "BE/app/api/v1/endpoints/vehicle_prediction.py",
+      "reason": "Router never mounted or imported by application, tests or scripts; underlying tested services retained.",
+      "backup_sha256": "82d7188872e57a3c7abf6b0dcd88122c03b281f12483cf9a2566d9e5c6056e8a"
+    },
+    {
+      "file": "package-lock.json",
+      "reason": "Empty root lockfile with no root package.json; frontend has its own package.json and lockfile.",
+      "backup_sha256": "d9a986dba238d918967c0c37714a6c276eb4dee0a4bc3b57d7dd5dbb30c52e77"
+    }
+  ],
+  "column_evidence": [
+    {
+      "column": "forecast_results.lower_bound",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    },
+    {
+      "column": "forecast_results.upper_bound",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    },
+    {
+      "column": "recording_sessions.actual_recording_start",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    },
+    {
+      "column": "recording_sessions.actual_recording_end",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    },
+    {
+      "column": "recording_sessions.continuous_recording",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    },
+    {
+      "column": "recording_sessions.recording_time_source",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    },
+    {
+      "column": "traffic_time_series.traffic_density",
+      "non_null_rows_before": 0,
+      "present_after": false,
+      "runtime_consumers": 0,
+      "action": "Removed from live DB, ORM model and initial DDL where present; historical migration DDL retained."
+    }
+  ],
+  "table_inventory": [
+    {
+      "table": "model_training_split_experiment_counters",
+      "rows_before": 6,
+      "rows_after": 6,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "ModelTrainingSplitExperimentCounter",
+        "file": "BE/app/models/model_training.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_model_training_experiments.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "split_id"
+          ],
+          "references": "lag_feature_splits"
+        }
+      ]
+    },
+    {
+      "table": "spatial_ref_sys",
+      "rows_before": 8500,
+      "rows_after": 8500,
+      "action": "retained",
+      "reason": "PostGIS extension-owned reference table.",
+      "model": null,
+      "example_consumers": [],
+      "foreign_keys": []
+    },
+    {
+      "table": "prediction_runs",
+      "rows_before": 7,
+      "rows_after": 7,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "PredictionRun",
+        "file": "BE/app/models/prediction.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_prediction.py",
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/services/prediction_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "model_training_experiments"
+        }
+      ]
+    },
+    {
+      "table": "prediction_results",
+      "rows_before": 27,
+      "rows_after": 27,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "PredictionResult",
+        "file": "BE/app/models/prediction.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_prediction.py",
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/services/ai_assistant_service.py",
+        "BE/app/services/prediction_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "model_training_experiments"
+        },
+        {
+          "columns": [
+            "model_id"
+          ],
+          "references": "experiment_trained_models"
+        },
+        {
+          "columns": [
+            "prediction_run_id"
+          ],
+          "references": "prediction_runs"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "shared_reports",
+      "rows_before": 2,
+      "rows_after": 2,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "SharedReport",
+        "file": "BE/app/models/sharing.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/services/sharing_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "shared_report_items",
+      "rows_before": 17,
+      "rows_after": 17,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "SharedReportItem",
+        "file": "BE/app/models/sharing.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/services/sharing_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "resource_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "share_id"
+          ],
+          "references": "shared_reports"
+        }
+      ]
+    },
+    {
+      "table": "dataset_file_sessions",
+      "rows_before": 118,
+      "rows_after": 118,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetFileSession",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/crud/crud_dataset.py",
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/crud/crud_traffic_aggregation.py",
+        "BE/app/services/dataset_normalization_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "recording_sessions",
+      "rows_before": 118,
+      "rows_after": 118,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "RecordingSession",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/api/v1/endpoints/datasets.py",
+        "BE/app/api/v1/endpoints/dataset_access.py",
+        "BE/app/crud/crud_dataset.py",
+        "BE/app/crud/crud_forecast_origin_analysis.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        }
+      ]
+    },
+    {
+      "table": "dataset_upload_jobs",
+      "rows_before": 11,
+      "rows_after": 11,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetUploadJob",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_dataset.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "dataset_column_mappings",
+      "rows_before": 20,
+      "rows_after": 20,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetColumnMapping",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/dataset_mapping.py",
+        "BE/app/crud/crud_dataset.py",
+        "BE/app/services/dataset_mapping_service.py",
+        "BE/app/services/data_quality_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "updated_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "data_quality_checks",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": {
+        "name": "DataQualityCheck",
+        "file": "BE/app/models/data_quality.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_data_quality.py",
+        "BE/app/services/ai_assistant_service.py",
+        "BE/app/services/data_quality_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "recording_session_id"
+          ],
+          "references": "recording_sessions"
+        },
+        {
+          "columns": [
+            "started_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "roles",
+      "rows_before": 4,
+      "rows_after": 4,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "Role",
+        "file": "BE/app/models/user.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/crud/crud_admin.py",
+        "BE/app/schemas/admin.py"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "table": "users",
+      "rows_before": 6,
+      "rows_after": 6,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "User",
+        "file": "BE/app/models/user.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/api/v1/endpoints/admin_portal.py",
+        "BE/app/api/v1/endpoints/ai_assistant.py",
+        "BE/app/api/v1/endpoints/auth.py",
+        "BE/app/api/v1/endpoints/datasets.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "role_id"
+          ],
+          "references": "roles"
+        }
+      ]
+    },
+    {
+      "table": "audit_logs",
+      "rows_before": 354,
+      "rows_after": 354,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "AuditLog",
+        "file": "BE/app/models/audit.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_admin_portal.py",
+        "BE/app/crud/crud_recording_metadata.py",
+        "BE/app/schemas/admin.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "datasets",
+      "rows_before": 24,
+      "rows_after": 24,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "Dataset",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/api.py",
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/api/v1/endpoints/admin_portal.py",
+        "BE/app/api/v1/endpoints/datasets.py",
+        "BE/app/api/v1/endpoints/dataset_access.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "group_id"
+          ],
+          "references": "dataset_groups"
+        }
+      ]
+    },
+    {
+      "table": "dataset_files",
+      "rows_before": 24,
+      "rows_after": 24,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetFile",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/api/v1/endpoints/datasets.py",
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_admin_portal.py",
+        "BE/app/crud/crud_ai_assistant.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "approved_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "submitted_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "data_quality_issues",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": {
+        "name": "DataQualityIssue",
+        "file": "BE/app/models/data_quality.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_data_quality.py",
+        "BE/app/services/data_quality_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "check_id"
+          ],
+          "references": "data_quality_checks"
+        },
+        {
+          "columns": [
+            "recording_session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "data_cleaning_histories",
+      "rows_before": 44,
+      "rows_after": 44,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DataCleaningHistory",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/datasets.py",
+        "BE/app/crud/crud_dataset.py",
+        "BE/app/crud/crud_recording_metadata.py",
+        "BE/app/crud/crud_traffic_aggregation.py",
+        "BE/app/services/dataset_preview_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "executed_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "dataset_access_grants",
+      "rows_before": 21,
+      "rows_after": 21,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetAccessGrant",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_admin_portal.py",
+        "BE/app/crud/crud_dataset_access.py",
+        "BE/app/crud/crud_model_training.py",
+        "BE/app/services/dataset_access_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "granted_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "traffic_aggregation_jobs",
+      "rows_before": 68,
+      "rows_after": 68,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "TrafficAggregationJob",
+        "file": "BE/app/models/traffic.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_lag_feature.py",
+        "BE/app/crud/crud_model_training_experiments.py",
+        "BE/app/crud/crud_prediction.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        }
+      ]
+    },
+    {
+      "table": "traffic_time_series",
+      "rows_before": 5105,
+      "rows_after": 5105,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "TrafficTimeSeries",
+        "file": "BE/app/models/traffic.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_feature_engineering.py",
+        "BE/app/crud/crud_forecast_origin_analysis.py",
+        "BE/app/crud/crud_lag_feature.py",
+        "BE/app/crud/crud_prediction.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        },
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        }
+      ]
+    },
+    {
+      "table": "experiments",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": {
+        "name": "Experiment",
+        "file": "BE/app/models/experiment.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/api/v1/endpoints/model_training.py",
+        "BE/app/api/v1/endpoints/model_training_evaluation.py",
+        "BE/app/api/v1/endpoints/prediction.py",
+        "BE/app/crud/crud_admin.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        }
+      ]
+    },
+    {
+      "table": "model_training_splits",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": {
+        "name": "ModelTrainingSplit",
+        "file": "BE/app/models/model_training.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_model_training.py",
+        "BE/app/crud/crud_sharing.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        }
+      ]
+    },
+    {
+      "table": "evaluation_metrics",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": {
+        "name": "EvaluationMetric",
+        "file": "BE/app/models/experiment.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_model_training_evaluation.py",
+        "BE/app/schemas/prediction.py",
+        "BE/app/services/ai_assistant_service.py",
+        "BE/app/services/model_training_evaluation_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "experiments"
+        }
+      ]
+    },
+    {
+      "table": "model_validation_results",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": null,
+      "example_consumers": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "model_training_experiments"
+        }
+      ]
+    },
+    {
+      "table": "final_models",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": null,
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/services/ai_assistant_service.py",
+        "BE/app/services/model_prediction_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_file_id"
+          ],
+          "references": "dataset_files"
+        },
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "model_training_experiments"
+        },
+        {
+          "columns": [
+            "split_id"
+          ],
+          "references": "model_training_splits"
+        }
+      ]
+    },
+    {
+      "table": "traffic_aggregation_quality_checks",
+      "rows_before": 2,
+      "rows_after": 2,
+      "action": "retained",
+      "reason": "Referenced by raw SQL; absence from ORM does not mean unused.",
+      "model": null,
+      "example_consumers": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        },
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        }
+      ]
+    },
+    {
+      "table": "forecast_results",
+      "rows_before": 0,
+      "rows_after": 0,
+      "action": "retained",
+      "reason": "Still referenced by application/internal services or foreign keys; empty is not unused.",
+      "model": {
+        "name": "ForecastResult",
+        "file": "BE/app/models/experiment.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/prediction.py",
+        "BE/app/api/v1/endpoints/sharing.py",
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_model_training.py",
+        "BE/app/crud/crud_sharing.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "experiment_id",
+            "horizon_minutes"
+          ],
+          "references": "experiments"
+        },
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "experiments"
+        },
+        {
+          "columns": [
+            "model_id"
+          ],
+          "references": "final_models"
+        }
+      ]
+    },
+    {
+      "table": "dataset_group_processing_jobs",
+      "rows_before": 33,
+      "rows_after": 33,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetGroupProcessingJob",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_dataset.py",
+        "BE/app/services/dataset_group_file_service.py",
+        "BE/app/services/dataset_group_processing_service.py",
+        "BE/app/services/dataset_pipeline_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "group_id"
+          ],
+          "references": "dataset_groups"
+        }
+      ]
+    },
+    {
+      "table": "traffic_aggregation_session_results",
+      "rows_before": 340,
+      "rows_after": 340,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "TrafficAggregationSessionResult",
+        "file": "BE/app/models/traffic.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_forecast_origin_analysis.py",
+        "BE/app/crud/crud_prediction.py",
+        "BE/app/crud/crud_traffic_aggregation.py",
+        "BE/app/services/ds_temporal_aggregation_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "dataset_groups",
+      "rows_before": 9,
+      "rows_after": 9,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "DatasetGroup",
+        "file": "BE/app/models/dataset.py"
+      },
+      "example_consumers": [
+        "BE/app/api/v1/endpoints/admin.py",
+        "BE/app/api/v1/endpoints/admin_portal.py",
+        "BE/app/api/v1/endpoints/datasets.py",
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_admin_portal.py"
+      ],
+      "foreign_keys": []
+    },
+    {
+      "table": "traffic_aggregation_quality_sessions",
+      "rows_before": 40,
+      "rows_after": 40,
+      "action": "retained",
+      "reason": "Referenced by raw SQL; absence from ORM does not mean unused.",
+      "model": null,
+      "example_consumers": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "quality_check_id"
+          ],
+          "references": "traffic_aggregation_quality_checks"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "traffic_aggregation_quality_issues",
+      "rows_before": 42,
+      "rows_after": 42,
+      "action": "retained",
+      "reason": "Referenced by raw SQL; absence from ORM does not mean unused.",
+      "model": null,
+      "example_consumers": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "quality_check_id"
+          ],
+          "references": "traffic_aggregation_quality_checks"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "lag_feature_generations",
+      "rows_before": 8,
+      "rows_after": 8,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "LagFeatureGeneration",
+        "file": "BE/app/models/lag_feature.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_lag_feature.py",
+        "BE/app/crud/crud_model_training_experiments.py",
+        "BE/app/crud/crud_sharing.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        }
+      ]
+    },
+    {
+      "table": "lag_feature_splits",
+      "rows_before": 7,
+      "rows_after": 7,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "LagFeatureSplit",
+        "file": "BE/app/models/lag_feature.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_model_training_experiments.py",
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/crud/crud_traffic_aggregation.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "feature_generation_id"
+          ],
+          "references": "lag_feature_generations"
+        }
+      ]
+    },
+    {
+      "table": "lag_feature_samples",
+      "rows_before": 984,
+      "rows_after": 984,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "LagFeatureSample",
+        "file": "BE/app/models/lag_feature.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_forecast_origin_analysis.py",
+        "BE/app/crud/crud_lag_feature.py",
+        "BE/app/crud/crud_train_test_splits.py",
+        "BE/app/services/forecast_origin_analysis_service.py",
+        "BE/app/services/lag_feature_model_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "aggregation_id"
+          ],
+          "references": "traffic_aggregation_jobs"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "generation_id"
+          ],
+          "references": "lag_feature_generations"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    },
+    {
+      "table": "lag_feature_split_samples",
+      "rows_before": 862,
+      "rows_after": 862,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "LagFeatureSplitSample",
+        "file": "BE/app/models/lag_feature.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_forecast_origin_analysis.py",
+        "BE/app/crud/crud_train_test_splits.py",
+        "BE/app/services/train_test_splits_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "sample_id"
+          ],
+          "references": "lag_feature_samples"
+        },
+        {
+          "columns": [
+            "split_id"
+          ],
+          "references": "lag_feature_splits"
+        }
+      ]
+    },
+    {
+      "table": "lag_feature_forests",
+      "rows_before": 23,
+      "rows_after": 23,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "LagFeatureForest",
+        "file": "BE/app/models/lag_feature.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_lag_feature.py",
+        "BE/app/services/lag_feature_model_service.py",
+        "BE/app/services/prediction_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "generation_id"
+          ],
+          "references": "lag_feature_generations"
+        },
+        {
+          "columns": [
+            "split_id"
+          ],
+          "references": "lag_feature_splits"
+        }
+      ]
+    },
+    {
+      "table": "experiment_batches",
+      "rows_before": 1,
+      "rows_after": 1,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "ExperimentBatch",
+        "file": "BE/app/models/model_training.py"
+      },
+      "example_consumers": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "lag_feature_split_id"
+          ],
+          "references": "lag_feature_splits"
+        },
+        {
+          "columns": [
+            "legacy_split_id"
+          ],
+          "references": "model_training_splits"
+        }
+      ]
+    },
+    {
+      "table": "model_training_experiments",
+      "rows_before": 17,
+      "rows_after": 17,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "ModelTrainingExperiment",
+        "file": "BE/app/models/model_training.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_admin.py",
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_model_training.py",
+        "BE/app/crud/crud_model_training_experiments.py",
+        "BE/app/crud/crud_prediction.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "batch_id"
+          ],
+          "references": "experiment_batches"
+        },
+        {
+          "columns": [
+            "created_by"
+          ],
+          "references": "users"
+        },
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "lag_feature_split_id"
+          ],
+          "references": "lag_feature_splits"
+        },
+        {
+          "columns": [
+            "split_id"
+          ],
+          "references": "model_training_splits"
+        }
+      ]
+    },
+    {
+      "table": "experiment_trained_models",
+      "rows_before": 51,
+      "rows_after": 51,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "ExperimentTrainedModel",
+        "file": "BE/app/models/model_training.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_model_training_experiments.py",
+        "BE/app/crud/crud_prediction.py",
+        "BE/app/crud/crud_sharing.py",
+        "BE/app/services/model_training_experiment_service.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "model_training_experiments"
+        },
+        {
+          "columns": [
+            "lag_feature_forest_id"
+          ],
+          "references": "lag_feature_forests"
+        }
+      ]
+    },
+    {
+      "table": "model_training_forecast_results",
+      "rows_before": 5355,
+      "rows_after": 5355,
+      "action": "retained",
+      "reason": "Application/relationship consumer and existing data.",
+      "model": {
+        "name": "ModelTrainingForecastResult",
+        "file": "BE/app/models/model_training.py"
+      },
+      "example_consumers": [
+        "BE/app/crud/crud_ai_assistant.py",
+        "BE/app/crud/crud_forecast_origin_analysis.py",
+        "BE/app/crud/crud_model_training_evaluation.py",
+        "BE/app/crud/crud_model_training_experiments.py",
+        "BE/app/crud/crud_sharing.py"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "dataset_id"
+          ],
+          "references": "datasets"
+        },
+        {
+          "columns": [
+            "experiment_id"
+          ],
+          "references": "model_training_experiments"
+        },
+        {
+          "columns": [
+            "model_id"
+          ],
+          "references": "experiment_trained_models"
+        },
+        {
+          "columns": [
+            "session_id"
+          ],
+          "references": "recording_sessions"
+        }
+      ]
+    }
+  ],
+  "retained_internal_modules": [
+    {
+      "file": "BE/app/api/v1/endpoints/train_test_split.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/crud/crud_data_quality.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/crud/crud_feature_engineering.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/crud/crud_traffic_speed.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/crud/crud_traffic_time.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/schemas/data_quality.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/schemas/model_prediction.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/data_quality_service.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/feature_engineering_service.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/model_prediction_service.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/quality_point_batch.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/traffic_aggregation_service.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/traffic_speed_repair_service.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    },
+    {
+      "file": "BE/app/services/train_test_split_service.py",
+      "reason": "Not mounted in the current HTTP app, but consumed by internal compatibility/maintenance tests or their dependencies."
+    }
+  ],
+  "retained_nullable_columns": {
+    "traffic_time_series.coverage_seconds": "Used with bin status/training eligibility constraints; NULL means unknown coverage.",
+    "traffic_time_series.eligible_for_training": "Read by forecast-origin analysis; NULL is a supported unknown state."
+  },
+  "database_migration": "BE/migrations/20261201_remove_verified_unused_columns.sql",
+  "database_safety": {
+    "backup_format": "pg_dump custom format; pg_restore --list verified readable",
+    "backup_bytes": 646724,
+    "active_jobs_before": {
+      "dataset_upload_jobs": 0,
+      "traffic_aggregation_jobs": 0,
+      "dataset_group_processing_jobs": 0,
+      "model_training_experiments": 0
+    },
+    "transaction": true,
+    "refuse_populated_columns": true,
+    "cascade": false,
+    "table_count_before": 42,
+    "table_count_after": 42,
+    "all_table_row_counts_preserved": true
+  },
+  "summary": {
+    "removed_columns": 7,
+    "removed_files": 36,
+    "removed_tables": 0
+  }
+}

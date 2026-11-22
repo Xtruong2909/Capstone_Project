@@ -34,9 +34,9 @@ class TrafficAggregationJob(Base):
         nullable=False,
         index=True,
     )
-    dataset_version_id = Column(
+    dataset_file_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        ForeignKey("dataset_files.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -116,12 +116,9 @@ class TrafficTimeSeries(Base):
         ),
         CheckConstraint("traffic_flow >= 0 AND traffic_flow < 'Infinity'", name="ck_traffic_flow"),
         CheckConstraint("mean_speed >= 0 AND mean_speed < 'Infinity'", name="ck_traffic_speed"),
-        CheckConstraint(
-            "traffic_density >= 0 AND traffic_density < 'Infinity'", name="ck_traffic_density"
-        ),
         Index(
             "uq_traffic_bucket_legacy",
-            "dataset_version_id", "roi_identifier", "time_bucket",
+            "dataset_file_id", "roi_identifier", "time_bucket",
             unique=True,
             postgresql_where=text("aggregation_id IS NULL"),
         ),
@@ -140,8 +137,8 @@ class TrafficTimeSeries(Base):
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    dataset_version_id = Column(
-        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="CASCADE"), nullable=False
+    dataset_file_id = Column(
+        UUID(as_uuid=True), ForeignKey("dataset_files.id", ondelete="CASCADE"), nullable=False
     )
     aggregation_id = Column(
         UUID(as_uuid=True), ForeignKey("traffic_aggregation_jobs.id", ondelete="CASCADE"),
@@ -165,6 +162,5 @@ class TrafficTimeSeries(Base):
     traffic_flow = Column(
         Numeric(10, 2), nullable=True, comment="Counting-line passages per minute"
     )
-    traffic_density = Column(Numeric(10, 4), nullable=True    )
     mean_speed = Column(Numeric(6, 2), nullable=True, comment="km/h")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

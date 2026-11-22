@@ -44,9 +44,9 @@ api_router.include_router(
     tags=["Bước 4: Chuẩn hóa Dataset"],
 )
 api_router.include_router(
-    datasets.version_router,
+    datasets.file_router,
     prefix="/datasets",
-    tags=["Bước 5: Phiên bản & phê duyệt Dataset"],
+    tags=["Bước 5: dữ liệu & phê duyệt Dataset"],
 )
 api_router.include_router(
     dataset_access.approved_router,

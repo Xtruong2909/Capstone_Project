@@ -18,9 +18,9 @@ class ExperimentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dataset_id: UUID | None = None
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     time_period: dict[str, datetime | str | list[dict[str, object]]] | None = None
-    series: list["TimeSeriesRow"] = Field(default_factory=list)
+    series: list[TimeSeriesRow] = Field(default_factory=list)
     aggregation_interval: int = Field(default=60, ge=60, le=300)
     lag_features: int = Field(default=5, ge=1, le=10)
     model: Literal["RANDOM_FOREST", "PERSISTENCE", "HISTORICAL_AVERAGE"] = "RANDOM_FOREST"
@@ -41,7 +41,7 @@ class ExperimentCreateRequest(BaseModel):
 class SplitExperimentConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     roi_identifier: str | None = None
     recording_session_id: str | None = None
     train_ratio: float = Field(default=0.70, gt=0, lt=1)
@@ -100,5 +100,5 @@ class ExperimentRunResponse(BaseModel):
 class ExperimentDetailResponse(ExperimentRunResponse):
     model_config = ConfigDict(from_attributes=True)
 
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     created_at: datetime | None = None
