@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.dataset import Dataset, DatasetGroup, DatasetVersion
+from app.models.dataset import Dataset, DatasetFile, DatasetGroup
 from app.models.experiment import Experiment
 from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
 from app.models.model_training import ModelTrainingExperiment, ModelTrainingSplit
@@ -23,11 +23,11 @@ def get_admin_stats(db: Session) -> dict:
     total_roles = db.query(Role).count()
     total_datasets = db.query(Dataset).count()
     pending_approvals = (
-        db.query(DatasetVersion)
+        db.query(DatasetFile)
         .filter(
-            DatasetVersion.approval_status == "SUBMITTED",
-            DatasetVersion.submitted_by.is_not(None),
-            DatasetVersion.submitted_at.is_not(None),
+            DatasetFile.approval_status == "SUBMITTED",
+            DatasetFile.submitted_by.is_not(None),
+            DatasetFile.submitted_at.is_not(None),
         )
         .count()
     )
@@ -148,7 +148,7 @@ def create_audit_log(
     actor = db.get(User, user_id) if user_id is not None else None
     module = {
         "USER": "User Management",
-        "DATASET_VERSION": "Dataset",
+        "DATASET_FILE": "Dataset",
         "DATASET": "Dataset",
     }.get(resource_type.upper(), resource_type.replace("_", " ").title())
     record_audit_event(
@@ -164,33 +164,32 @@ def create_audit_log(
     )
 
 
-def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
-    """Retrieve dataset versions for approval management."""
-    versions = (
+def get_dataset_files_for_approval(db: Session, skip: int = 0, limit: int = 50) -> list[dict]:
+    """Retrieve datasets for approval management."""
+    dataset_files = (
         db.query(
-            DatasetVersion, Dataset.name.label("dataset_name"),
+            DatasetFile, Dataset.name.label("dataset_name"),
             Dataset.recording_date, Dataset.drone_id,
         )
-        .join(Dataset, DatasetVersion.dataset_id == Dataset.id)
+        .join(Dataset, DatasetFile.dataset_id == Dataset.id)
         .filter(
-            DatasetVersion.approval_status == "SUBMITTED",
-            DatasetVersion.submitted_by.is_not(None),
-            DatasetVersion.submitted_at.is_not(None),
+            DatasetFile.approval_status == "SUBMITTED",
+            DatasetFile.submitted_by.is_not(None),
+            DatasetFile.submitted_at.is_not(None),
         )
-        .order_by(DatasetVersion.submitted_at.desc().nullslast(), DatasetVersion.created_at.desc())
+        .order_by(DatasetFile.submitted_at.desc().nullslast(), DatasetFile.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
     result = []
-    for ver, dataset_name, recording_date, drone_id in versions:
+    for ver, dataset_name, recording_date, drone_id in dataset_files:
         result.append({
             "id": ver.id,
             "dataset_id": ver.dataset_id,
             "dataset_name": dataset_name,
             "recording_date": recording_date,
             "drone_id": drone_id,
-            "version_tag": ver.version_tag,
             "file_format": ver.file_format,
             "total_records": ver.total_records,
             "approval_status": ver.approval_status,
@@ -202,47 +201,47 @@ def get_dataset_versions_for_approval(db: Session, skip: int = 0, limit: int = 5
 def list_submitted_group_ids(db: Session) -> list[UUID]:
     rows = (
         db.query(Dataset.group_id)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
         .filter(
             Dataset.group_id.is_not(None),
-            DatasetVersion.approval_status == "SUBMITTED",
-            DatasetVersion.submitted_by.is_not(None),
-            DatasetVersion.submitted_at.is_not(None),
+            DatasetFile.approval_status == "SUBMITTED",
+            DatasetFile.submitted_by.is_not(None),
+            DatasetFile.submitted_at.is_not(None),
         )
         .group_by(Dataset.group_id)
-        .order_by(func.max(DatasetVersion.submitted_at).desc())
+        .order_by(func.max(DatasetFile.submitted_at).desc())
         .all()
     )
     return [row[0] for row in rows]
 
 
-def lock_dataset_versions(db: Session, version_ids: list[UUID]) -> list[DatasetVersion]:
+def lock_dataset_files(db: Session, file_ids: list[UUID]) -> list[DatasetFile]:
     return (
-        db.query(DatasetVersion)
-        .filter(DatasetVersion.id.in_(version_ids))
-        .order_by(DatasetVersion.id)
+        db.query(DatasetFile)
+        .filter(DatasetFile.id.in_(file_ids))
+        .order_by(DatasetFile.id)
         .with_for_update()
         .all()
     )
 
 
-def approve_or_reject_dataset_version(
+def approve_or_reject_dataset_file(
     db: Session,
-    version_id: UUID,
+    file_id: UUID,
     status: str,
     note: str | None,
     admin_id: UUID,
-) -> DatasetVersion | None:
-    """Approve or reject a dataset version."""
-    version = db.query(DatasetVersion).filter(DatasetVersion.id == version_id).first()
-    if not version:
+) -> DatasetFile | None:
+    """Approve or reject a dataset."""
+    dataset_file = db.query(DatasetFile).filter(DatasetFile.id == file_id).first()
+    if not dataset_file:
         return None
-    version.approval_status = status.upper()
-    version.approved_by = admin_id
-    version.approval_note = note
+    dataset_file.approval_status = status.upper()
+    dataset_file.approved_by = admin_id
+    dataset_file.approval_note = note
     db.commit()
-    db.refresh(version)
-    return version
+    db.refresh(dataset_file)
+    return dataset_file
 
 
 def count_experiments(db: Session, model: type, status: str | None = None) -> int:
@@ -269,7 +268,6 @@ def list_recent_training_experiments(db: Session, limit: int) -> list[tuple]:
         db.query(
             ModelTrainingExperiment,
             User.full_name.label("creator_name"),
-            DatasetVersion.version_tag.label("dataset_version_tag"),
             Dataset.name.label("dataset_name"),
             LagFeatureGeneration.id.label("feature_generation_id"),
             TrafficAggregationJob.id.label("aggregation_id"),
@@ -278,8 +276,8 @@ def list_recent_training_experiments(db: Session, limit: int) -> list[tuple]:
             DatasetGroup.name.label("group_name"),
         )
         .outerjoin(ModelTrainingSplit, ModelTrainingExperiment.split_id == ModelTrainingSplit.id)
-        .outerjoin(DatasetVersion, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
-        .outerjoin(Dataset, DatasetVersion.dataset_id == Dataset.id)
+        .outerjoin(DatasetFile, ModelTrainingSplit.dataset_file_id == DatasetFile.id)
+        .outerjoin(Dataset, DatasetFile.dataset_id == Dataset.id)
         .outerjoin(LagFeatureSplit, ModelTrainingExperiment.lag_feature_split_id == LagFeatureSplit.id)
         .outerjoin(LagFeatureGeneration, LagFeatureSplit.feature_generation_id == LagFeatureGeneration.id)
         .outerjoin(TrafficAggregationJob, LagFeatureGeneration.aggregation_id == TrafficAggregationJob.id)

@@ -36,7 +36,7 @@ EVALUATION_POLICY = "traffic-v2:train-target-before-test-history;HA=train-target
 
 
 def build_parameter_request(
-    version_id: UUID, split_id: UUID | None, split_result: TrainingSplitInput | None,
+    file_id: UUID, split_id: UUID | None, split_result: TrainingSplitInput | None,
     hyperparameters: dict, evaluation_mode: str,
 ) -> TrainingExperimentRequest:
     """Adapt separate query parameters to the validated training contract."""
@@ -57,11 +57,11 @@ def build_parameter_request(
         validated_split = None
         if split_result is not None:
             data = split_result.model_dump()
-            if data["dataset_version_id"] is None:
-                data["dataset_version_id"] = version_id
+            if data["dataset_file_id"] is None:
+                data["dataset_file_id"] = file_id
             validated_split = TrainingSplit.model_validate(data)
         return TrainingExperimentRequest(
-            dataset_version_id=version_id, split_id=split_id, split_result=validated_split,
+            dataset_file_id=file_id, split_id=split_id, split_result=validated_split,
             hyperparameters=parameters, evaluation_mode=evaluation_mode,
         )
     except ValidationError as exc:
@@ -82,7 +82,7 @@ def create_from_saved_split(
     if stored is None:
         raise HTTPException(404, "Split not found; call the train/test split API first")
     request = build_parameter_request(
-        stored.dataset_version_id, split_id, None, hyperparameters, evaluation_mode,
+        stored.dataset_file_id, split_id, None, hyperparameters, evaluation_mode,
     )
     return create_and_run(db, request, user)
 
@@ -177,12 +177,12 @@ def train_models(
     }
 
 
-def require_version(db: Session, version_id: UUID, user: User, training: bool = False) -> None:
-    version = crud_dataset_access.get_version(db, version_id)
-    if version is None:
-        raise HTTPException(404, "Dataset version not found")
+def require_file(db: Session, file_id: UUID, user: User, training: bool = False) -> None:
+    dataset_file = crud_dataset_access.get_file(db, file_id)
+    if dataset_file is None:
+        raise HTTPException(404, "Dataset dataset_file not found")
     guard = require_dataset_scientist if training else require_dataset_reader
-    guard(dataset_id=version.dataset_id, current_user=user, db=db)
+    guard(dataset_id=dataset_file.dataset_id, current_user=user, db=db)
 
 
 def build_result_tables(prediction_rows: list[dict]) -> ResultTables:
@@ -222,7 +222,7 @@ def serialize_experiment(experiment: ModelTrainingExperiment) -> TrainingExperim
     return TrainingExperimentResponse(
         experiment_id=experiment.id, experiment_name=experiment.name,
         name=experiment.name,
-        dataset_version_id=config.get("dataset_version_id"),
+        dataset_file_id=config.get("dataset_file_id"),
         split_id=split_id,
         train_samples=config.get("train_samples"),
         test_samples=config.get("test_samples"),
@@ -254,18 +254,18 @@ def serialize_experiment(experiment: ModelTrainingExperiment) -> TrainingExperim
 
 def create_and_run(db: Session, request: TrainingExperimentRequest, user: User) -> TrainingExperimentResponse:
     started = time.perf_counter()
-    require_version(db, request.dataset_version_id, user, training=True)
+    require_file(db, request.dataset_file_id, user, training=True)
     try:
         if request.split_result is not None:
             split = request.split_result
             evaluation = evaluate_validity(split, request.evaluation_mode)
             stored_split = repository.save_split(
-                db, request.dataset_version_id, split_fingerprint(split), split.model_dump(mode="json")
+                db, request.dataset_file_id, split_fingerprint(split), split.model_dump(mode="json")
             )
         else:
             stored_split = repository.get_split(db, request.split_id)
-            if stored_split is None or stored_split.dataset_version_id != request.dataset_version_id:
-                raise HTTPException(404, "Split not found for this dataset version")
+            if stored_split is None or stored_split.dataset_file_id != request.dataset_file_id:
+                raise HTTPException(404, "Split not found for this dataset")
             try:
                 split = TrainingSplit.model_validate(stored_split.payload)
             except ValidationError as exc:
@@ -273,9 +273,9 @@ def create_and_run(db: Session, request: TrainingExperimentRequest, user: User) 
             evaluation = evaluate_validity(split, request.evaluation_mode)
         configuration = request.model_dump(mode="json", exclude={"split_result"})
         configuration["split_id"] = str(stored_split.id)
-        dataset_id = repository.lock_dataset_for_experiment(db, request.dataset_version_id)
+        dataset_id = repository.lock_dataset_for_experiment(db, request.dataset_file_id)
         if dataset_id is None:
-            raise HTTPException(404, "Dataset not found for this dataset version")
+            raise HTTPException(404, "Dataset not found for this dataset")
         name = create_experiment_name(repository.list_dataset_experiment_names(db, dataset_id))
         experiment = repository.create_experiment(
             db, stored_split.id, user.id, configuration, evaluation, dataset_id, name,
@@ -340,26 +340,29 @@ def create_and_run(db: Session, request: TrainingExperimentRequest, user: User) 
 
 
 def get_detail(db: Session, experiment_id: UUID, user: User) -> TrainingExperimentResponse:
+    from app.services.scientist_ownership_service import require_scientist_owner
+
     experiment = repository.get_experiment(db, experiment_id)
     if experiment is None:
         raise HTTPException(404, "Experiment not found")
+    require_scientist_owner(user, experiment.created_by)
     if getattr(experiment, "lag_feature_split_id", None) is not None:
         from app.services.train_test_splits_service import get_accessible_split
 
         get_accessible_split(db, user, experiment.lag_feature_split_id)
     else:
-        require_version(db, UUID(experiment.configuration["dataset_version_id"]), user)
+        require_file(db, UUID(experiment.configuration["dataset_file_id"]), user)
     return serialize_experiment(experiment)
 
 
-def list_results(db: Session, user: User, version_id: UUID | None, skip: int,
+def list_results(db: Session, user: User, file_id: UUID | None, skip: int,
                  limit: int) -> list[TrainingExperimentResponse]:
     if user.role_id not in ("admin", "data_scientist", "business_user"):
         raise HTTPException(403, "Training experiment read access required")
-    if version_id:
-        require_version(db, version_id, user)
+    if file_id:
+        require_file(db, file_id, user)
     return [serialize_experiment(item)
-            for item in repository.list_experiments(db, user, version_id, skip, limit)]
+            for item in repository.list_experiments(db, user, file_id, skip, limit)]
 
 
 def compare_results(
@@ -375,11 +378,11 @@ def compare_results(
         raise HTTPException(422, "Experiment IDs must be distinct")
     results = [get_detail(db, experiment_id, user) for experiment_id in ids]
     signatures = {
-        (r.dataset_version_id, r.split_id, r.evaluation_policy, r.evaluation_mode,
+        (r.dataset_file_id, r.split_id, r.evaluation_policy, r.evaluation_mode,
          tuple(r.forecast_horizons)) for r in results
     }
     if len(signatures) != 1:
-        raise HTTPException(422, "Comparison requires the same dataset version, split, horizons and evaluation rules")
+        raise HTTPException(422, "Comparison requires the same dataset, split, horizons and evaluation rules")
     if any(r.status != "COMPLETED" for r in results):
         raise HTTPException(409, "Only completed experiments can be compared")
     requested_horizons = tuple(int(value) for value in forecast_horizons)

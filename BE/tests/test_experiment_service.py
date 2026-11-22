@@ -54,7 +54,7 @@ def test_evaluate_experiment_models_reports_horizon_metrics_and_predictions() ->
 
 def test_run_experiment_from_split_uses_split_payload_as_input() -> None:
     split_payload = {
-        "dataset_version_id": "43490e7a-e464-4244-a9f1-229a197b60ab",
+        "dataset_file_id": "43490e7a-e464-4244-a9f1-229a197b60ab",
         "roi_identifier": "MAIN_ROI",
         "recording_session_id": "rec-001",
         "train_ratio": 0.7,

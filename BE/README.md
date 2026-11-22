@@ -2,6 +2,8 @@
 
 FastAPI backend service for Urban Traffic Pattern Analysis and Short-Term Congestion Forecasting.
 
+Dataset versioning has been removed. See [the current dataset model and migration guide](docs/dataset_current_state.md) before updating an existing database.
+
 For complete project documentation, architecture diagrams, and quick-start instructions, please refer to the [Root README](../README.md).
 
 ## Requirements

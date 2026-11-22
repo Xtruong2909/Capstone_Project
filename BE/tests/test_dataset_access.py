@@ -49,7 +49,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     users = {u.id: u for u in (admin, scientist, business, engineer)}
     grants = {}
     db = Mock()
-    monkeypatch.setattr(repo, "has_approved_version", lambda db, ds: True)
+    monkeypatch.setattr(repo, "has_approved_file", lambda db, ds: True)
     monkeypatch.setattr(repo, "get_dataset", lambda db, key: datasets.get(key))
     monkeypatch.setattr(repo, "get_user", lambda db, key: users.get(key))
     monkeypatch.setattr(repo, "get_grant", lambda db, ds, uid: grants.get((ds, uid)))
@@ -129,8 +129,8 @@ def request(
         route, _, query = path.partition("?")
         scope = {
             "type": "http",
-            "asgi": {"version": "3.0"},
-            "http_version": "1.1",
+            "asgi": {"dataset_file": "3.0"},
+            "http_file": "1.1",
             "method": method,
             "scheme": "http",
             "path": route,
@@ -204,6 +204,9 @@ def test_admin_group_access_grants_all_datasets_atomically(
         if key == group_id else [],
     )
     monkeypatch.setattr(repo, "approved_group_dataset_ids", lambda db, key: approved)
+    monkeypatch.setattr(repo, "approved_group_dataset_ids_for_user", lambda db, key, uid: {
+        dataset_id for dataset_id in approved if (dataset_id, uid) in state.grants
+    })
     monkeypatch.setattr(
         repo, "list_group_grants",
         lambda db, key, user_id=None: [
@@ -371,7 +374,7 @@ def test_approved_groups_allowed_roles(
     assert status == 200
     assert body[0]["group_id"] == str(group.id)
     assert body[0]["approved_datasets"] == 1
-    assert body[0]["total_datasets"] == 2
+    assert body[0]["total_datasets"] == 1
     assert body[0]["drone_id"] == "d1"
     query.assert_called_once_with(state.db, state.current.id, "Traffic", 1, 2)
     query.return_value = []
@@ -406,7 +409,7 @@ def test_approved_groups_have_hierarchical_swagger_paths() -> None:
         operation = paths[path]["get"]
         assert operation["tags"] == ["Data Scientist Dataset Access"]
         assert expected_params.issubset({item["name"] for item in operation.get("parameters", [])})
-    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions" not in paths
+    assert "/api/v1/datasets/{dataset_id}/files/{file_id}/sessions" not in paths
 
 
 
@@ -429,16 +432,16 @@ def test_business_cannot_train_even_with_grant(state: SimpleNamespace) -> None:
     assert require_dataset_scientist(ds, state.scientist, state.db) is state.scientist
 
 
-def test_version_id_cannot_bypass_parent_grant(
+def test_file_id_cannot_bypass_parent_grant(
     state: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        repo, "get_version", lambda db, vid: SimpleNamespace(id=vid, dataset_id=state.datasets[1])
+        repo, "get_file", lambda db, vid: SimpleNamespace(id=vid, dataset_id=state.datasets[1])
     )
     service.grant_access(state.db, state.datasets[0], state.scientist.id, state.admin)
     with pytest.raises(HTTPException) as exc:
-        service.check_dataset_version_access(state.scientist, uuid4(), state.db)
+        service.check_dataset_file_access(state.scientist, uuid4(), state.db)
     assert exc.value.status_code == 403
 
 
@@ -458,7 +461,7 @@ def test_concurrent_unique_conflict_becomes_409(
 
 
 def test_removed_columns_are_not_in_model() -> None:
-    assert "dataset_version_id" not in DatasetAccessGrant.__table__.columns
+    assert "dataset_file_id" not in DatasetAccessGrant.__table__.columns
     assert "expires_at" not in DatasetAccessGrant.__table__.columns
     assert not DatasetAccessGrant.__table__.c.dataset_id.nullable
 
@@ -493,9 +496,9 @@ def test_repository_filter_and_database_unique_constraint() -> None:
         "preview",
         "columns",
         "column-mappings",
-        "versions",
-        "versions/{resource}/status",
-        "versions/{resource}/report",
+        "files",
+        "files/{resource}/status",
+        "files/{resource}/report",
     ],
 )
 def test_real_read_routes_deny_ungranted_dataset(state: SimpleNamespace, suffix: str) -> None:
@@ -525,7 +528,7 @@ def test_grant_does_not_allow_business_to_preprocess(state: SimpleNamespace, suf
         app.dependency_overrides.clear()
 
 
-def test_wrong_parent_version_rejected_with_granted_parent(state: SimpleNamespace) -> None:
+def test_wrong_parent_file_rejected_with_granted_parent(state: SimpleNamespace) -> None:
     from app.main import app
 
     ds = state.datasets[0]
@@ -534,7 +537,7 @@ def test_wrong_parent_version_rejected_with_granted_parent(state: SimpleNamespac
     app.dependency_overrides[get_db] = lambda: state.db
     app.dependency_overrides[get_current_user] = lambda: state.scientist
     try:
-        assert request(app, "GET", f"/api/v1/datasets/{ds}/versions/{uuid4()}/status")[0] == 404
+        assert request(app, "GET", f"/api/v1/datasets/{ds}/files/{uuid4()}/status")[0] == 404
     finally:
         app.dependency_overrides.clear()
 
@@ -563,7 +566,7 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
                 "created_by CHAR(32), created_at DATETIME)"
             )
         )
-        connection.execute(text("CREATE TABLE dataset_versions (id CHAR(32) PRIMARY KEY, "
+        connection.execute(text("CREATE TABLE dataset_files (id CHAR(32) PRIMARY KEY, "
                  "dataset_id CHAR(32), approval_status TEXT)"))
     Role.__table__.create(engine)
     User.__table__.create(engine)
@@ -598,32 +601,32 @@ def test_sqlalchemy_repository_and_unique_constraint_on_sqlite() -> None:
         db.commit()
         scientist = db.get(User, user_id)
         admin = db.get(User, admin_id)
-        assert not repo.has_approved_version(db, ds1)
+        assert not repo.has_approved_file(db, ds1)
         for approval_status in ("PENDING", "SUBMITTED", "REJECTED"):
             db.execute(
-                text("INSERT INTO dataset_versions (id, dataset_id, approval_status) "
+                text("INSERT INTO dataset_files (id, dataset_id, approval_status) "
                      "VALUES (:id, :ds, :status)"),
                 {"id": uuid4().hex, "ds": ds1.hex, "status": approval_status},
             )
-            assert not repo.has_approved_version(db, ds1)
+            assert not repo.has_approved_file(db, ds1)
         # Approval on another dataset must not authorize ds1.
         db.execute(
-            text("INSERT INTO dataset_versions (id, dataset_id, approval_status) "
+            text("INSERT INTO dataset_files (id, dataset_id, approval_status) "
                  "VALUES (:id, :ds, 'APPROVED')"),
             {"id": uuid4().hex, "ds": ds2.hex},
         )
-        assert not repo.has_approved_version(db, ds1)
+        assert not repo.has_approved_file(db, ds1)
         with pytest.raises(HTTPException) as exc:
             service.grant_access(db, ds1, user_id, admin)
         assert exc.value.status_code == 409
         assert repo.get_grant(db, ds1, user_id) is None
         db.execute(
-            text("INSERT INTO dataset_versions (id, dataset_id, approval_status) "
+            text("INSERT INTO dataset_files (id, dataset_id, approval_status) "
                  "VALUES (:id, :ds, 'APPROVED')"),
             {"id": uuid4().hex, "ds": ds1.hex},
         )
         db.commit()
-        assert repo.has_approved_version(db, ds1)
+        assert repo.has_approved_file(db, ds1)
         service.grant_access(db, ds1, user_id, admin)
         service.grant_access(db, ds2, other_id, admin)
         assert [d.id for d in repo.accessible_datasets(db, scientist, None, 0, 50)] == [ds1]
@@ -647,7 +650,7 @@ def test_grant_requires_approval_before_writing(
 ) -> None:
     target = getattr(state, role)
     check = Mock(return_value=False)
-    monkeypatch.setattr(repo, "has_approved_version", check)
+    monkeypatch.setattr(repo, "has_approved_file", check)
     path = f"/admin/datasets/{state.datasets[0]}/access"
     status, body = request(state.app, "POST", path, {"user_id": str(target.id)})
     assert status == 409
@@ -669,18 +672,18 @@ def test_consumer_session_review_guards_and_response(
     from app.services import dataset_consumer_service as consumer
 
     ds = state.datasets[0]
-    version_id = uuid4()
+    file_id = uuid4()
     session_id = uuid4()
     target = getattr(state, role)
     if role in ("scientist", "business"):
         repo.add_grant(state.db, ds, target.id, state.admin.id)
     state.current = target
-    version = SimpleNamespace(id=version_id, dataset_id=ds, approval_status=approval)
-    monkeypatch.setattr(repo, "get_version", lambda db, vid: version)
+    dataset_file = SimpleNamespace(id=file_id, dataset_id=ds, approval_status=approval)
+    monkeypatch.setattr(repo, "get_file", lambda db, vid: dataset_file)
     session_list = RecordingSessionListResponse(
-        dataset_id=ds, version_id=version_id, total=1, page=1, page_size=20,
+        dataset_id=ds, file_id=file_id, total=1, page=1, page_size=20,
         sessions=[{
-            "session_id": session_id, "dataset_id": ds, "version_id": version_id,
+            "session_id": session_id, "dataset_id": ds, "file_id": file_id,
             "original_filename": "20181024_d1_0830_0900.csv", "drone_id": "d1",
             "recording_date": "2018-10-24", "file_size": 20,
             "scheduled_start": "2018-10-24T08:30:00", "scheduled_end": "2018-10-24T09:00:00",
@@ -688,8 +691,8 @@ def test_consumer_session_review_guards_and_response(
         }],
     )
     preview = RecordingSessionPreviewResponse(
-        session_id=session_id, dataset_id=ds, version_id=version_id,
-        dataset_version_id=version_id, dataset_name="Traffic",
+        session_id=session_id, dataset_id=ds, file_id=file_id,
+        dataset_file_id=file_id, dataset_name="Traffic",
         original_filename="20181024_d1_0830_0900.csv", file_format="csv", file_size=20,
         status="UPLOADED", detected_structure="csv_with_header", representation="raw",
         columns=[{"name": "speed", "type": "string"}], total_columns=1,
@@ -701,13 +704,13 @@ def test_consumer_session_review_guards_and_response(
     preview_session = Mock(return_value=preview)
     monkeypatch.setattr(consumer, "list_recording_sessions", list_sessions)
     monkeypatch.setattr(consumer, "preview_recording_session", preview_session)
-    base = f"/datasets/{ds}/versions/{version_id}"
+    base = f"/datasets/{ds}/files/{file_id}"
     status, body = request(state.app, "GET", base + "/sessions?page=1&page_size=20")
     if (role == "scientist" and approval == "APPROVED") or role == "engineer":
         assert status == 200
         assert body["sessions"][0]["session_id"] == str(session_id)
         list_sessions.assert_called_once_with(
-            state.db, ds, version_id, page=1, page_size=20,
+            state.db, ds, file_id, page=1, page_size=20,
         )
         status, body = request(
             state.app, "GET",
@@ -716,7 +719,7 @@ def test_consumer_session_review_guards_and_response(
         assert status == 200
         assert body["rows"] == [{"speed": "30"}]
         preview_session.assert_called_once_with(
-            state.db, ds, version_id, session_id, page=2, limit=1,
+            state.db, ds, file_id, session_id, page=2, limit=1,
             column_offset=0, representation="raw",
         )
         if role in ("scientist", "business"):
@@ -729,7 +732,7 @@ def test_consumer_session_review_guards_and_response(
 
 
 def test_consumer_session_review_validates_parameters(state: SimpleNamespace) -> None:
-    base = f"/datasets/{state.datasets[0]}/versions/{uuid4()}"
+    base = f"/datasets/{state.datasets[0]}/files/{uuid4()}"
     assert request(state.app, "GET", base + "/sessions?page=0")[0] == 422
     assert request(state.app, "GET", base + f"/sessions/{uuid4()}/preview?limit=101")[0] == 422
     assert request(state.app, "GET", base + f"/sessions/{uuid4()}/preview?representation=bad")[0] == 422
@@ -747,5 +750,5 @@ def test_consumer_session_review_swagger_and_old_route_removed() -> None:
     assert paths[
         "/api/v1/datasets/approved/groups/{group_id}/datasets/{dataset_id}/sessions/{session_id}/preview"
     ]["get"]["tags"] == ["Data Scientist Dataset Access"]
-    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions" not in paths
-    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/preview" not in paths
+    assert "/api/v1/datasets/{dataset_id}/files/{file_id}/sessions" not in paths
+    assert "/api/v1/datasets/{dataset_id}/files/{file_id}/preview" not in paths

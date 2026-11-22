@@ -13,24 +13,27 @@ from fastapi.testclient import TestClient
 from app.api.v1.endpoints import datasets as dataset_endpoint
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
-from app.models.dataset import Dataset, DatasetVersion, RecordingSession
+from app.models.dataset import Dataset, DatasetFile, RecordingSession
 from app.services import pneuma_upload_service as service
 from app.services.dataset_multipart_service import StreamedUploadFile
 
 
 class MemoryDB:
     def __init__(self) -> None:
+        self.creator_id = uuid4()
         self.datasets: dict[str, Dataset] = {}
         self.groups: dict[tuple[str, str], object] = {}
-        self.versions: list[DatasetVersion] = []
+        self.dataset_files: list[DatasetFile] = []
         self.sessions: list[RecordingSession] = []
         self.links: dict[object, list[object]] = {}
 
     def add(self, item: object) -> None:
         if isinstance(item, Dataset):
             self.datasets[item.name] = item
-        elif isinstance(item, DatasetVersion):
-            self.versions.append(item)
+        elif isinstance(item, DatasetFile):
+            
+            if item not in self.dataset_files:
+                self.dataset_files.append(item)
         elif isinstance(item, RecordingSession):
             self.sessions.append(item)
 
@@ -52,6 +55,9 @@ def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MemoryDB:
     crud = service.crud_dataset
     monkeypatch.setattr(crud, "lock_dataset_upload", lambda *args: None)
     monkeypatch.setattr(crud, "get_dataset_by_name", lambda _db, name: db.datasets.get(name))
+    monkeypatch.setattr(crud, "group_has_other_owners", lambda _db, gid, uid: any(
+        item.group_id == gid and item.created_by != uid for item in db.datasets.values()
+    ))
     def get_or_create_group(_db: MemoryDB, source: str, drone_id: str) -> object:
         return db.groups.setdefault(
             (source.lower(), drone_id.lower()),
@@ -61,17 +67,13 @@ def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MemoryDB:
     monkeypatch.setattr(crud, "get_or_create_dataset_group", get_or_create_group)
     monkeypatch.setattr(crud, "get_recording_sessions",
                         lambda _db, dataset_id: [s for s in db.sessions if s.dataset_id == dataset_id])
-    monkeypatch.setattr(crud, "get_next_upload_version", lambda _db, dataset_id: (
-        1 + sum(v.dataset_id == dataset_id for v in db.versions),
-        f"v{1 + sum(v.dataset_id == dataset_id for v in db.versions)}.0",
-    ))
     monkeypatch.setattr(crud, "add_recording_session", lambda _db, item: db.add(item))
-    monkeypatch.setattr(crud, "link_version_sessions",
-                        lambda _db, version_id, session_ids: db.links.update({version_id: session_ids}))
-    monkeypatch.setattr(crud, "get_dataset_latest_version",
+    monkeypatch.setattr(crud, "link_file_sessions",
+                        lambda _db, file_id, session_ids: db.links.update({file_id: session_ids}))
+    monkeypatch.setattr(crud, "get_dataset_latest_file",
                         lambda _db, dataset_id: next(
                             ((next(d for d in db.datasets.values() if d.id == dataset_id), v)
-                             for v in reversed(db.versions)
+                             for v in reversed(db.dataset_files)
                              if v.dataset_id == dataset_id), None,
                         ))
     return db
@@ -79,11 +81,11 @@ def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MemoryDB:
 
 def upload(db: MemoryDB, *files: tuple[str, bytes]):
     return service.upload_pneuma_batch(
-        db, [(name, BytesIO(content)) for name, content in files], creator_id=uuid4(),
+        db, [(name, BytesIO(content)) for name, content in files], creator_id=db.creator_id,
     )
 
 
-def test_single_file_auto_creates_dataset_session_and_version(storage: MemoryDB) -> None:
+def test_single_file_auto_creates_dataset_session_and_file(storage: MemoryDB) -> None:
     result = upload(storage, ("20181024_d1_0830_0900.csv", b"a,b\n1,2\n"))
     assert (result.total_files, result.uploaded_count, result.failed_count) == (1, 1, 0)
     assert result.datasets[0].name == "20181024-d1"
@@ -93,7 +95,7 @@ def test_single_file_auto_creates_dataset_session_and_version(storage: MemoryDB)
     assert (service.DATASET_UPLOAD_DIR / storage.sessions[0].file_path).read_bytes() == b"a,b\n1,2\n"
 
 
-def test_batch_groups_by_date_and_drone_with_one_version_each(storage: MemoryDB) -> None:
+def test_batch_groups_by_date_and_drone_with_one_file_each(storage: MemoryDB) -> None:
     result = upload(
         storage,
         ("20181024_d1_0830_0900.csv", b"one"),
@@ -105,12 +107,12 @@ def test_batch_groups_by_date_and_drone_with_one_version_each(storage: MemoryDB)
     assert {group.name: group.session_count for group in result.datasets} == {
         "20181024-d1": 2, "20181024-d2": 1, "20181101-d1": 1,
     }
-    assert len(storage.versions) == 3
+    assert len(storage.dataset_files) == 3
     assert result.datasets[0].group_id == result.datasets[2].group_id
     assert result.datasets[0].group_id != result.datasets[1].group_id
     assert result.group_id is None
-    assert storage.versions[0].data_file_path is None
-    assert len(storage.links[result.datasets[0].version_id]) == 2
+    assert storage.dataset_files[0].data_file_path is None
+    assert len(storage.links[result.datasets[0].file_id]) == 2
 
 
 def test_four_dates_of_same_drone_create_four_datasets_with_five_sessions_each(
@@ -133,7 +135,7 @@ def test_four_dates_of_same_drone_create_four_datasets_with_five_sessions_each(
     assert {group.name for group in result.datasets} == {
         "20181024-d1", "20181029-d1", "20181030-d1", "20181101-d1",
     }
-    assert len(storage.datasets) == len(storage.versions) == 4
+    assert len(storage.datasets) == len(storage.dataset_files) == 4
     assert len(storage.groups) == 1
     assert len({group.group_id for group in result.datasets}) == 1
     assert result.datasets[0].group_id is not None
@@ -141,7 +143,7 @@ def test_four_dates_of_same_drone_create_four_datasets_with_five_sessions_each(
     assert next(iter(result.model_dump(mode="json"))) == "group_id"
     assert "processing_warning" not in result.model_dump_json()
     for group in result.datasets:
-        assert group.dataset_id is not None and group.version_id is not None
+        assert group.dataset_id is not None and group.file_id is not None
         assert group.drone_id == "d1"
         assert group.recording_date.strftime("%Y%m%d") == group.name[:8]
         assert group.session_count == len(group.sessions) == 5
@@ -149,7 +151,7 @@ def test_four_dates_of_same_drone_create_four_datasets_with_five_sessions_each(
             item.scheduled_start for item in group.sessions
         )
         assert all(item.status == "UPLOADED" for item in group.sessions)
-        assert len(storage.links[group.version_id]) == 5
+        assert len(storage.links[group.file_id]) == 5
 
 
 def test_second_day_append_does_not_change_first_day_sessions(storage: MemoryDB) -> None:
@@ -170,7 +172,7 @@ def test_group_name_is_shared_and_kept_for_later_uploads(storage: MemoryDB) -> N
         storage, [
             ("20181024_d1_0830_0900.csv", BytesIO(b"one")),
             ("20181029_d1_0830_0900.csv", BytesIO(b"two")),
-        ], creator_id=uuid4(), group_name="Athens drone 1",
+        ], creator_id=storage.creator_id, group_name="Athens drone 1",
     )
     assert first.group_name == "Athens drone 1"
     assert {item.group_name for item in first.datasets} == {"Athens drone 1"}
@@ -186,7 +188,7 @@ def test_group_name_rejects_multiple_drones(storage: MemoryDB) -> None:
             storage, [
                 ("20181024_d1_0830_0900.csv", BytesIO(b"one")),
                 ("20181024_d2_0830_0900.csv", BytesIO(b"two")),
-            ], creator_id=uuid4(), group_name="One name",
+            ], creator_id=storage.creator_id, group_name="One name",
         )
     assert not storage.datasets
 
@@ -196,7 +198,7 @@ def test_api_can_name_group_during_upload(storage: MemoryDB) -> None:
     app.include_router(dataset_endpoint.upload_router, prefix="/api/v1/datasets")
     app.dependency_overrides[get_db] = lambda: storage
     app.dependency_overrides[require_data_engineer] = lambda: type(
-        "UserStub", (), {"id": uuid4()}
+        "UserStub", (), {"id": storage.creator_id}
     )()
     with TestClient(app) as client:
         uploaded = client.post(
@@ -224,7 +226,7 @@ def test_same_content_on_different_dates_is_not_cross_dataset_duplicate(
     assert len({item.dataset_id for item in result.datasets}) == 2
 
 
-def test_duplicate_conflict_and_supplemental_version(storage: MemoryDB) -> None:
+def test_duplicate_conflict_and_supplemental_file(storage: MemoryDB) -> None:
     first = upload(storage, ("20181024_d1_0830_0900.csv", b"one"))
     again = upload(storage, ("20181024_d1_0830_0900.csv", b"one"))
     conflict = upload(storage, ("20181024_d1_0830_0900.csv", b"changed"))
@@ -235,11 +237,37 @@ def test_duplicate_conflict_and_supplemental_version(storage: MemoryDB) -> None:
     assert conflict.failed_count == 1
     assert supplement.uploaded_count == 1
     assert supplement.datasets[0].session_count == 2
-    assert len(storage.versions) == 2
-    assert storage.versions[0].id != storage.versions[1].id
-    assert storage.versions[1].data_file_path is None
-    assert storage.versions[1].file_size_bytes == len(b"one") + len(b"two")
-    assert len(storage.links[storage.versions[1].id]) == 2
+    assert len(storage.dataset_files) == 1
+    assert first.datasets[0].file_id == supplement.datasets[0].file_id
+    assert storage.dataset_files[0].data_file_path is None
+    assert storage.dataset_files[0].file_size_bytes == len(b"one") + len(b"two")
+    assert len(storage.links[storage.dataset_files[0].id]) == 2
+
+
+def test_another_engineer_cannot_append_to_an_existing_dataset(storage: MemoryDB) -> None:
+    upload(storage, ("20181024_d1_0830_0900.csv", b"owner-data"))
+    dataset = storage.datasets["20181024-d1"]
+    original_owner = dataset.created_by
+    original_bytes = (service.DATASET_UPLOAD_DIR / storage.sessions[0].file_path).read_bytes()
+    storage.creator_id = uuid4()
+    result = upload(storage, ("20181024_d1_0900_0930.csv", b"foreign-data"))
+    assert result.failed_count == 1 and result.uploaded_count == 0
+    assert result.datasets == []
+    assert dataset.created_by == original_owner
+    assert len(storage.dataset_files) == len(storage.sessions) == 1
+    assert (service.DATASET_UPLOAD_DIR / storage.sessions[0].file_path).read_bytes() == original_bytes
+
+
+def test_another_engineer_cannot_rename_a_shared_drone_group(storage: MemoryDB) -> None:
+    service.upload_pneuma_batch(storage, [("20181024_d1_0830_0900.csv", BytesIO(b"one"))],
+                               creator_id=storage.creator_id, group_name="Original batch")
+    storage.creator_id = uuid4()
+    result = service.upload_pneuma_batch(
+        storage, [("20181029_d1_0830_0900.csv", BytesIO(b"two"))],
+        creator_id=storage.creator_id, group_name="Changed batch",
+    )
+    assert result.failed_count == 1 and result.uploaded_count == 0
+    assert next(iter(storage.groups.values())).name == "Original batch"
 
 
 def test_duplicate_retry_ignores_optional_metadata_hints(storage: MemoryDB) -> None:
@@ -248,7 +276,7 @@ def test_duplicate_retry_ignores_optional_metadata_hints(storage: MemoryDB) -> N
     original_group_id = storage.datasets["20181024-d1"].group_id
 
     retry = service.upload_pneuma_batch(
-        storage, [(filename, BytesIO(b"same-content"))], creator_id=uuid4(),
+        storage, [(filename, BytesIO(b"same-content"))], creator_id=storage.creator_id,
         source="string", location_name="string", description="string",
     )
 
@@ -257,14 +285,14 @@ def test_duplicate_retry_ignores_optional_metadata_hints(storage: MemoryDB) -> N
     assert retry.files[0].session_id == first.files[0].session_id
     assert retry.group_id == original_group_id
     assert storage.datasets["20181024-d1"].group_id == original_group_id
-    assert len(storage.versions) == 1
+    assert len(storage.dataset_files) == 1
 
 
 def test_append_accepts_source_with_different_case(storage: MemoryDB) -> None:
     upload(storage, ("20181024_d1_0830_0900.csv", b"first"))
     added = service.upload_pneuma_batch(
         storage, [("20181024_d1_0900_0930.csv", BytesIO(b"second"))],
-        creator_id=uuid4(), source="PNEUMA",
+        creator_id=storage.creator_id, source="PNEUMA",
     )
     assert added.uploaded_count == 1
     assert added.failed_count == 0
@@ -281,7 +309,7 @@ def test_invalid_file_does_not_block_valid_file(storage: MemoryDB) -> None:
 def test_metadata_conflict_and_size_limit(storage: MemoryDB, monkeypatch: pytest.MonkeyPatch) -> None:
     filename = "20181024_d1_0830_0900.csv"
     bad_metadata = service.upload_pneuma_batch(
-        storage, [(filename, BytesIO(b"one"))], creator_id=uuid4(),
+        storage, [(filename, BytesIO(b"one"))], creator_id=storage.creator_id,
         capture_date=date(2018, 10, 25),
     )
     monkeypatch.setattr(service, "MAX_DATASET_UPLOAD_BYTES", 2)
@@ -294,7 +322,7 @@ def test_metadata_conflict_and_size_limit(storage: MemoryDB, monkeypatch: pytest
 def test_optional_metadata_is_saved_and_checked_on_append(storage: MemoryDB) -> None:
     first = service.upload_pneuma_batch(
         storage, [("20181024_d1_0830_0900.csv", BytesIO(b"one"))],
-        creator_id=uuid4(), source="UAV", location_name="Athens, Greece",
+        creator_id=storage.creator_id, source="UAV", location_name="Athens, Greece",
         description="Drone morning session", capture_date=date(2018, 10, 24),
     )
     dataset = storage.datasets["20181024-d1"]
@@ -306,7 +334,7 @@ def test_optional_metadata_is_saved_and_checked_on_append(storage: MemoryDB) -> 
     assert append.uploaded_count == 1
     mismatch = service.upload_pneuma_batch(
         storage, [("20181024_d1_0930_1000.csv", BytesIO(b"three"))],
-        creator_id=uuid4(), location_name="Elsewhere",
+        creator_id=storage.creator_id, location_name="Elsewhere",
     )
     assert mismatch.files[0].status == "ERROR"
     assert len(storage.sessions) == 2
@@ -338,7 +366,7 @@ def test_multi_dataset_batch_uses_filenames_over_single_dataset_hints(storage: M
     result = service.upload_pneuma_batch(storage, [
         ("20181024_d1_0830_0900.csv", BytesIO(b"one")),
         ("20181024_d2_0830_0900.csv", BytesIO(b"two")),
-    ], creator_id=uuid4(), name="20181024-d1", capture_date=date(2018, 10, 25))
+    ], creator_id=storage.creator_id, name="20181024-d1", capture_date=date(2018, 10, 25))
     assert [item.status for item in result.files] == ["UPLOADED", "UPLOADED"]
     assert set(storage.datasets) == {"20181024-d1", "20181024-d2"}
 
@@ -358,7 +386,7 @@ def test_20_file_batch_with_two_other_drones_creates_six_datasets(
     ]
     result = service.upload_pneuma_batch(
         storage, [(filename, BytesIO(filename.encode())) for filename in filenames],
-        creator_id=uuid4(), name="20181024-d1", capture_date=date(2018, 10, 24),
+        creator_id=storage.creator_id, name="20181024-d1", capture_date=date(2018, 10, 24),
     )
 
     assert (result.uploaded_count, result.failed_count) == (20, 0)
@@ -387,7 +415,7 @@ def test_api_accepts_repeated_files_without_metadata(storage: MemoryDB) -> None:
         tags=["pNEUMA Dataset Upload Bước 1"],
     )
     app.dependency_overrides[get_db] = lambda: storage
-    app.dependency_overrides[require_data_engineer] = lambda: type("UserStub", (), {"id": uuid4()})()
+    app.dependency_overrides[require_data_engineer] = lambda: type("UserStub", (), {"id": storage.creator_id})()
     with TestClient(app) as client:
         response = client.post("/api/v1/datasets/upload", files=[
             ("files", ("20181024_d1_0830_0900.csv", b"one", "text/csv")),
@@ -406,7 +434,7 @@ def test_api_streams_file_directly_to_staging(
     app.include_router(dataset_endpoint.upload_router, prefix="/api/v1/datasets")
     app.dependency_overrides[get_db] = lambda: storage
     app.dependency_overrides[require_data_engineer] = lambda: type(
-        "UserStub", (), {"id": uuid4()}
+        "UserStub", (), {"id": storage.creator_id}
     )()
     original_stage = service.stage_recording
     staged_paths = []
@@ -442,7 +470,7 @@ def test_api_rejects_oversized_file_and_cleans_staging(
     app.include_router(dataset_endpoint.upload_router, prefix="/api/v1/datasets")
     app.dependency_overrides[get_db] = lambda: storage
     app.dependency_overrides[require_data_engineer] = lambda: type(
-        "UserStub", (), {"id": uuid4()}
+        "UserStub", (), {"id": storage.creator_id}
     )()
     with TestClient(app) as client:
         response = client.post("/api/v1/datasets/upload", files={
@@ -462,7 +490,7 @@ def test_api_retry_returns_duplicate_without_leaving_temp_file(storage: MemoryDB
     app.include_router(dataset_endpoint.upload_router, prefix="/api/v1/datasets")
     app.dependency_overrides[get_db] = lambda: storage
     app.dependency_overrides[require_data_engineer] = lambda: type(
-        "UserStub", (), {"id": uuid4()}
+        "UserStub", (), {"id": storage.creator_id}
     )()
     with TestClient(app) as client:
         response = client.post(
@@ -482,7 +510,7 @@ def test_api_uploads_multiple_dates_for_one_drone(storage: MemoryDB) -> None:
     app.include_router(dataset_endpoint.upload_router, prefix="/api/v1/datasets")
     app.dependency_overrides[get_db] = lambda: storage
     app.dependency_overrides[require_data_engineer] = lambda: type(
-        "UserStub", (), {"id": uuid4()}
+        "UserStub", (), {"id": storage.creator_id}
     )()
     dates = ["20181024", "20181029", "20181030", "20181101"]
     slots = ["0800_0830", "0830_0900", "0900_0930", "0930_1000", "1000_1030"]
@@ -540,7 +568,7 @@ def test_api_accepts_optional_metadata(storage: MemoryDB) -> None:
         tags=["pNEUMA Dataset Upload Bước 1"],
     )
     app.dependency_overrides[get_db] = lambda: storage
-    app.dependency_overrides[require_data_engineer] = lambda: type("UserStub", (), {"id": uuid4()})()
+    app.dependency_overrides[require_data_engineer] = lambda: type("UserStub", (), {"id": storage.creator_id})()
     with TestClient(app) as client:
         response = client.post("/api/v1/datasets/upload", data={
             "source": "UAV", "location_name": "Athens, Greece",
@@ -594,13 +622,13 @@ def test_legacy_single_file_request_keeps_flat_response(
     )
     app.dependency_overrides[get_db] = lambda: object()
     app.dependency_overrides[require_data_engineer] = lambda: type("UserStub", (), {"id": uuid4()})()
-    dataset_id, version_id = uuid4(), uuid4()
+    dataset_id, file_id = uuid4(), uuid4()
     dataset = SimpleNamespace(
         id=dataset_id, name="Legacy UAV", code="LEGACY_UAV", source="UAV",
         description=None, capture_date=None, location_name="Athens",
     )
-    version = SimpleNamespace(
-        id=version_id, version_tag="v1.0", file_format="CSV",
+    dataset_file = SimpleNamespace(
+        id=file_id,  file_format="CSV",
         original_filename=filename, file_size_bytes=len(content),
         approval_status="PENDING", created_at=datetime.now(UTC),
     )
@@ -608,7 +636,7 @@ def test_legacy_single_file_request_keeps_flat_response(
 
     def fake_create_dataset_upload(*args, **kwargs):
         received.append(kwargs["file_stream"].read())
-        return dataset, version
+        return dataset, dataset_file
 
     monkeypatch.setattr(dataset_endpoint, "create_dataset_upload", fake_create_dataset_upload)
     with TestClient(app) as client:

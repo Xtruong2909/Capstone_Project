@@ -1,8 +1,9 @@
 from uuid import UUID
 
+from sqlalchemy.orm import Session
+
 from app.core.security import hash_password, verify_password
 from app.models.user import User
-from sqlalchemy.orm import Session
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:

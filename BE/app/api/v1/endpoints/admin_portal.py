@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_admin
 from app.database.database import get_db
 from app.schemas.admin_portal import (
+    AdminBatchGrantItem,
     AdminDatasetGroupItem,
     AdminDatasetItem,
     AdminGrantItem,
@@ -44,7 +45,7 @@ def datasets(
     group_id: UUID | None = None, ungrouped: bool = False,
     db: Session = Depends(get_db),
 ) -> AdminPage[AdminDatasetItem]:
-    return service.versions_page(db, page, page_size, search, approval_status, group_id, ungrouped)
+    return service.files_page(db, page, page_size, search, approval_status, group_id, ungrouped)
 
 
 @router.get("/dataset-groups", response_model=AdminPage[AdminDatasetGroupItem])
@@ -62,3 +63,11 @@ def grants(
     db: Session = Depends(get_db),
 ) -> AdminPage[AdminGrantItem]:
     return service.grants_page(db, page, page_size, search)
+
+
+@router.get("/batch-access-grants", response_model=AdminPage[AdminBatchGrantItem])
+def batch_grants(
+    page: Page = 1, page_size: PageSize = 20, search: Search = None,
+    db: Session = Depends(get_db),
+) -> AdminPage[AdminBatchGrantItem]:
+    return service.batch_grants_page(db, page, page_size, search)

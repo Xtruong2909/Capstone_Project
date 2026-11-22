@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.dataset import DatasetVersion, RecordingSession
+from app.models.dataset import DatasetFile, RecordingSession
 from app.models.model_training import ExperimentTrainedModel, ModelTrainingExperiment
 from app.models.prediction import PredictionResult, PredictionRun
 from app.models.traffic import (
@@ -35,16 +35,16 @@ def models(db: Session, experiment_id: UUID) -> list[ExperimentTrainedModel]:
 
 def session_candidates(
     db: Session, aggregation_ids: list[UUID] | None = None,
-) -> list[tuple[TrafficAggregationSessionResult, TrafficAggregationJob, RecordingSession, DatasetVersion]]:
+) -> list[tuple[TrafficAggregationSessionResult, TrafficAggregationJob, RecordingSession, DatasetFile]]:
     statement = select(
-        TrafficAggregationSessionResult, TrafficAggregationJob, RecordingSession, DatasetVersion,
+        TrafficAggregationSessionResult, TrafficAggregationJob, RecordingSession, DatasetFile,
     ).join(TrafficAggregationJob, TrafficAggregationJob.id == TrafficAggregationSessionResult.aggregation_id).join(
         RecordingSession, RecordingSession.id == TrafficAggregationSessionResult.session_id,
-    ).join(DatasetVersion, DatasetVersion.id == TrafficAggregationJob.dataset_version_id).where(
+    ).join(DatasetFile, DatasetFile.id == TrafficAggregationJob.dataset_file_id).where(
         TrafficAggregationJob.status == "COMPLETED",
         TrafficAggregationJob.aggregation_interval == 60,
         TrafficAggregationSessionResult.status == "COMPLETED",
-        DatasetVersion.approval_status == "APPROVED",
+        DatasetFile.approval_status == "APPROVED",
         RecordingSession.dataset_id == TrafficAggregationJob.dataset_id,
     )
     if aggregation_ids is not None:

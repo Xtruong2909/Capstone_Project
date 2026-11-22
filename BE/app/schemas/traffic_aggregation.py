@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TrafficAggregationDatasetSelection(BaseModel):
     dataset_id: UUID
-    version_id: UUID | None = None
+    file_id: UUID | None = None
 
 
 class MultiTemporalAggregationRequest(BaseModel):
@@ -22,7 +22,7 @@ class MultiTemporalAggregationRequest(BaseModel):
                     {"dataset_id": "9ff93038-d619-4581-9d1d-626d6018d993"},
                     {
                         "dataset_id": "ec59b336-4e2f-4980-a3fe-c6bbe14fc02e",
-                        "version_id": "b592b1c9-0ac9-4c09-b0d6-c1763cbf8ab0",
+                        "file_id": "b592b1c9-0ac9-4c09-b0d6-c1763cbf8ab0",
                     },
                 ],
                 "aggregation_interval": 60,
@@ -43,7 +43,7 @@ class TrafficAggregationRecord(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     time_bucket: datetime
     aggregation_interval: int
     roi_identifier: str
@@ -56,7 +56,7 @@ class TrafficAggregationRecord(BaseModel):
 
 class TrafficAggregationResult(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     aggregation_interval: int
     roi_identifier: str
     records_created: int
@@ -67,7 +67,7 @@ class TrafficAggregationResult(BaseModel):
 
 class TrafficAggregationStarted(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     aggregation_interval: int
     roi_identifier: str
     job_id: UUID
@@ -86,7 +86,7 @@ class TrafficAggregationBatchStarted(BaseModel):
 class TrafficAggregationJobStatusResponse(BaseModel):
     job_id: UUID
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     aggregation_interval: int
     roi_identifier: str
     status: str
@@ -101,7 +101,7 @@ class TrafficAggregationJobStatusResponse(BaseModel):
 
 class TrafficAggregationStatusResponse(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     aggregation_interval: int
     roi_identifier: str
     records_count: int
@@ -116,7 +116,7 @@ class TrafficAggregationBatchStatusResponse(BaseModel):
 
 class TrafficAggregationPreviewResponse(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     roi_identifier: str
     aggregation_interval: int
     items: list[TrafficAggregationRecord]
@@ -144,7 +144,7 @@ class TrafficAggregationBatchPreviewResponse(BaseModel):
 
 class TrafficAggregationChartResponse(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     aggregation_interval: int
     roi_identifier: str
     time_labels: list[str]
@@ -171,7 +171,7 @@ class TrafficAggregationBatchChartResponse(BaseModel):
 
 class TrafficAggregationCalculationSummary(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     aggregation_interval: int
     roi_identifier: str
     estimated: bool = True
@@ -185,7 +185,7 @@ class TrafficAggregationBatchCalculationSummary(BaseModel):
     aggregation_interval: int
     roi_identifier: str
     estimated: bool = True
-    aggregation_scope: str = "independent_per_dataset_version"
+    aggregation_scope: str = "independent_per_dataset_file"
     summary: dict[str, object]
     units: dict[str, str]
     formulas: dict[str, str]
@@ -214,7 +214,7 @@ class GroupDatasetTemporalAggregationRequest(GroupTemporalAggregationRequest):
 
 class AggregationSessionRunStatus(BaseModel):
     dataset_id: UUID | None = None
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     session_id: UUID
     status: str
     time_bins: int
@@ -222,11 +222,11 @@ class AggregationSessionRunStatus(BaseModel):
     error_message: str | None = None
 
 
-class DatasetVersionAggregationStarted(BaseModel):
+class DatasetFileAggregationStarted(BaseModel):
     aggregation_id: UUID
     group_id: UUID | None = None
     dataset_id: UUID | None = None
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     total_datasets: int = 1
     status: str
     aggregation_interval: int
@@ -246,11 +246,11 @@ class TemporalAggregationDataPoint(BaseModel):
     traffic_flow: float | None = None
 
 
-class DatasetVersionAggregationResults(BaseModel):
+class DatasetFileAggregationResults(BaseModel):
     aggregation_id: UUID
     group_id: UUID | None = None
     dataset_id: UUID | None = None
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     total_datasets: int = 1
     session_id: UUID | None = None
     status: str
@@ -278,7 +278,7 @@ class CombinedTemporalAggregationResults(BaseModel):
     aggregation_id: UUID
     group_id: UUID | None = None
     dataset_id: UUID | None = None
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     total_datasets: int = 1
     aggregation_interval: int
     status: str

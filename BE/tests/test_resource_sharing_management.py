@@ -231,7 +231,7 @@ def test_shared_traffic_rows_show_recording_clock_on_every_page() -> None:
     session_id = uuid4()
     item = SimpleNamespace(
         id=uuid4(), share_id=uuid4(), resource_type="DATASET",
-        resource_id=uuid4(), resource_version_id=uuid4(),
+        resource_id=uuid4(), resource_file_id=uuid4(),
         visible_sections=["traffic_flow_chart"],
     )
     traffic_row = SimpleNamespace(

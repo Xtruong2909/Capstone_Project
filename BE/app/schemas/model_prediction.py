@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class ModelPredictionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    dataset_version_id: UUID | None = Field(
+    dataset_file_id: UUID | None = Field(
         default=None, description="Dataset cần dự báo; dùng split_id nếu có nhiều bộ chia.",
     )
     split_id: UUID | None = Field(default=None, description="Giới hạn so sánh vào cùng bộ Train/Test.")
@@ -21,8 +21,8 @@ class ModelPredictionRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_scope(self) -> Self:
-        if self.dataset_version_id is None and self.experiment_id is None:
-            raise ValueError("Supply dataset_version_id or experiment_id")
+        if self.dataset_file_id is None and self.experiment_id is None:
+            raise ValueError("Supply dataset_file_id or experiment_id")
         return self
 
 
@@ -73,7 +73,7 @@ class ForecastVisualization(BaseModel):
 class ModelPredictionResponse(BaseModel):
     experiment_id: UUID
     model_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     last_observed_time: datetime
     last_observed_flow: float = Field(ge=0, allow_inf_nan=False)
     source_experiment_evaluation_mode: str

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_admin
 from app.crud import crud_admin, crud_user
 from app.database.database import get_db
-from app.models.dataset import DatasetVersion
+from app.models.dataset import DatasetFile
 from app.models.user import User
 from app.schemas.admin import (
     AdminGroupApprovalSummary,
@@ -275,7 +275,7 @@ def list_dataset_groups_for_approval(
 @router.get(
     "/datasets/groups/{group_id}/datasets",
     response_model=GroupDatasetListResponse,
-    summary="Admin xem các Dataset và phiên bản Export trong nhóm",
+    summary="Admin xem các Dataset và dữ liệu Export trong nhóm",
 )
 def list_group_datasets_for_admin(
     group_id: UUID,
@@ -335,7 +335,7 @@ def preview_group_session_for_admin(
 @router.post(
     "/datasets/groups/{group_id}/review",
     response_model=AdminGroupReviewResponse,
-    summary="Admin phê duyệt hoặc từ chối các phiên bản đã gửi trong nhóm",
+    summary="Admin phê duyệt hoặc từ chối các dữ liệu đã gửi trong nhóm",
 )
 def review_dataset_group(
     group_id: UUID,
@@ -346,24 +346,24 @@ def review_dataset_group(
     return group_review.review_group(db, group_id, action, admin)
 
 
-@router.get("/datasets", response_model=list[DatasetApprovalResponse], include_in_schema=False, summary="Danh sách phiên bản dataset")
+@router.get("/datasets", response_model=list[DatasetApprovalResponse], include_in_schema=False, summary="Danh sách dữ liệu dataset")
 def list_datasets_for_approval(
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
 ) -> list[DatasetApprovalResponse]:
-    """Xem danh sách các phiên bản dataset để phê duyệt."""
-    datasets = crud_admin.get_dataset_versions_for_approval(db, skip=skip, limit=limit)
+    """Xem danh sách các dữ liệu dataset để phê duyệt."""
+    datasets = crud_admin.get_dataset_files_for_approval(db, skip=skip, limit=limit)
     return [DatasetApprovalResponse(**d) for d in datasets]
 
 
 @router.get(
-    "/datasets/{dataset_id}/versions/{id}/sessions",
+    "/datasets/{dataset_id}/files/{id}/sessions",
     response_model=RecordingSessionListResponse,
     include_in_schema=False,
-    summary="Admin xem Recording Sessions thuộc phiên bản Dataset",
+    summary="Admin xem Recording Sessions thuộc dữ liệu Dataset",
 )
-def list_dataset_version_sessions_for_admin(
+def list_dataset_file_sessions_for_admin(
     dataset_id: UUID,
     id: UUID,
     page: Annotated[int, Query(ge=1)] = 1,
@@ -379,7 +379,7 @@ def list_dataset_version_sessions_for_admin(
 
 
 @router.get(
-    "/datasets/{dataset_id}/versions/{id}/sessions/{session_id}/preview",
+    "/datasets/{dataset_id}/files/{id}/sessions/{session_id}/preview",
     response_model=RecordingSessionPreviewResponse,
     include_in_schema=False,
     summary="Admin preview nội dung CSV của một Recording Session",
@@ -388,7 +388,7 @@ def list_dataset_version_sessions_for_admin(
         "representation=normalized áp dụng mapping đã lưu nếu có. Mặc định 20 dòng."
     ),
     responses={
-        404: {"description": "Dataset, phiên bản, session hoặc file không tồn tại"},
+        404: {"description": "Dataset, dữ liệu, session hoặc file không tồn tại"},
         415: {"description": "Session không chứa file CSV"},
         422: {"description": "CSV lỗi định dạng hoặc không đọc được"},
     },
@@ -418,9 +418,9 @@ def preview_dataset_session_for_admin(
 
 
 @router.post(
-    "/datasets/{dataset_id}/versions/{id}/review",
+    "/datasets/{dataset_id}/files/{id}/review",
     include_in_schema=False,
-    summary="Phê duyệt hoặc từ chối phiên bản dataset",
+    summary="Phê duyệt hoặc từ chối dữ liệu dataset",
 )
 def review_dataset(
     dataset_id: UUID,
@@ -430,22 +430,22 @@ def review_dataset(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Phê duyệt hoặc từ chối phiên bản dataset do Data Engineer gửi."""
+    """Phê duyệt hoặc từ chối dữ liệu dataset do Data Engineer gửi."""
     if action.status not in ["APPROVED", "REJECTED"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Trạng thái phê duyệt không hợp lệ (APPROVED hoặc REJECTED)",
         )
 
-    dataset_version = (
-        db.query(DatasetVersion)
-        .filter(DatasetVersion.id == id, DatasetVersion.dataset_id == dataset_id)
+    dataset_file = (
+        db.query(DatasetFile)
+        .filter(DatasetFile.id == id, DatasetFile.dataset_id == dataset_id)
         .first()
     )
-    if not dataset_version:
+    if not dataset_file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy phiên bản dataset trong dataset này",
+            detail="Không tìm thấy dữ liệu dataset trong dataset này",
         )
 
     with audit_action(
@@ -458,9 +458,9 @@ def review_dataset(
         details={"status": action.status},
         record_success=False,
     ):
-        ver = crud_admin.approve_or_reject_dataset_version(
+        ver = crud_admin.approve_or_reject_dataset_file(
             db,
-            version_id=id,
+            file_id=id,
             status=action.status,
             note=action.note,
             admin_id=admin.id,
@@ -468,7 +468,7 @@ def review_dataset(
     if not ver:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy phiên bản dataset",
+            detail="Không tìm thấy dữ liệu dataset",
         )
 
     # Ghi nhận Audit Log
@@ -477,38 +477,38 @@ def review_dataset(
         db,
         user_id=admin.id,
         action="APPROVE_DATASET",
-        resource_type="DATASET_VERSION",
+        resource_type="DATASET_FILE",
         resource_id=str(ver.id),
         details={"status": action.status, "note": action.note},
         ip_address=client_ip,
     )
 
     return {
-        "message": f"Đã cập nhật trạng thái phiên bản thành {action.status}",
+        "message": f"Đã cập nhật trạng thái dữ liệu thành {action.status}",
         "id": str(ver.id),
         "status": ver.approval_status,
         "note": ver.approval_note,
     }
 
 
-@router.post("/datasets/{version_id}/review", include_in_schema=False)
+@router.post("/datasets/{file_id}/review", include_in_schema=False)
 def review_dataset_legacy(
-    version_id: UUID,
+    file_id: UUID,
     action: DatasetApprovalAction,
     request: Request,
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    dataset_version = db.query(DatasetVersion).filter(DatasetVersion.id == version_id).first()
-    if not dataset_version:
+    dataset_file = db.query(DatasetFile).filter(DatasetFile.id == file_id).first()
+    if not dataset_file:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy phiên bản dataset",
+            detail="Không tìm thấy dữ liệu dataset",
         )
 
     return review_dataset(
-        dataset_id=dataset_version.dataset_id,
-        id=version_id,
+        dataset_id=dataset_file.dataset_id,
+        id=file_id,
         action=action,
         request=request,
         db=db,

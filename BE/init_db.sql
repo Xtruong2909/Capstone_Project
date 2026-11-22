@@ -102,11 +102,9 @@ CREATE INDEX ix_dataset_group_processing_jobs_group_id
 CREATE INDEX ix_dataset_group_processing_jobs_staging_id
     ON dataset_group_processing_jobs(staging_id);
 
-CREATE TABLE dataset_versions (
+CREATE TABLE dataset_files (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-    version_tag VARCHAR(32) NOT NULL CHECK (version_tag ~ '^v[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9_-]+)?$'),
-    version_number INTEGER,
     data_file_path VARCHAR(512),
     original_filename VARCHAR(255),
     csv_file_path VARCHAR(512),
@@ -120,9 +118,10 @@ CREATE TABLE dataset_versions (
     approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
     approval_note TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_dataset_version UNIQUE(dataset_id, version_tag)
+    CONSTRAINT uq_dataset_current_file UNIQUE(dataset_id)
 );
-CREATE INDEX idx_dataset_versions_status ON dataset_versions(approval_status);
+ALTER TABLE dataset_files ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+CREATE INDEX idx_dataset_files_status ON dataset_files(approval_status);
 
 CREATE TABLE recording_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -142,10 +141,10 @@ CREATE TABLE recording_sessions (
 );
 CREATE INDEX ix_recording_sessions_dataset_id ON recording_sessions(dataset_id);
 
-CREATE TABLE dataset_version_sessions (
-    version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+CREATE TABLE dataset_file_sessions (
+    file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE CASCADE,
     session_id UUID NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
-    CONSTRAINT uq_version_session PRIMARY KEY(version_id, session_id)
+    CONSTRAINT uq_file_session PRIMARY KEY(file_id, session_id)
 );
 
 CREATE TABLE dataset_upload_jobs (
@@ -163,18 +162,18 @@ CREATE TABLE dataset_upload_jobs (
 CREATE TABLE dataset_column_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    dataset_file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE CASCADE,
     mappings JSONB NOT NULL,
     updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_dataset_column_mapping_version
-        UNIQUE(dataset_id, dataset_version_id)
+    CONSTRAINT uq_dataset_column_mapping_file
+        UNIQUE(dataset_id, dataset_file_id)
 );
 
 CREATE TABLE data_quality_checks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    dataset_file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE CASCADE,
     recording_session_id UUID REFERENCES recording_sessions(id) ON DELETE SET NULL,
     started_by UUID REFERENCES users(id) ON DELETE SET NULL,
     status VARCHAR(16) NOT NULL DEFAULT 'queued'
@@ -190,13 +189,13 @@ CREATE TABLE data_quality_checks (
     completed_at TIMESTAMPTZ
 );
 CREATE INDEX ix_data_quality_checks_dataset_id ON data_quality_checks(dataset_id);
-CREATE INDEX ix_data_quality_checks_dataset_version_id
-    ON data_quality_checks(dataset_version_id);
+CREATE INDEX ix_data_quality_checks_dataset_file_id
+    ON data_quality_checks(dataset_file_id);
 CREATE INDEX ix_data_quality_checks_recording_session_id
     ON data_quality_checks(recording_session_id);
 CREATE INDEX ix_data_quality_checks_status ON data_quality_checks(status);
-CREATE UNIQUE INDEX uq_data_quality_active_version
-    ON data_quality_checks(dataset_version_id)
+CREATE UNIQUE INDEX uq_data_quality_active_file
+    ON data_quality_checks(dataset_file_id)
     WHERE status IN ('queued', 'running');
 
 CREATE TABLE data_quality_issues (
@@ -218,7 +217,7 @@ CREATE INDEX ix_data_quality_issue_check_row
 
 CREATE TABLE data_cleaning_histories (
     id BIGSERIAL PRIMARY KEY,
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    dataset_file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE CASCADE,
     step_order INTEGER NOT NULL,
     cleaning_operation VARCHAR(64) NOT NULL,
     parameters JSONB,
@@ -244,24 +243,23 @@ CREATE INDEX ix_dataset_access_grants_user_id ON dataset_access_grants(user_id);
 
 CREATE TABLE traffic_time_series (
     id BIGSERIAL PRIMARY KEY,
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    dataset_file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE CASCADE,
     time_bucket TIMESTAMPTZ NOT NULL,
     aggregation_interval INTEGER NOT NULL DEFAULT 60 CONSTRAINT ck_traffic_interval CHECK (aggregation_interval = 60),
     roi_identifier VARCHAR(64) NOT NULL DEFAULT 'MAIN_ROI' CHECK (roi_identifier ~ '^[A-Za-z0-9_-]+$'),
     vehicle_count INTEGER CONSTRAINT ck_traffic_count CHECK (vehicle_count >= 0), -- Counting-line passage events, not trajectory rows
     traffic_flow DECIMAL(10, 2) CONSTRAINT ck_traffic_flow CHECK (traffic_flow >= 0 AND traffic_flow < 'Infinity'), -- passages/min; NULL until counting line is defined
-    traffic_density DECIMAL(10, 4) CONSTRAINT ck_traffic_density CHECK (traffic_density >= 0 AND traffic_density < 'Infinity'), -- NULL until method and units are defined
     mean_speed DECIMAL(6, 2) CONSTRAINT ck_traffic_speed CHECK (mean_speed >= 0 AND mean_speed < 'Infinity'), -- km/h; m/s sources require x3.6
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_traffic_bucket UNIQUE(dataset_version_id, roi_identifier, time_bucket)
+    CONSTRAINT uq_traffic_bucket UNIQUE(dataset_file_id, roi_identifier, time_bucket)
 );
-CREATE INDEX idx_tts_composite ON traffic_time_series(dataset_version_id, aggregation_interval, roi_identifier, time_bucket);
+CREATE INDEX idx_tts_composite ON traffic_time_series(dataset_file_id, aggregation_interval, roi_identifier, time_bucket);
 CREATE INDEX idx_tts_time ON traffic_time_series(time_bucket);
 
 CREATE TABLE traffic_aggregation_jobs (
     id UUID PRIMARY KEY,
     dataset_id UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE CASCADE,
+    dataset_file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE CASCADE,
     aggregation_interval INTEGER NOT NULL DEFAULT 60,
     roi_identifier VARCHAR(64) NOT NULL DEFAULT 'MAIN_ROI',
     replace_existing BOOLEAN NOT NULL DEFAULT FALSE,
@@ -276,7 +274,7 @@ CREATE TABLE traffic_aggregation_jobs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_traffic_aggregation_jobs_dataset_status ON traffic_aggregation_jobs(dataset_id, status);
-CREATE INDEX idx_traffic_aggregation_jobs_version ON traffic_aggregation_jobs(dataset_version_id, aggregation_interval, roi_identifier);
+CREATE INDEX idx_traffic_aggregation_jobs_file ON traffic_aggregation_jobs(dataset_file_id, aggregation_interval, roi_identifier);
 
 -- ====================================================================
 -- PHÂN HỆ 4: THÍ NGHIỆM KHOA HỌC & DỰ BÁO AI (REPRODUCIBILITY ENGINE)
@@ -286,7 +284,7 @@ CREATE TABLE experiments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(128) NOT NULL CHECK (length(trim(name)) >= 2),
     description TEXT,
-    dataset_version_id UUID NOT NULL REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    dataset_file_id UUID NOT NULL REFERENCES dataset_files(id) ON DELETE RESTRICT,
     model_type VARCHAR(32) NOT NULL CONSTRAINT ck_experiment_model CHECK (model_type IN ('RANDOM_FOREST', 'PERSISTENCE', 'HISTORICAL_AVERAGE')),
     target_variable VARCHAR(32) NOT NULL DEFAULT 'traffic_flow' CONSTRAINT ck_experiment_target CHECK (target_variable = 'traffic_flow'),
     temporal_aggregation_sec INTEGER NOT NULL DEFAULT 60 CONSTRAINT ck_experiment_interval CHECK (temporal_aggregation_sec = 60),
@@ -311,8 +309,6 @@ CREATE TABLE forecast_results (
     horizon_minutes INTEGER NOT NULL CONSTRAINT ck_forecast_horizon CHECK (horizon_minutes IN (1, 3, 5)),
     predicted_value DECIMAL(10, 2) NOT NULL,
     actual_value DECIMAL(10, 2),
-    lower_bound DECIMAL(10, 2),
-    upper_bound DECIMAL(10, 2),
     CONSTRAINT fk_forecast_horizon FOREIGN KEY(experiment_id, horizon_minutes)
         REFERENCES experiments(id, forecast_horizon_minutes) ON DELETE CASCADE,
     CONSTRAINT uq_forecast_target UNIQUE(experiment_id, timestamp)

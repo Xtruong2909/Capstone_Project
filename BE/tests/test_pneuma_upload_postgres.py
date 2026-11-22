@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 from app.database.database import engine
 from app.models.dataset import (
     Dataset,
+    DatasetFile,
+    DatasetFileSession,
     DatasetUploadJob,
-    DatasetVersion,
-    DatasetVersionSession,
     RecordingSession,
 )
 from app.models.user import Role, User
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_concurrent_uploads_keep_both_sessions_and_versions(
+def test_concurrent_uploads_keep_both_sessions_and_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     schema = "pneuma_test_" + uuid4().hex
@@ -34,8 +34,8 @@ def test_concurrent_uploads_keep_both_sessions_and_versions(
     monkeypatch.setattr(service, "DATASET_UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(service, "record_audit_event", lambda **kwargs: None)
     tables = [
-        Role.__table__, User.__table__, Dataset.__table__, DatasetVersion.__table__,
-        RecordingSession.__table__, DatasetVersionSession.__table__, DatasetUploadJob.__table__,
+        Role.__table__, User.__table__, Dataset.__table__, DatasetFile.__table__,
+        RecordingSession.__table__, DatasetFileSession.__table__, DatasetUploadJob.__table__,
     ]
     with engine.begin() as connection:
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
@@ -67,10 +67,10 @@ def test_concurrent_uploads_keep_both_sessions_and_versions(
             connection.execute(text(f'SET search_path TO "{schema}"'))
             assert connection.execute(text("SELECT count(*) FROM datasets")).scalar() == 1
             assert connection.execute(text("SELECT count(*) FROM recording_sessions")).scalar() == 2
-            assert connection.execute(text("SELECT count(*) FROM dataset_versions")).scalar() == 2
+            assert connection.execute(text("SELECT count(*) FROM dataset_files")).scalar() == 2
             assert connection.execute(text(
-                "SELECT count(*) FROM dataset_version_sessions WHERE version_id = "
-                "(SELECT id FROM dataset_versions ORDER BY version_number DESC LIMIT 1)"
+                "SELECT count(*) FROM dataset_file_sessions WHERE file_id = "
+                "(SELECT id FROM dataset_files ORDER BY file_number DESC LIMIT 1)"
             )).scalar() == 2
     finally:
         with engine.begin() as connection:
@@ -78,9 +78,9 @@ def test_concurrent_uploads_keep_both_sessions_and_versions(
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
 
 
-def test_migration_preserves_old_version_and_is_repeatable() -> None:
+def test_migration_preserves_old_file_and_is_repeatable() -> None:
     schema = "pneuma_migration_test_" + uuid4().hex
-    dataset_id, version_id = uuid4(), uuid4()
+    dataset_id, file_id = uuid4(), uuid4()
     migration = Path("migrations/20261111_pneuma_recording_sessions.sql").read_text(
         encoding="utf-8",
     )
@@ -92,23 +92,23 @@ def test_migration_preserves_old_version_and_is_repeatable() -> None:
             connection.execute(text("CREATE TABLE users (id UUID PRIMARY KEY)"))
             connection.execute(text("CREATE TABLE datasets (id UUID PRIMARY KEY)"))
             connection.execute(text(
-                "CREATE TABLE dataset_versions (id UUID PRIMARY KEY, "
+                "CREATE TABLE dataset_files (id UUID PRIMARY KEY, "
                 "dataset_id UUID NOT NULL REFERENCES datasets(id), created_at TIMESTAMPTZ)"
             ))
             connection.execute(text("INSERT INTO datasets (id) VALUES (:id)"), {"id": dataset_id})
             connection.execute(text(
-                "INSERT INTO dataset_versions (id, dataset_id, created_at) "
+                "INSERT INTO dataset_files (id, dataset_id, created_at) "
                 "VALUES (:id, :dataset_id, CURRENT_TIMESTAMP)"
-            ), {"id": version_id, "dataset_id": dataset_id})
+            ), {"id": file_id, "dataset_id": dataset_id})
             connection.exec_driver_sql(migration)
             connection.exec_driver_sql(migration)
             assert connection.execute(text(
-                "SELECT version_number FROM dataset_versions WHERE id = :id"
-            ), {"id": version_id}).scalar() == 1
+                "SELECT file_number FROM dataset_files WHERE id = :id"
+            ), {"id": file_id}).scalar() == 1
             assert connection.execute(text(
                 "SELECT count(*) FROM information_schema.tables "
                 "WHERE table_schema = :schema AND table_name IN "
-                "('recording_sessions', 'dataset_version_sessions', 'dataset_upload_jobs')"
+                "('recording_sessions', 'dataset_file_sessions', 'dataset_upload_jobs')"
             ), {"schema": schema}).scalar() == 3
     finally:
         with engine.begin() as connection:

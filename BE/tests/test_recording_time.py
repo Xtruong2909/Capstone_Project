@@ -77,7 +77,7 @@ def test_query_filters_legacy_rows_using_real_time() -> None:
         query = traffic_time_query(
             db, recording_start=recording_start_from_filename(FILENAME),
             # Intentionally test a filter without an explicit timezone.
-            start_time=datetime(2018, 10, 24, 8, 31), end_time=None,  # noqa: DTZ001
+            start_time=datetime(2018, 10, 24, 8, 31), end_time=None,
         )
         compiled = query.statement.compile(dialect=postgresql.dialect())
         assert "CASE WHEN" in str(compiled)
@@ -88,10 +88,10 @@ def test_query_filters_legacy_rows_using_real_time() -> None:
 
 
 def test_preview_and_chart_return_same_local_time_without_mutating_rows(monkeypatch) -> None:
-    version = SimpleNamespace(id=uuid4(), dataset_id=uuid4(), original_filename=FILENAME)
+    dataset_file = SimpleNamespace(id=uuid4(), dataset_id=uuid4(), original_filename=FILENAME)
     epoch_bucket = datetime(1970, 1, 1, tzinfo=UTC)
     item = SimpleNamespace(
-        id=1, dataset_version_id=version.id, time_bucket=epoch_bucket,
+        id=1, dataset_file_id=dataset_file.id, time_bucket=epoch_bucket,
         aggregation_interval=60, roi_identifier="MAIN_ROI", vehicle_count=324,
         traffic_flow=324, traffic_density=0.324, mean_speed=12.76,
         created_at=datetime.now(UTC),
@@ -113,7 +113,7 @@ def test_preview_and_chart_return_same_local_time_without_mutating_rows(monkeypa
         def all(self) -> list[SimpleNamespace]:
             return [item]
 
-    monkeypatch.setattr(service.crud_dataset, "get_dataset_latest_version", lambda *a: (None, version))
+    monkeypatch.setattr(service.crud_dataset, "get_dataset_latest_file", lambda *a: (None, dataset_file))
     monkeypatch.setattr(service, "traffic_time_query", lambda *a, **kw: FakeQuery())
     preview = service.preview_traffic_aggregation(None, dataset_id=uuid4())
     chart = service.get_traffic_chart_data(None, dataset_id=uuid4())
@@ -121,7 +121,7 @@ def test_preview_and_chart_return_same_local_time_without_mutating_rows(monkeypa
     assert chart["time_labels"] == ["2018-10-24T08:30:00+03:00"]
     assert set(chart) == {
         "dataset_id",
-        "dataset_version_id",
+        "dataset_file_id",
         "aggregation_interval",
         "roi_identifier",
         "time_labels",
@@ -134,6 +134,8 @@ def test_preview_and_chart_return_same_local_time_without_mutating_rows(monkeypa
 
 @pytest.mark.parametrize("staging_filename", [FILENAME, None])
 def test_export_preserves_original_filename(staging_filename: str | None) -> None:
+    file_id = uuid4()
+    current_file = SimpleNamespace(id=file_id, original_filename=FILENAME)
     class FakeDB:
         def query(self, *args: object) -> "FakeDB":
             return self
@@ -142,7 +144,13 @@ def test_export_preserves_original_filename(staging_filename: str | None) -> Non
             return self
 
         def first(self) -> SimpleNamespace:
-            return SimpleNamespace(original_filename=FILENAME)
+            return current_file
+
+        def with_for_update(self) -> "FakeDB":
+            return self
+
+        def one(self) -> SimpleNamespace:
+            return current_file
 
         def add(self, value: object) -> None:
             pass
@@ -153,11 +161,11 @@ def test_export_preserves_original_filename(staging_filename: str | None) -> Non
         def refresh(self, value: object) -> None:
             pass
 
-    version, _ = service.crud_dataset.create_normalized_version(
-        FakeDB(), dataset_id=uuid4(), new_version_id=uuid4(), version_tag="v2.0",
+    dataset_file, _ = service.crud_dataset.create_normalized_file(
+        FakeDB(), dataset_id=uuid4(), new_file_id=file_id,
         file_format="PARQUET", file_path="normalized.parquet", file_size_bytes=100,
         total_records=1, records_before=1, user_id=uuid4(),
-        cleaning_parameters={"source_version_id": str(uuid4())},
+        cleaning_parameters={"source_file_id": str(uuid4())},
         original_filename=staging_filename,
     )
-    assert version.original_filename == FILENAME
+    assert dataset_file.original_filename == FILENAME

@@ -14,19 +14,19 @@ from app.schemas.train_test_split import TrainTestSplitRequest
 from app.services import train_test_split_service as service
 from app.services.feature_engineering_service import build_training_features
 
-VERSION = uuid4()
+FILE = uuid4()
 START = datetime(2018, 10, 24, 10, tzinfo=UTC)
 
 
 def request_data(count: int = 5, strategy: str = "chronological") -> dict:
     # Synthetic fixtures only: exercise the actual FE contract; never production data.
     observations = [TrafficObservation(
-        dataset_version_id=VERSION, recording_session_id=str(VERSION),
+        dataset_file_id=FILE, recording_session_id=str(FILE),
         time_bucket=START + timedelta(minutes=i), traffic_flow=100 + i,
     ) for i in range(count + 9)]
     samples = build_training_features(observations)
     return {
-        "dataset_version_id": str(VERSION), "recording_session_id": str(VERSION),
+        "dataset_file_id": str(FILE), "recording_session_id": str(FILE),
         "split_strategy": strategy,
         "samples": [sample.model_dump(mode="json") for sample in samples],
     }
@@ -112,7 +112,7 @@ def test_missing_fields(field: str) -> None:
         TrainTestSplitRequest.model_validate(data)
 
 
-@pytest.mark.parametrize("field,value", [("dataset_version_id", str(uuid4())), ("roi_identifier", "OTHER"), ("recording_session_id", "other-session")])
+@pytest.mark.parametrize("field,value", [("dataset_file_id", str(uuid4())), ("roi_identifier", "OTHER"), ("recording_session_id", "other-session")])
 def test_mixed_scope_rejected(field: str, value: str) -> None:
     data = request_data()
     data["samples"][0][field] = value
@@ -159,8 +159,8 @@ def test_router_access_and_no_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
 
     rebuild = MagicMock(side_effect=AssertionError("Must not rebuild FE"))
     monkeypatch.setattr(feature_engineering_service, "prepare_features", rebuild)
-    version = SimpleNamespace(id=VERSION, dataset_id=uuid4())
-    monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: version)
+    dataset_file = SimpleNamespace(id=FILE, dataset_id=uuid4())
+    monkeypatch.setattr(service.crud_dataset_access, "get_file", lambda *_: dataset_file)
     access = MagicMock()
     monkeypatch.setattr(service, "require_dataset_scientist", access)
     payload = TrainTestSplitRequest.model_validate(request_data())
@@ -170,14 +170,14 @@ def test_router_access_and_no_rebuild(monkeypatch: pytest.MonkeyPatch) -> None:
     result = split_training(payload, db, MagicMock())
     assert result.split_id == saved_id
     assert result.train_count == 3
-    assert access.call_args.kwargs["dataset_id"] == version.dataset_id
+    assert access.call_args.kwargs["dataset_id"] == dataset_file.dataset_id
     rebuild.assert_not_called()
     db.commit.assert_called_once()
     access.side_effect = HTTPException(403, "Access denied")
     with pytest.raises(HTTPException) as error:
         split_training(payload, db, MagicMock())
     assert error.value.status_code == 403
-    monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: None)
+    monkeypatch.setattr(service.crud_dataset_access, "get_file", lambda *_: None)
     with pytest.raises(HTTPException) as error:
         split_training(payload, db, MagicMock())
     assert error.value.status_code == 404
@@ -198,11 +198,11 @@ def test_paste_complete_feature_response() -> None:
 
     original = request_data()
     response = TrainingFeatureResponse(
-        dataset_version_id=VERSION, roi_identifier="MAIN_ROI",
+        dataset_file_id=FILE, roi_identifier="MAIN_ROI",
         sample_count=5, samples=original["samples"],
     ).model_dump(mode="json")
     payload = TrainTestSplitRequest.model_validate(response)
-    assert payload.recording_session_id == str(VERSION)
+    assert payload.recording_session_id == str(FILE)
     assert payload.train_ratio == 0.7
     result = service.split_training_samples(payload)
     assert (result.train_count, result.test_count) == (3, 2)

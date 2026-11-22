@@ -3,8 +3,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
-    Boolean,
-    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -52,16 +50,14 @@ class Dataset(Base):
 
     creator = relationship("User", foreign_keys=[created_by])
     group = relationship("DatasetGroup", back_populates="datasets")
-    versions = relationship("DatasetVersion", back_populates="dataset", cascade="all, delete-orphan")
+    dataset_files = relationship("DatasetFile", back_populates="dataset", cascade="all, delete-orphan")
 
 
-class DatasetVersion(Base):
-    __tablename__ = "dataset_versions"
+class DatasetFile(Base):
+    __tablename__ = "dataset_files"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
-    version_tag = Column(String(32), nullable=False)
-    version_number = Column(Integer, nullable=True)
+    dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False, unique=True)
     data_file_path = Column(String(512), nullable=True)
     original_filename = Column(String(255), nullable=True)
     csv_file_path = Column(String(512), nullable=True)
@@ -75,11 +71,13 @@ class DatasetVersion(Base):
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approval_note = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    dataset = relationship("Dataset", back_populates="versions")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC),
+                        onupdate=lambda: datetime.now(UTC), nullable=False)
+    dataset = relationship("Dataset", back_populates="dataset_files")
     submitter = relationship("User", foreign_keys=[submitted_by])
     approver = relationship("User", foreign_keys=[approved_by])
     recording_sessions = relationship(
-        "RecordingSession", secondary="dataset_version_sessions", viewonly=True,
+        "RecordingSession", secondary="dataset_file_sessions", viewonly=True,
     )
 
 
@@ -88,15 +86,6 @@ class RecordingSession(Base):
     __table_args__ = (
         UniqueConstraint("dataset_id", "original_filename", name="uq_recording_session_filename"),
         UniqueConstraint("dataset_id", "checksum", name="uq_recording_session_checksum"),
-        CheckConstraint(
-            "(actual_recording_start IS NULL AND actual_recording_end IS NULL "
-            "AND continuous_recording IS NULL AND recording_time_source IS NULL) OR "
-            "(actual_recording_start IS NOT NULL AND actual_recording_end IS NOT NULL "
-            "AND actual_recording_end > actual_recording_start "
-            "AND continuous_recording IS NOT NULL AND recording_time_source IS NOT NULL "
-            "AND length(trim(recording_time_source)) > 0)",
-            name="ck_recording_capture_metadata",
-        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -106,10 +95,6 @@ class RecordingSession(Base):
     recording_date = Column(Date, nullable=False)
     scheduled_start = Column(DateTime(timezone=True), nullable=False)
     scheduled_end = Column(DateTime(timezone=True), nullable=False)
-    actual_recording_start = Column(DateTime(timezone=True), nullable=True)
-    actual_recording_end = Column(DateTime(timezone=True), nullable=True)
-    continuous_recording = Column(Boolean, nullable=True)
-    recording_time_source = Column(String(255), nullable=True)
     file_path = Column(String(512), nullable=False)
     file_size = Column(BigInteger, nullable=False)
     checksum = Column(String(64), nullable=False)
@@ -117,11 +102,11 @@ class RecordingSession(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
-class DatasetVersionSession(Base):
-    __tablename__ = "dataset_version_sessions"
-    __table_args__ = (UniqueConstraint("version_id", "session_id", name="uq_version_session"),)
+class DatasetFileSession(Base):
+    __tablename__ = "dataset_file_sessions"
+    __table_args__ = (UniqueConstraint("file_id", "session_id", name="uq_file_session"),)
 
-    version_id = Column(UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="CASCADE"), primary_key=True)
+    file_id = Column(UUID(as_uuid=True), ForeignKey("dataset_files.id", ondelete="CASCADE"), primary_key=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("recording_sessions.id", ondelete="CASCADE"), primary_key=True)
 
 
@@ -162,8 +147,8 @@ class DatasetColumnMapping(Base):
     __table_args__ = (
         UniqueConstraint(
             "dataset_id",
-            "dataset_version_id",
-            name="uq_dataset_column_mapping_version",
+            "dataset_file_id",
+            name="uq_dataset_column_mapping_file",
         ),
     )
 
@@ -174,9 +159,9 @@ class DatasetColumnMapping(Base):
         nullable=False,
         index=True,
     )
-    dataset_version_id = Column(
+    dataset_file_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        ForeignKey("dataset_files.id", ondelete="CASCADE"),
         nullable=False,
     )
     mappings = Column(JSONB, nullable=False)
@@ -189,7 +174,7 @@ class DatasetColumnMapping(Base):
     )
 
     dataset = relationship("Dataset")
-    dataset_version = relationship("DatasetVersion")
+    dataset_file = relationship("DatasetFile")
     updater = relationship("User", foreign_keys=[updated_by])
 
 
@@ -197,9 +182,9 @@ class DataCleaningHistory(Base):
     __tablename__ = "data_cleaning_histories"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    dataset_version_id = Column(
+    dataset_file_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        ForeignKey("dataset_files.id", ondelete="CASCADE"),
         nullable=False,
     )
     step_order = Column(Integer, nullable=False, default=1)
@@ -210,7 +195,7 @@ class DataCleaningHistory(Base):
     executed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    dataset_version = relationship("DatasetVersion")
+    dataset_file = relationship("DatasetFile")
     executor = relationship("User", foreign_keys=[executed_by])
 
 

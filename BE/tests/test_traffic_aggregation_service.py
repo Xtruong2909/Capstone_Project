@@ -84,7 +84,7 @@ def test_aggregate_time_series_rows_supports_pneuma_relative_timestamps() -> Non
     assert points[1]["time_bucket"] == datetime(1970, 1, 1, 0, 1, tzinfo=UTC)
 
 
-def test_read_rows_from_version_skips_header_row() -> None:
+def test_read_rows_from_file_skips_header_row() -> None:
     rows = [
         {"track_id": "track_id", "speed": "speed", "timestamp": "timestamp"},
         {"track_id": 14, "speed": 16.4, "timestamp": 0.0},
@@ -125,20 +125,20 @@ def test_build_traffic_aggregation_uses_single_existing_bucket_lookup(monkeypatc
             return None
 
     dataset = SimpleNamespace(id=uuid4())
-    version = SimpleNamespace(
+    dataset_file = SimpleNamespace(
         id=uuid4(), dataset_id=dataset.id, original_filename="20181024_d1_0830_0900.csv"
     )
     db = FakeDB()
 
     monkeypatch.setattr(
         service.crud_dataset,
-        "get_dataset_latest_version",
-        lambda db, dataset_id: (dataset, version),
+        "get_dataset_latest_file",
+        lambda db, dataset_id: (dataset, dataset_file),
     )
     monkeypatch.setattr(
         service,
-        "_iter_rows_from_version",
-        lambda version: [
+        "_iter_rows_from_file",
+        lambda dataset_file: [
             {"track_id": 1, "time": 10.0, "speed": 50.0},
             {"track_id": 2, "time": 70.0, "speed": 60.0},
         ],

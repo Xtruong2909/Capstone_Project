@@ -21,7 +21,7 @@ class StreamedUploadFile:
 
     def __init__(self, staging_dir: Path, *, csv_only: bool) -> None:
         staging_dir.mkdir(parents=True, exist_ok=True)
-        self._file: BinaryIO = NamedTemporaryFile(  # noqa: SIM115 - closed after parsing
+        self._file: BinaryIO = NamedTemporaryFile(
             mode="w+b", prefix="upload-", suffix=".csv",
             dir=staging_dir, delete=False,
         )

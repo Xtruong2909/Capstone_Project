@@ -87,7 +87,6 @@ class DatasetApprovalResponse(BaseModel):
     dataset_name: str
     recording_date: date | None = None
     drone_id: str | None = None
-    version_tag: str
     file_format: str
     total_records: int
     approval_status: str
@@ -107,8 +106,8 @@ class AdminGroupApprovalSummary(BaseModel):
 class AdminGroupReviewResponse(BaseModel):
     group_id: UUID
     status: Literal["APPROVED", "REJECTED", "MIXED"]
-    reviewed_versions: int
-    version_ids: list[UUID]
+    reviewed_files: int
+    file_ids: list[UUID]
 
 
 class DatasetApprovalAction(BaseModel):
@@ -141,7 +140,6 @@ class ExperimentOverviewItem(BaseModel):
     status: str
     execution_time_sec: float | None = None
     creator_name: str | None = None
-    dataset_version_tag: str | None = None
     dataset_name: str | None = None
     metrics: ExperimentMetricsSummary | None = None
     created_at: datetime

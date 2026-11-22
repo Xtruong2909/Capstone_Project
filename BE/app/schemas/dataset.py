@@ -20,7 +20,7 @@ class DatasetPreviewPagination(BaseModel):
 
 class DatasetPreviewResponse(BaseModel):
     dataset_id: UUID
-    dataset_version_id: UUID | None = None
+    dataset_file_id: UUID | None = None
     dataset_name: str
     original_filename: str
     file_format: str
@@ -44,14 +44,13 @@ class DatasetUploadMetadata(BaseModel):
 
 class DatasetUploadResponse(BaseModel):
     dataset_id: UUID
-    version_id: UUID
+    file_id: UUID
     name: str
     code: str
     source: str
     description: str | None
     capture_date: date | None
     location_name: str
-    version_tag: str
     file_format: str
     original_filename: str
     file_size_bytes: int
@@ -80,7 +79,7 @@ class DatasetUploadGroup(BaseModel):
     group_id: UUID | None = None
     group_name: str | None = None
     dataset_id: UUID | None = None
-    version_id: UUID | None = None
+    file_id: UUID | None = None
     recording_date: date | None = None
     drone_id: str | None = None
     session_count: int = 0
@@ -107,7 +106,7 @@ class DatasetBatchUploadResponse(BaseModel):
         "datasets": [
             {
                 "name": "20181024-d1", "dataset_id": "f50c1d5b-b61f-4261-a37c-786621e4bc9e",
-                "version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+                "file_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
                 "recording_date": "2018-10-24", "drone_id": "d1", "session_count": 1,
                 "sessions": [{"session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c",
                               "original_filename": "20181024_d1_0830_0900.csv",
@@ -117,7 +116,7 @@ class DatasetBatchUploadResponse(BaseModel):
             },
             {
                 "name": "20181029-d1", "dataset_id": "f1261b53-b61f-4261-a37c-786621e4bc9e",
-                "version_id": "f3a8ebdc-267a-4182-adf7-8db320c12fa7",
+                "file_id": "f3a8ebdc-267a-4182-adf7-8db320c12fa7",
                 "recording_date": "2018-10-29", "drone_id": "d1", "session_count": 1,
                 "sessions": [{"session_id": "ea2a797f-5d1d-4fb9-81de-5fbfbfe9664c",
                               "original_filename": "20181029_d1_0800_0830.csv",
@@ -154,8 +153,7 @@ class UploadedDatasetSummary(BaseModel):
     group_id: UUID | None = None
     group_name: str | None = None
     name: str
-    version_id: UUID
-    version: str
+    file_id: UUID
     drone_id: str
     recording_date: date
     total_sessions: int
@@ -169,6 +167,8 @@ class UploadedDatasetGroupSummary(BaseModel):
     drone_id: str
     dataset_count: int
     total_sessions: int
+    approval_status: str = "UNKNOWN"
+    approval_counts: dict[str, int] = Field(default_factory=dict)
     datasets: list[UploadedDatasetSummary] | None = None
 
 
@@ -197,7 +197,7 @@ class RecordingSessionDetail(BaseModel):
     session_id: UUID
     dataset_id: UUID
     group_id: UUID | None = None
-    version_id: UUID
+    file_id: UUID
     original_filename: str
     drone_id: str
     recording_date: date
@@ -214,7 +214,7 @@ class RecordingSessionDetail(BaseModel):
 
 class RecordingSessionListResponse(BaseModel):
     dataset_id: UUID
-    version_id: UUID
+    file_id: UUID
     total: int
     page: int
     page_size: int
@@ -224,8 +224,8 @@ class RecordingSessionListResponse(BaseModel):
 class RecordingSessionPreviewResponse(BaseModel):
     session_id: UUID
     dataset_id: UUID
-    version_id: UUID
-    dataset_version_id: UUID
+    file_id: UUID
+    dataset_file_id: UUID
     dataset_name: str
     original_filename: str
     file_format: str
@@ -246,8 +246,8 @@ class RecordingSessionPreviewResponse(BaseModel):
     model_config = {"json_schema_extra": {"examples": [{
         "session_id": "460a797f-5d1d-4fb9-81de-5fbfbfe9664c",
         "dataset_id": "f50c1d5b-b61f-4261-a37c-786621e4bc9e",
-        "version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
-        "dataset_version_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+        "file_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
+        "dataset_file_id": "ea58ebdc-267a-4182-adf7-8db320c12fa7",
         "dataset_name": "20181024-d1",
         "original_filename": "20181024_d1_0830_0900.csv",
         "file_format": "csv",

@@ -1,4 +1,4 @@
-"""Data Scientist vehicle counts for normalized Dataset Versions."""
+"""Data Scientist vehicle counts for normalized Dataset Files."""
 
 from uuid import UUID
 
@@ -10,8 +10,8 @@ from app.database.database import SessionLocal, get_db
 from app.models.user import User
 from app.schemas.traffic_aggregation import (
     CombinedTemporalAggregationResults,
-    DatasetVersionAggregationResults,
-    DatasetVersionAggregationStarted,
+    DatasetFileAggregationResults,
+    DatasetFileAggregationStarted,
     GroupTemporalAggregationRequest,
 )
 from app.services.ds_temporal_aggregation_service import (
@@ -28,18 +28,18 @@ router = APIRouter()
 
 @router.post(
     "",
-    response_model=DatasetVersionAggregationStarted,
+    response_model=DatasetFileAggregationStarted,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Tổng hợp số phương tiện duy nhất theo từng phút và từng Session",
     description=(
-        "Chỉ cần group_id để tổng hợp mọi Dataset trong nhóm; mỗi Dataset dùng phiên bản APPROVED mới nhất. "
+        "Chỉ cần group_id để tổng hợp mọi Dataset trong nhóm; mỗi Dataset dùng dữ liệu APPROVED mới nhất. "
         "Đếm COUNT DISTINCT track_id trong mỗi time bin từ Parquet đã chuẩn hóa. "
         "Tất cả Dataset và Session có một aggregation_id chung; xử lý nền và trả PROCESSING. "
         "vehicle_count không phải Traffic Flow qua counting line."
     ),
     responses={
-        403: {"description": "Chưa được cấp quyền hoặc Dataset Version chưa APPROVED"},
-        404: {"description": "Dataset Version không tồn tại"},
+        403: {"description": "Chưa được cấp quyền hoặc Dataset File chưa APPROVED"},
+        404: {"description": "Dataset File không tồn tại"},
         409: {"description": "Thiếu dữ liệu chuẩn hóa hoặc aggregation đang chạy"},
     },
 )
@@ -48,7 +48,7 @@ def create_ds_aggregation(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> DatasetVersionAggregationStarted:
+) -> DatasetFileAggregationStarted:
     jobs, results = create_group_temporal_aggregation(db, current_user, payload)
     background_tasks.add_task(
         run_group_temporal_aggregation,
@@ -60,27 +60,27 @@ def create_ds_aggregation(
 
 @router.get(
     "/groups/{group_id}/latest",
-    response_model=DatasetVersionAggregationStarted | None,
+    response_model=DatasetFileAggregationStarted | None,
     summary="Lấy lần tổng hợp theo phút đã lưu của batch",
 )
 def get_latest_ds_aggregation(
     group_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> DatasetVersionAggregationStarted | None:
+) -> DatasetFileAggregationStarted | None:
     return get_latest_group_temporal_aggregation(db, current_user, group_id)
 
 
 @router.get(
     "/{aggregation_id}/results",
-    response_model=DatasetVersionAggregationResults,
+    response_model=DatasetFileAggregationResults,
     summary="Xem số phương tiện theo từng phút, tất cả hoặc một Session",
     description=(
         "Chỉ đọc kết quả đã lưu trong Database. Không truyền session_id để xem tất cả "
         "Session; dữ liệu sắp xếp theo session_id và timestamp tăng dần, có phân trang."
     ),
     responses={
-        403: {"description": "Không được cấp quyền truy cập Dataset Version"},
+        403: {"description": "Không được cấp quyền truy cập Dataset File"},
         404: {"description": "Aggregation hoặc Session không tồn tại"},
     },
 )
@@ -91,7 +91,7 @@ def get_ds_aggregation_results(
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> DatasetVersionAggregationResults:
+) -> DatasetFileAggregationResults:
     return get_temporal_aggregation_results(
         db, current_user, aggregation_id, session_id, page, page_size,
     )
@@ -108,7 +108,7 @@ def get_ds_aggregation_results(
         "Không tạo phút trống, không tính lại từ file gốc."
     ),
     responses={
-        403: {"description": "Không được cấp quyền truy cập Dataset Version"},
+        403: {"description": "Không được cấp quyền truy cập Dataset File"},
         404: {"description": "Aggregation không tồn tại"},
     },
 )

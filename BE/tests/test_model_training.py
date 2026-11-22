@@ -36,7 +36,7 @@ def make_split(count: int = 10, gap: int = 0) -> TrainingSplit:
     x = [[flow(t - timedelta(minutes=i)) for i in range(5)] for t in origins]
     y = [[flow(t + timedelta(minutes=h)) for h in (1, 3, 5)] for t in origins]
     return TrainingSplit(
-        dataset_version_id=uuid4(),
+        dataset_file_id=uuid4(),
         roi_identifier="MAIN_ROI",
         recording_session_id="session-1",
         X_train=x[:n_train],
@@ -160,7 +160,7 @@ def test_eligibility_is_recomputed_not_client_flag() -> None:
 def test_legacy_experiment_hides_saved_warnings_without_promoting_eligibility() -> None:
     split = make_split()
     request = TrainingExperimentRequest(
-        dataset_version_id=split.dataset_version_id, split_result=split
+        dataset_file_id=split.dataset_file_id, split_result=split
     )
     experiment = SimpleNamespace(
         id=uuid4(),
@@ -240,9 +240,9 @@ def test_invalid_hyperparameters(features: object) -> None:
 def test_request_and_fingerprint() -> None:
     split = make_split()
     with pytest.raises(ValidationError):
-        TrainingExperimentRequest(dataset_version_id=split.dataset_version_id)
+        TrainingExperimentRequest(dataset_file_id=split.dataset_file_id)
     with pytest.raises(ValidationError):
-        TrainingExperimentRequest(dataset_version_id=uuid4(), split_result=split)
+        TrainingExperimentRequest(dataset_file_id=uuid4(), split_result=split)
     payload = split.model_dump(mode="json")
     payload["warnings"] = ["untrusted"]
     assert service.split_fingerprint(split) == service.split_fingerprint(
@@ -254,21 +254,21 @@ def test_query_supplies_dataset_id_and_rejects_mismatched_pasted_id() -> None:
     from app.schemas.model_training import TrainingSplitInput
 
     split = make_split()
-    data = split.model_dump(exclude={"dataset_version_id"})
+    data = split.model_dump(exclude={"dataset_file_id"})
     body = TrainingSplitInput.model_validate(data)
     request = service.build_parameter_request(
-        split.dataset_version_id,
+        split.dataset_file_id,
         None,
         body,
         {"max_features": "1.0"},
         "exploratory",
     )
     assert request.split_result == split
-    assert "dataset_version_id" not in TrainingSplitInput.model_json_schema()["properties"]
-    data["dataset_version_id"] = uuid4()
+    assert "dataset_file_id" not in TrainingSplitInput.model_json_schema()["properties"]
+    data["dataset_file_id"] = uuid4()
     with pytest.raises(HTTPException) as error:
         service.build_parameter_request(
-            split.dataset_version_id,
+            split.dataset_file_id,
             None,
             TrainingSplitInput.model_validate(data),
             {"max_features": "1.0"},
@@ -281,11 +281,11 @@ def test_body_without_id_still_checks_alignment() -> None:
     from app.schemas.model_training import TrainingSplitInput
 
     split = make_split()
-    data = split.model_dump(exclude={"dataset_version_id"})
+    data = split.model_dump(exclude={"dataset_file_id"})
     data["y_test"].pop()
     with pytest.raises(HTTPException) as error:
         service.build_parameter_request(
-            split.dataset_version_id,
+            split.dataset_file_id,
             None,
             TrainingSplitInput.model_validate(data),
             {"max_features": "1.0"},
@@ -301,7 +301,7 @@ def test_query_parameters_and_reused_split(features: str, expected: object) -> N
     split = make_split()
     params = {**Hyperparameters().model_dump(), "max_features": features}
     request = service.build_parameter_request(
-        split.dataset_version_id,
+        split.dataset_file_id,
         None,
         split,
         params,
@@ -311,7 +311,7 @@ def test_query_parameters_and_reused_split(features: str, expected: object) -> N
     assert request.hyperparameters.max_features == expected
     saved_id = uuid4()
     reused = service.build_parameter_request(
-        split.dataset_version_id, saved_id, None, params, "exploratory"
+        split.dataset_file_id, saved_id, None, params, "exploratory"
     )
     assert reused.split_id == saved_id
     assert reused.split_result is None
@@ -322,13 +322,13 @@ def test_parameters_require_exactly_one_source_and_valid_configuration() -> None
     for split_id, content in [(None, None), (uuid4(), split)]:
         with pytest.raises(HTTPException) as error:
             service.build_parameter_request(
-                split.dataset_version_id, split_id, content, {"max_features": "1.0"}, "exploratory"
+                split.dataset_file_id, split_id, content, {"max_features": "1.0"}, "exploratory"
             )
         assert error.value.status_code == 422
     for features in ["invalid", "true", "0", "1.5"]:
         with pytest.raises(HTTPException) as error:
             service.build_parameter_request(
-                split.dataset_version_id, uuid4(), None, {"max_features": features}, "exploratory"
+                split.dataset_file_id, uuid4(), None, {"max_features": features}, "exploratory"
             )
         assert error.value.status_code == 422
 
@@ -340,14 +340,14 @@ def test_legacy_training_routes_are_not_in_swagger() -> None:
 
 
 def test_training_by_id_resolves_dataset_and_missing_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    stored = SimpleNamespace(id=uuid4(), dataset_version_id=uuid4())
+    stored = SimpleNamespace(id=uuid4(), dataset_file_id=uuid4())
     monkeypatch.setattr(service.repository, "get_split", lambda *args: stored)
     run = MagicMock()
     monkeypatch.setattr(service, "create_and_run", run)
     db, user = MagicMock(), MagicMock()
     service.create_from_saved_split(db, stored.id, {"max_features": "1.0"}, "exploratory", user)
     request = run.call_args.args[1]
-    assert request.dataset_version_id == stored.dataset_version_id
+    assert request.dataset_file_id == stored.dataset_file_id
     assert request.split_id == stored.id
     assert request.split_result is None
     monkeypatch.setattr(service.repository, "get_split", lambda *args: None)
@@ -360,7 +360,7 @@ def test_failed_training_is_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
     split = make_split()
     stored = SimpleNamespace(id=uuid4())
     experiment = SimpleNamespace(id=uuid4())
-    monkeypatch.setattr(service, "require_version", lambda *a, **kw: None)
+    monkeypatch.setattr(service, "require_file", lambda *a, **kw: None)
     monkeypatch.setattr(service.repository, "save_split", lambda *a: stored)
     monkeypatch.setattr(service.repository, "create_experiment", lambda *a: experiment)
     update = MagicMock()
@@ -370,7 +370,7 @@ def test_failed_training_is_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
     service.create_and_run(
         MagicMock(),
         TrainingExperimentRequest(
-            dataset_version_id=split.dataset_version_id,
+            dataset_file_id=split.dataset_file_id,
             split_result=split,
         ),
         SimpleNamespace(id=uuid4()),
@@ -387,7 +387,7 @@ def test_training_logs_are_persisted_with_status_transitions(
     split = make_split()
     stored = SimpleNamespace(id=uuid4())
     experiment = SimpleNamespace(id=uuid4())
-    monkeypatch.setattr(service, "require_version", lambda *a, **kw: None)
+    monkeypatch.setattr(service, "require_file", lambda *a, **kw: None)
     monkeypatch.setattr(service.repository, "save_split", lambda *a: stored)
     monkeypatch.setattr(service.repository, "create_experiment", lambda *a: experiment)
     updates = []
@@ -418,7 +418,7 @@ def test_training_logs_are_persisted_with_status_transitions(
 
     service.create_and_run(
         MagicMock(),
-        TrainingExperimentRequest(dataset_version_id=split.dataset_version_id, split_result=split),
+        TrainingExperimentRequest(dataset_file_id=split.dataset_file_id, split_result=split),
         SimpleNamespace(id=uuid4()),
     )
 
@@ -504,7 +504,7 @@ def test_admin_experiment_overview_includes_training_status_and_logs() -> None:
         def all(self):
             if self.entities[0] is ModelTrainingExperiment and len(self.entities) > 1:
                 return [
-                    (training, "Data Scientist", None, None, uuid4(), uuid4(),
+                    (training, "Data Scientist", None, uuid4(), uuid4(),
                      60, uuid4(), "Traffic Group"),
                 ]
             return []
@@ -529,7 +529,7 @@ def test_admin_experiment_overview_includes_training_status_and_logs() -> None:
 
 def test_access_denied_prevents_training(monkeypatch: pytest.MonkeyPatch) -> None:
     check = MagicMock(side_effect=HTTPException(403, "denied"))
-    monkeypatch.setattr(service, "require_version", check)
+    monkeypatch.setattr(service, "require_file", check)
     train = MagicMock()
     monkeypatch.setattr(service, "train_models", train)
     split = make_split()
@@ -537,7 +537,7 @@ def test_access_denied_prevents_training(monkeypatch: pytest.MonkeyPatch) -> Non
         service.create_and_run(
             MagicMock(),
             TrainingExperimentRequest(
-                dataset_version_id=split.dataset_version_id,
+                dataset_file_id=split.dataset_file_id,
                 split_result=split,
             ),
             SimpleNamespace(id=uuid4()),
@@ -606,11 +606,11 @@ def test_prediction_horizon_query_accepts_integer_strings(
 
 
 @pytest.mark.parametrize(
-    "field", ["split_id", "dataset_version_id", "evaluation_policy", "evaluation_mode", "status"]
+    "field", ["split_id", "dataset_file_id", "evaluation_policy", "evaluation_mode", "status"]
 )
 def test_incompatible_comparisons_rejected(monkeypatch: pytest.MonkeyPatch, field: str) -> None:
     common = {
-        "dataset_version_id": uuid4(),
+        "dataset_file_id": uuid4(),
         "split_id": uuid4(),
         "evaluation_policy": "v1",
         "evaluation_mode": "exploratory",
@@ -635,7 +635,7 @@ def test_compare_saved_metrics_and_test_alignment(monkeypatch: pytest.MonkeyPatc
     first = SimpleNamespace(
         experiment_id=uuid4(),
         experiment_name="Ex-004",
-        dataset_version_id=split.dataset_version_id,
+        dataset_file_id=split.dataset_file_id,
         split_id=uuid4(),
         evaluation_policy=service.EVALUATION_POLICY,
         evaluation_mode="exploratory",

@@ -1,12 +1,13 @@
 """Persistence helpers for split-scoped model-training experiments."""
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.models.dataset import Dataset, DatasetVersion
+from app.models.dataset import Dataset, DatasetFile
 from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
 from app.models.model_training import (
     ExperimentTrainedModel,
@@ -48,11 +49,14 @@ def list_experiments(
     *,
     split_id: UUID | None,
     status: str | None,
-    dataset_version_id: UUID | None = None,
+    dataset_file_id: UUID | None = None,
     offset: int,
     limit: int | None,
+    owner_id: UUID | None = None,
 ) -> list[ModelTrainingExperiment]:
     statement = select(ModelTrainingExperiment)
+    if owner_id is not None:
+        statement = statement.where(ModelTrainingExperiment.created_by == owner_id)
     if split_id is not None:
         statement = statement.where(
             (ModelTrainingExperiment.lag_feature_split_id == split_id)
@@ -60,10 +64,10 @@ def list_experiments(
         )
     if status is not None:
         statement = statement.where(ModelTrainingExperiment.status == status)
-    if dataset_version_id is not None:
+    if dataset_file_id is not None:
         statement = statement.where(
-            ModelTrainingExperiment.configuration["dataset_version_id"].astext
-            == str(dataset_version_id)
+            ModelTrainingExperiment.configuration["dataset_file_id"].astext
+            == str(dataset_file_id)
         )
     statement = statement.order_by(
         ModelTrainingExperiment.created_at.desc(),
@@ -76,6 +80,16 @@ def list_experiments(
 
 def get_experiment(db: Session, experiment_id: UUID) -> ModelTrainingExperiment | None:
     return db.get(ModelTrainingExperiment, experiment_id)
+
+
+def save_best_overall_selection(
+    db: Session, experiment_id: UUID, selection: dict[str, Any],
+) -> None:
+    experiment = db.get(ModelTrainingExperiment, experiment_id)
+    if experiment is None:
+        raise LookupError("Experiment no longer exists")
+    experiment.evaluation = {**(experiment.evaluation or {}), "best_overall_selection": selection}
+    db.commit()
 
 
 def get_experiment_group_id(db: Session, experiment: ModelTrainingExperiment) -> UUID | None:
@@ -96,13 +110,13 @@ def get_experiment_group_id(db: Session, experiment: ModelTrainingExperiment) ->
         return UUID(group_id) if group_id else dataset_group_id
     if experiment.dataset_id is not None:
         return db.scalar(select(Dataset.group_id).where(Dataset.id == experiment.dataset_id))
-    version_id = (experiment.configuration or {}).get("dataset_version_id")
-    if version_id is None:
+    file_id = (experiment.configuration or {}).get("dataset_file_id")
+    if file_id is None:
         return None
     return db.scalar(
         select(Dataset.group_id)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-        .where(DatasetVersion.id == UUID(version_id))
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .where(DatasetFile.id == UUID(file_id))
     )
 
 

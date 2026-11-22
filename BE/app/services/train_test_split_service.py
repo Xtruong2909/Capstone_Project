@@ -18,11 +18,11 @@ from app.schemas.train_test_split import SplitSample, TrainTestSplitRequest, Tra
 
 def split_training_samples(payload: TrainTestSplitRequest) -> TrainTestSplitResponse:
     samples = sorted(payload.samples, key=lambda sample: sample.time_bucket.astimezone(UTC))
-    scope = (payload.dataset_version_id, payload.roi_identifier, payload.recording_session_id)
+    scope = (payload.dataset_file_id, payload.roi_identifier, payload.recording_session_id)
     seen = set()
     for sample in samples:
-        if (sample.dataset_version_id, sample.roi_identifier, sample.recording_session_id) != scope:
-            raise HTTPException(422, "All samples must belong to the requested version, ROI and recording session")
+        if (sample.dataset_file_id, sample.roi_identifier, sample.recording_session_id) != scope:
+            raise HTTPException(422, "All samples must belong to the requested dataset_file, ROI and recording session")
         timestamp = sample.time_bucket.astimezone(UTC)
         if timestamp in seen:
             raise HTTPException(422, "Duplicate sample time_bucket; splitting ambiguous samples is not allowed")
@@ -51,7 +51,7 @@ def split_training_samples(payload: TrainTestSplitRequest) -> TrainTestSplitResp
             })
     overlap = any(overlaps(sample) for sample in train)
     return TrainTestSplitResponse(
-        dataset_version_id=payload.dataset_version_id, roi_identifier=payload.roi_identifier,
+        dataset_file_id=payload.dataset_file_id, roi_identifier=payload.roi_identifier,
         recording_session_id=payload.recording_session_id, train_ratio=payload.train_ratio,
         split_strategy=payload.split_strategy, total_samples=len(samples),
         initial_train_count=initial_count, train_count=len(train), test_count=len(test),
@@ -71,17 +71,17 @@ def split_training_samples(payload: TrainTestSplitRequest) -> TrainTestSplitResp
 def prepare_training_split(
     db: Session, payload: TrainTestSplitRequest, user: User,
 ) -> TrainTestSplitResponse:
-    version = crud_dataset_access.get_version(db, payload.dataset_version_id)
-    if version is None:
-        raise HTTPException(404, "Dataset version not found")
-    require_dataset_scientist(dataset_id=version.dataset_id, current_user=user, db=db)
+    dataset_file = crud_dataset_access.get_file(db, payload.dataset_file_id)
+    if dataset_file is None:
+        raise HTTPException(404, "Dataset dataset_file not found")
+    require_dataset_scientist(dataset_id=dataset_file.dataset_id, current_user=user, db=db)
     result = split_training_samples(payload)
     data = result.model_dump(mode="json", include=set(TrainingSplit.model_fields))
     fingerprint = hashlib.sha256(json.dumps(
         data, sort_keys=True, separators=(",", ":"),
     ).encode()).hexdigest()
     try:
-        stored = crud_model_training.save_split(db, payload.dataset_version_id, fingerprint, data)
+        stored = crud_model_training.save_split(db, payload.dataset_file_id, fingerprint, data)
         result.split_id = stored.id
         db.commit()
     except SQLAlchemyError as exc:

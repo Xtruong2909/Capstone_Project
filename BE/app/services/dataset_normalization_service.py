@@ -1,7 +1,6 @@
 import csv
 import json
 import math
-import re
 import shutil
 import uuid
 from collections.abc import Iterator
@@ -17,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import DATASET_UPLOAD_DIR
 from app.crud import crud_dataset
-from app.models.dataset import DatasetVersion, DatasetVersionSession
+from app.models.dataset import DatasetFile, DatasetFileSession
 from app.models.user import User
 from app.schemas.dataset import (
     DatasetPreviewColumn,
@@ -30,8 +29,8 @@ from app.schemas.dataset_normalization import (
     DatasetNormalizeResult,
     ProcessingReportResponse,
 )
+from app.services.dataset_file_service import get_file_source_context
 from app.services.dataset_preview_service import resolve_stored_file_path
-from app.services.dataset_version_service import get_version_source_context
 from app.services.normalization_batch import write_pneuma_parquet
 
 PNEUMA_HEADERS = (
@@ -47,7 +46,6 @@ PNEUMA_HEADERS = (
     "time",
 )
 PNEUMA_POINT_FIELDS = ("lat", "lon", "speed", "lon_acc", "lat_acc", "time")
-VERSION_TAG_PATTERN = re.compile(r"^v[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9_-]+)?$")
 
 
 def _get_staging_dir() -> Path:
@@ -56,43 +54,41 @@ def _get_staging_dir() -> Path:
     return staging_dir
 
 
-def _get_normalization_source_version(
+def _get_normalization_source_file(
     db: Session, dataset_id: UUID,
-) -> tuple[Any, DatasetVersion] | None:
-    """Prefer the latest version linked to raw recording sessions, then legacy raw CSV."""
-    session_version = (
-        db.query(DatasetVersion)
+) -> tuple[Any, DatasetFile] | None:
+    """Prefer the latest dataset_file linked to raw recording sessions, then legacy raw CSV."""
+    session_file = (
+        db.query(DatasetFile)
         .filter(
-            DatasetVersion.dataset_id == dataset_id,
-            DatasetVersion.id.in_(db.query(DatasetVersionSession.version_id)),
+            DatasetFile.dataset_id == dataset_id,
+            DatasetFile.id.in_(db.query(DatasetFileSession.file_id)),
         )
-        .order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc())
+        .order_by(DatasetFile.created_at.desc(), DatasetFile.id.desc())
         .first()
     )
-    if session_version is not None:
-        return session_version.dataset, session_version
+    if session_file is not None:
+        return session_file.dataset, session_file
 
-    raw_version = (
-        db.query(DatasetVersion)
+    raw_file = (
+        db.query(DatasetFile)
         .filter(
-            DatasetVersion.dataset_id == dataset_id,
-            ~DatasetVersion.version_tag.ilike("%clean%"),
-            ~DatasetVersion.version_tag.ilike("%normalized%"),
+            DatasetFile.dataset_id == dataset_id,
         )
-        .order_by(DatasetVersion.created_at.asc(), DatasetVersion.id.asc())
+        .order_by(DatasetFile.created_at.asc(), DatasetFile.id.asc())
         .first()
     )
-    if raw_version is not None:
-        return raw_version.dataset, raw_version
-    return crud_dataset.get_dataset_latest_version(db, dataset_id)
+    if raw_file is not None:
+        return raw_file.dataset, raw_file
+    return crud_dataset.get_dataset_latest_file(db, dataset_id)
 
 
-def _resolve_file_path(version: DatasetVersion) -> Path:
-    stored_path = version.data_file_path or version.csv_file_path or version.parquet_file_path
+def _resolve_file_path(dataset_file: DatasetFile) -> Path:
+    stored_path = dataset_file.data_file_path or dataset_file.csv_file_path or dataset_file.parquet_file_path
     if not stored_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Phiên bản dataset không có thông tin đường dẫn file.",
+            detail="dữ liệu dataset không có thông tin đường dẫn file.",
         )
 
     upload_root = DATASET_UPLOAD_DIR.resolve()
@@ -107,69 +103,6 @@ def _resolve_file_path(version: DatasetVersion) -> Path:
             detail=f"Không tìm thấy file dataset gốc trên hệ thống: {resolved_path.name}",
         )
     return resolved_path
-
-
-def _prepare_version_tag(
-    db: Session,
-    dataset_id: UUID,
-    current_tag: str,
-    requested_tag: str | None,
-) -> str:
-    if requested_tag:
-        requested_tag = requested_tag.strip()
-        if not VERSION_TAG_PATTERN.fullmatch(requested_tag):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Version tag '{requested_tag}' không đúng định dạng chuẩn (ví dụ: v1.1, v1.0-clean).",
-            )
-        existing = (
-            db.query(DatasetVersion)
-            .filter(
-                DatasetVersion.dataset_id == dataset_id,
-                DatasetVersion.version_tag == requested_tag,
-            )
-            .first()
-        )
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Version tag '{requested_tag}' đã tồn tại; hãy chọn tag khác.",
-            )
-        return requested_tag
-
-    candidates = [
-        f"{current_tag}-clean",
-        f"{current_tag}-normalized",
-        "v1.1",
-        "v1.2",
-        "v2.0",
-    ]
-    for tag in candidates:
-        exists = (
-            db.query(DatasetVersion)
-            .filter(
-                DatasetVersion.dataset_id == dataset_id,
-                DatasetVersion.version_tag == tag,
-            )
-            .first()
-        )
-        if not exists:
-            return tag
-
-    index = 1
-    while True:
-        tag = f"{current_tag}.{index}"
-        exists = (
-            db.query(DatasetVersion)
-            .filter(
-                DatasetVersion.dataset_id == dataset_id,
-                DatasetVersion.version_tag == tag,
-            )
-            .first()
-        )
-        if not exists:
-            return tag
-        index += 1
 
 
 def _csv_delimiter(first_line: str) -> str:
@@ -207,32 +140,32 @@ def normalize_dataset_structure_service(
     *,
     dataset_id: UUID,
     user: User,
-    version_id: UUID | None = None,
+    file_id: UUID | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> DatasetNormalizeResult:
     dataset_info = (
-        crud_dataset.get_dataset_version(db, dataset_id, version_id)
-        if version_id is not None
-        else _get_normalization_source_version(db, dataset_id)
+        crud_dataset.get_dataset_file(db, dataset_id, file_id)
+        if file_id is not None
+        else _get_normalization_source_file(db, dataset_id)
     )
     if dataset_info is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy Dataset Version có dữ liệu nguồn để chuẩn hóa.",
+            detail="Không tìm thấy Dataset File có dữ liệu nguồn để chuẩn hóa.",
         )
-    _dataset, source_version = dataset_info
-    sessions = crud_dataset.list_all_version_sessions(db, source_version.id)
+    _dataset, source_file = dataset_info
+    sessions = crud_dataset.list_all_file_sessions(db, source_file.id)
     if isinstance(sessions, list) and sessions:
         sources = [
             (session.id, session.original_filename, resolve_stored_file_path(session.file_path))
             for session in sessions
         ]
     else:
-        source_path = _resolve_file_path(source_version)
-        sources = [(None, source_version.original_filename or source_path.name, source_path)]
+        source_path = _resolve_file_path(source_file)
+        sources = [(None, source_file.original_filename or source_path.name, source_path)]
 
-    mapping_record = crud_dataset.get_dataset_column_mapping(db, dataset_id, source_version.id)
+    mapping_record = crud_dataset.get_dataset_column_mapping(db, dataset_id, source_file.id)
     if mapping_record is None:
         mapping_record = crud_dataset.get_latest_dataset_column_mapping(db, dataset_id)
     rename_map = {
@@ -411,13 +344,12 @@ def normalize_dataset_structure_service(
     staging_meta = {
         "staging_id": str(staging_id),
         "dataset_id": str(dataset_id),
-        "source_version_id": str(source_version.id),
-        "source_version_tag": source_version.version_tag,
+        "source_file_id": str(source_file.id),
         "source_session_ids": [str(item[0]) for item in prepared_sources if item[0]],
         "source_session_row_counts": source_session_row_counts,
         "source_session_count": len(prepared_sources),
         "source_filenames": [item[1] for item in prepared_sources],
-        "original_filename": f"{source_version.dataset.name}-normalized.parquet",
+        "original_filename": f"{source_file.dataset.name}-normalized.parquet",
         "staging_file_path": str(staging_file_path),
         "records_before": records_before,
         "records_after": records_after,
@@ -439,8 +371,7 @@ def normalize_dataset_structure_service(
 
     return DatasetNormalizeResult(
         dataset_id=dataset_id,
-        source_version_id=source_version.id,
-        source_version_tag=source_version.version_tag,
+        source_file_id=source_file.id,
         staging_id=staging_id,
         status="normalized",
         records_before=records_before,
@@ -451,8 +382,8 @@ def normalize_dataset_structure_service(
         source_session_ids=[item[0] for item in prepared_sources if item[0]],
         preview=DatasetPreviewResponse(
             dataset_id=dataset_id,
-            dataset_version_id=source_version.id,
-            dataset_name=source_version.dataset.name,
+            dataset_file_id=source_file.id,
+            dataset_name=source_file.dataset.name,
             original_filename=staging_meta["original_filename"],
             file_format="PARQUET",
             file_size=staging_file_path.stat().st_size,
@@ -471,14 +402,14 @@ def normalize_dataset_structure_service(
             ),
         ),
         message=(
-            "Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất phiên bản mới "
+            "Chuẩn hóa cấu trúc thành công. Dữ liệu đã sẵn sàng để xuất dữ liệu "
             "(Export)."
         ),
     )
 
 
 # =====================================================================
-# BƯỚC 5: XUẤT PHIÊN BẢN MỚI (EXPORT NORMALIZED DATASET)
+# BƯỚC 5: XUẤT dữ liệu (EXPORT NORMALIZED DATASET)
 # =====================================================================
 def export_normalized_dataset_service(
     db: Session,
@@ -531,22 +462,29 @@ def export_normalized_dataset_service(
             detail="File staging dữ liệu đã bị xóa hoặc không tồn tại.",
         )
 
-    source_version_id = UUID(str(staging_meta["source_version_id"]))
-    if not crud_dataset.get_dataset_version(db, dataset_id, source_version_id):
-        raise HTTPException(status_code=404, detail="Dataset Version nguồn không còn tồn tại.")
+    current_info = crud_dataset.get_dataset_latest_file(db, dataset_id)
+    if current_info is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tập dữ liệu.")
+    # Staging files created before the migration have no current file ID.
+    source_file_id = UUID(str(staging_meta.get("source_file_id") or current_info[1].id))
+    if not crud_dataset.get_dataset_file(db, dataset_id, source_file_id):
+        raise HTTPException(status_code=404, detail="Dataset File nguồn không còn tồn tại.")
 
-    new_version_id = uuid.uuid4()
-    source_tag = staging_meta.get("source_version_tag", "v1.0")
-    new_version_tag = _prepare_version_tag(
-        db, dataset_id, source_tag, payload.new_version_tag
-    )
+    current_sessions = crud_dataset.list_all_file_sessions(db, source_file_id)
+    staged_session_ids = staging_meta.get("source_session_ids")
+    if staged_session_ids and isinstance(current_sessions, list) and (
+        {str(session.id) for session in current_sessions} != set(staged_session_ids)
+    ):
+        raise HTTPException(status_code=409, detail="Dữ liệu nguồn đã thay đổi. Hãy chuẩn hóa lại trước khi xuất.")
+
+    new_file_id = source_file_id
 
     upload_root = DATASET_UPLOAD_DIR.resolve()
     target_dir = upload_root / str(dataset_id)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     format_upper = payload.export_format.upper()
-    output_file_name = f"{new_version_id}.{format_upper.lower()}"
+    output_file_name = f"processed-{uuid.uuid4()}.{format_upper.lower()}"
     output_file_path = target_dir / output_file_name
     try:
         if format_upper == "PARQUET":
@@ -575,11 +513,10 @@ def export_normalized_dataset_service(
     source_session_ids = staging_meta.get("source_session_ids", [])
 
     try:
-        new_version, history = crud_dataset.create_normalized_version(
+        new_file, history = crud_dataset.create_normalized_file(
             db,
             dataset_id=dataset_id,
-            new_version_id=new_version_id,
-            version_tag=new_version_tag,
+            new_file_id=new_file_id,
             file_format=format_upper,
             file_path=output_file_path.relative_to(upload_root).as_posix(),
             file_size_bytes=file_size_bytes,
@@ -588,7 +525,7 @@ def export_normalized_dataset_service(
             records_before=records_before,
             user_id=user.id,
             cleaning_parameters={
-                "source_version_id": str(source_version_id),
+                "source_file_id": str(source_file_id),
                 "source_session_ids": source_session_ids,
                 "source_session_row_counts": staging_meta.get("source_session_row_counts", {}),
                 "source_session_count": int(staging_meta.get("source_session_count", len(source_session_ids) or 1)),
@@ -603,7 +540,7 @@ def export_normalized_dataset_service(
         output_file_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Không thể tạo Dataset Version từ kết quả Normalize.",
+            detail="Không thể tạo Dataset File từ kết quả Normalize.",
         ) from exc
 
     # Keep staging available if database creation fails; remove it only after commit.
@@ -612,15 +549,14 @@ def export_normalized_dataset_service(
 
     return DatasetExportResult(
         dataset_id=dataset_id,
-        source_version_id=source_version_id,
+        source_file_id=source_file_id,
         source_session_count=int(staging_meta.get("source_session_count", len(source_session_ids) or 1)),
-        version_id=new_version.id,
-        version_tag=new_version.version_tag,
+        file_id=new_file.id,
         file_format=format_upper,
         file_size_bytes=file_size_bytes,
         total_records=records_after,
         cleaning_history_id=history.id,
-        message=f"Đã xuất {int(staging_meta.get('source_session_count', len(source_session_ids) or 1))} session thành phiên bản {new_version_tag} định dạng {format_upper} (dung lượng {file_size_bytes / (1024 * 1024):.2f} MB).",
+        message=f"Đã xuất {int(staging_meta.get('source_session_count', len(source_session_ids) or 1))} session thành dữ liệu định dạng {format_upper} (dung lượng {file_size_bytes / (1024 * 1024):.2f} MB).",
     )
 
 
@@ -631,44 +567,42 @@ def get_processing_report_service(
     db: Session,
     *,
     dataset_id: UUID,
-    version_id: UUID,
+    file_id: UUID,
 ) -> ProcessingReportResponse:
-    dataset_info = crud_dataset.get_dataset_version(db, dataset_id, version_id)
+    dataset_info = crud_dataset.get_dataset_file(db, dataset_id, file_id)
     if not dataset_info:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy phiên bản dataset tương ứng.",
+            detail="Không tìm thấy dữ liệu dataset tương ứng.",
         )
-    dataset, version = dataset_info
+    dataset, dataset_file = dataset_info
 
-    history = crud_dataset.get_cleaning_history_by_version(db, version.id)
+    history = crud_dataset.get_cleaning_history_by_file(db, dataset_file.id)
     if not history:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Phiên bản này không có dữ liệu lịch sử chuẩn hóa/làm sạch.",
+            detail="dữ liệu này không có dữ liệu lịch sử chuẩn hóa/làm sạch.",
         )
 
     params = history.parameters or {}
     applied_mappings = params.get("applied_mappings", {})
     quality_check_id = params.get("quality_check_id")
-    source_version_id, source_version_tag, source_sessions = get_version_source_context(
-        db, version, history=history,
+    source_file_id, source_sessions = get_file_source_context(
+        db, dataset_file, history=history,
     )
 
-    file_size = version.file_size_bytes or 0
+    file_size = dataset_file.file_size_bytes or 0
     file_size_mb = round(file_size / (1024 * 1024), 2)
 
     return ProcessingReportResponse(
         dataset_id=dataset.id,
         dataset_name=dataset.name,
         dataset_code=dataset.code,
-        version_id=version.id,
-        version_tag=version.version_tag,
-        source_version_id=source_version_id,
-        source_version_tag=source_version_tag,
+        file_id=dataset_file.id,
+        source_file_id=source_file_id,
         source_session_count=len(source_sessions),
         source_sessions=source_sessions,
-        file_format=version.file_format,
+        file_format=dataset_file.file_format,
         file_size_bytes=file_size,
         file_size_mb=file_size_mb,
         records_before=history.records_before,

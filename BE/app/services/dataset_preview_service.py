@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import DATASET_UPLOAD_DIR, MAX_DATASET_UPLOAD_BYTES
 from app.crud import crud_dataset
-from app.models.dataset import DataCleaningHistory, DatasetVersion
+from app.models.dataset import DataCleaningHistory, DatasetFile
 from app.schemas.dataset import (
     DatasetPreviewColumn,
     DatasetPreviewPagination,
@@ -85,15 +85,15 @@ class DatasetPreviewData:
     total_rows: int | None = None
 
 
-def _resolve_file_path(version: DatasetVersion) -> Path:
-    stored_path = version.data_file_path or version.csv_file_path or version.parquet_file_path
+def _resolve_file_path(dataset_file: DatasetFile) -> Path:
+    stored_path = dataset_file.data_file_path or dataset_file.csv_file_path or dataset_file.parquet_file_path
     return resolve_stored_file_path(stored_path)
 
 
 def resolve_stored_file_path(stored_path: str | None) -> Path:
     """Resolve a stored upload path without allowing traversal outside the upload root."""
     if not stored_path:
-        raise DatasetPreviewNotFoundError("Dataset version không có đường dẫn file")
+        raise DatasetPreviewNotFoundError("Dataset dataset_file không có đường dẫn file")
 
     upload_root = DATASET_UPLOAD_DIR.resolve()
     candidate = Path(stored_path)
@@ -293,7 +293,7 @@ def _load_pneuma_index(path: Path) -> dict[str, Any] | None:
         return None
     tracks = index.get("tracks")
     if (
-        index.get("schema_version") != 2
+        index.get("schema_file") != 2
         or index.get("file_size") != stat.st_size
         or index.get("mtime_ns") != stat.st_mtime_ns
         or not isinstance(tracks, list)
@@ -340,7 +340,7 @@ def _build_pneuma_index(path: Path, delimiter: str) -> dict[str, Any]:
             total_points += point_count
 
     index = {
-        "schema_version": 2,
+        "schema_file": 2,
         "file_size": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
         "delimiter": delimiter,
@@ -957,25 +957,25 @@ def get_dataset_preview(
     db: Session,
     *,
     dataset_id: UUID,
-    dataset_version_id: UUID | None = None,
+    dataset_file_id: UUID | None = None,
     page: int,
     page_size: int,
     representation: str = "normalized",
 ) -> DatasetPreviewResponse:
     """Read a paginated preview from a specific or latest uploaded dataset file."""
-    dataset_version = (
-        crud_dataset.get_dataset_version(db, dataset_id, dataset_version_id)
-        if dataset_version_id is not None
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+    dataset_file = (
+        crud_dataset.get_dataset_file(db, dataset_id, dataset_file_id)
+        if dataset_file_id is not None
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
-    if dataset_version is None:
-        raise DatasetPreviewNotFoundError("Không tìm thấy dataset hoặc phiên bản đã upload")
-    dataset, version = dataset_version
-    path = _resolve_file_path(version)
+    if dataset_file is None:
+        raise DatasetPreviewNotFoundError("Không tìm thấy dataset hoặc dữ liệu đã upload")
+    dataset, dataset_file = dataset_file
+    path = _resolve_file_path(dataset_file)
     try:
         preview = _read_preview_rows(
             path,
-            version.file_format,
+            dataset_file.file_format,
             offset=(page - 1) * page_size,
             page_size=page_size,
             representation=representation,
@@ -995,13 +995,13 @@ def get_dataset_preview(
     ) as exc:
         logger.exception(
             "Failed to read dataset preview",
-            extra={"dataset_id": str(dataset_id), "file_format": version.file_format},
+            extra={"dataset_id": str(dataset_id), "file_format": dataset_file.file_format},
         )
         raise DatasetPreviewReadError("Không đọc hoặc phân tích được file dataset") from exc
 
     has_normalization_history = (
         db.query(DataCleaningHistory)
-        .filter(DataCleaningHistory.dataset_version_id == version.id)
+        .filter(DataCleaningHistory.dataset_file_id == dataset_file.id)
         .first()
         is not None
     )
@@ -1019,11 +1019,11 @@ def get_dataset_preview(
 
     return DatasetPreviewResponse(
         dataset_id=dataset.id,
-        dataset_version_id=version.id,
+        dataset_file_id=dataset_file.id,
         dataset_name=dataset.name,
-        original_filename=version.original_filename or path.name,
-        file_format=version.file_format.lower(),
-        file_size=version.file_size_bytes,
+        original_filename=dataset_file.original_filename or path.name,
+        file_format=dataset_file.file_format.lower(),
+        file_size=dataset_file.file_size_bytes,
         status=response_status,
         detected_structure=preview.detected_structure,
         representation=actual_representation,

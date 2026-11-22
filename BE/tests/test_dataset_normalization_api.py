@@ -1,7 +1,7 @@
 from app.main import app
 
 
-def test_normalize_endpoint_supports_version_selection_and_preview() -> None:
+def test_normalize_endpoint_supports_file_selection_and_preview() -> None:
     openapi = app.openapi()
     path = "/api/v1/datasets/groups/{group_id}/normalize"
     operation = openapi["paths"][path]["post"]
@@ -32,15 +32,15 @@ def test_export_request_does_not_include_quality_check_id() -> None:
     assert "/api/v1/datasets/groups/{group_id}/processing-jobs/{job_id}" in openapi["paths"]
 
 
-def test_dataset_version_responses_include_dataset_and_session_provenance() -> None:
+def test_dataset_file_responses_include_dataset_and_session_provenance() -> None:
     openapi = app.openapi()
     base = "/api/v1/datasets/groups/{group_id}"
     for suffix, method in (
-        ("/versions", "get"), ("/report", "get"), ("/status", "get"),
+        ("/files", "get"), ("/report", "get"), ("/status", "get"),
         ("/submit", "post"), ("/resubmit", "post"),
     ):
         operation = openapi["paths"][base + suffix][method]
-        assert operation["tags"] == ["Bước 5: Phiên bản & phê duyệt Dataset"]
+        assert operation["tags"] == ["Bước 5: dữ liệu & phê duyệt Dataset"]
         assert ("group_id", "path") in [
             (parameter["name"], parameter["in"]) for parameter in operation["parameters"]
         ]
@@ -60,11 +60,11 @@ def test_dataset_version_responses_include_dataset_and_session_provenance() -> N
     assert submit_schema["example"]["comment"]
 
     for old_path in (
-        "/api/v1/datasets/versions",
-        "/api/v1/datasets/{dataset_id}/versions",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/report",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/status",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/submit",
-        "/api/v1/datasets/{dataset_id}/versions/{version_id}/resubmit",
+        "/api/v1/datasets/files",
+        "/api/v1/datasets/{dataset_id}/files",
+        "/api/v1/datasets/{dataset_id}/files/{file_id}/report",
+        "/api/v1/datasets/{dataset_id}/files/{file_id}/status",
+        "/api/v1/datasets/{dataset_id}/files/{file_id}/submit",
+        "/api/v1/datasets/{dataset_id}/files/{file_id}/resubmit",
     ):
         assert old_path not in openapi["paths"]

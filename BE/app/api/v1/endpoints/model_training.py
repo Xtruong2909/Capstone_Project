@@ -10,6 +10,7 @@ from app.database.database import get_db
 from app.models.user import User
 from app.schemas.forecast_origin_analysis import ForecastOriginAnalysisResponse
 from app.schemas.model_training import (
+    BestOverallRequest,
     ExperimentComparisonRequest,
     ExperimentComparisonResponse,
     TrainingExperimentResponse,
@@ -38,7 +39,7 @@ def create_experiment(
 @router.get("/experiments", response_model=ExperimentListResponse, summary="Danh sách thí nghiệm")
 def list_experiments(
     split_id: UUID | None = None,
-    dataset_version_id: UUID | None = None,
+    dataset_file_id: UUID | None = None,
     status: Literal["PENDING", "QUEUED", "RUNNING", "COMPLETED", "FAILED"] | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -57,7 +58,7 @@ def list_experiments(
         user,
         split_id=split_id,
         status=status,
-        dataset_version_id=dataset_version_id,
+        dataset_file_id=dataset_file_id,
         page=page,
         page_size=page_size,
         offset=offset,
@@ -72,6 +73,21 @@ def list_experiments(
 
 
 # Static compare route must precede the UUID route.
+@router.post(
+    "/experiments/best-overall",
+    response_model=ExperimentComparisonResponse,
+    summary="Chọn và lưu Best Overall theo Average Test RMSE của cùng Split",
+)
+def select_best_overall(
+    payload: BestOverallRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ExperimentComparisonResponse:
+    return experiment_service.select_best_overall(
+        db, user, payload.split_id, experiment_ids=payload.experiment_ids,
+    )
+
+
 @router.post(
     "/experiments/compare",
     response_model=ExperimentComparisonResponse,

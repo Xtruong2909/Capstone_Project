@@ -11,11 +11,11 @@ from app.models.dataset import (
     DataCleaningHistory,  # Import model đã có sẵn trong init_db
     Dataset,
     DatasetColumnMapping,
+    DatasetFile,
+    DatasetFileSession,
     DatasetGroup,
     DatasetGroupProcessingJob,
     DatasetUploadJob,
-    DatasetVersion,
-    DatasetVersionSession,
     RecordingSession,
 )
 from app.schemas.dataset import DatasetUploadMetadata
@@ -42,8 +42,11 @@ def get_or_create_dataset_group(db: Session, source: str, drone_id: str) -> Data
     return group
 
 
-def get_dataset_group_by_id(db: Session, group_id: UUID) -> DatasetGroup | None:
-    return db.query(DatasetGroup).filter(DatasetGroup.id == group_id).first()
+def get_dataset_group_by_id(
+    db: Session, group_id: UUID, *, for_update: bool = False,
+) -> DatasetGroup | None:
+    query = db.query(DatasetGroup).filter(DatasetGroup.id == group_id)
+    return (query.with_for_update() if for_update else query).first()
 
 
 def create_group_processing_job(
@@ -61,33 +64,61 @@ def get_group_processing_job(
     return db.get(DatasetGroupProcessingJob, job_id)
 
 
-def get_active_group_processing_job(
-    db: Session, group_id: UUID,
+def list_owned_pipeline_datasets(db: Session, owner_id: UUID) -> list[Dataset]:
+    return db.query(Dataset).options(
+        selectinload(Dataset.group),
+        selectinload(Dataset.dataset_files).selectinload(DatasetFile.recording_sessions),
+    ).filter(
+        Dataset.created_by == owner_id, Dataset.group_id.is_not(None),
+        Dataset.dataset_files.any(),
+    ).order_by(Dataset.created_at.desc(), Dataset.id).all()
+
+
+def get_latest_group_processing_job(
+    db: Session, group_id: UUID, owner_id: UUID,
 ) -> DatasetGroupProcessingJob | None:
     return db.query(DatasetGroupProcessingJob).filter(
         DatasetGroupProcessingJob.group_id == group_id,
+        DatasetGroupProcessingJob.created_by == owner_id,
+    ).order_by(DatasetGroupProcessingJob.created_at.desc(), DatasetGroupProcessingJob.id.desc()).first()
+
+
+def get_active_group_processing_job(
+    db: Session, group_id: UUID, owner_id: UUID | None = None,
+) -> DatasetGroupProcessingJob | None:
+    query = db.query(DatasetGroupProcessingJob).filter(
+        DatasetGroupProcessingJob.group_id == group_id,
         DatasetGroupProcessingJob.status.in_(("PENDING", "RUNNING")),
-    ).first()
+    )
+    if owner_id is not None:
+        query = query.filter(DatasetGroupProcessingJob.created_by == owner_id)
+    return query.first()
 
 
 def get_latest_group_normalize_job(
-    db: Session, group_id: UUID,
+    db: Session, group_id: UUID, owner_id: UUID | None = None,
 ) -> DatasetGroupProcessingJob | None:
-    return db.query(DatasetGroupProcessingJob).filter(
+    query = db.query(DatasetGroupProcessingJob).filter(
         DatasetGroupProcessingJob.group_id == group_id,
         DatasetGroupProcessingJob.operation == "NORMALIZE",
         DatasetGroupProcessingJob.status.in_(("COMPLETED", "PARTIAL_SUCCESS")),
-    ).order_by(DatasetGroupProcessingJob.created_at.desc()).first()
+    )
+    if owner_id is not None:
+        query = query.filter(DatasetGroupProcessingJob.created_by == owner_id)
+    return query.order_by(DatasetGroupProcessingJob.created_at.desc()).first()
 
 
 def get_latest_completed_group_export_job(
-    db: Session, group_id: UUID,
+    db: Session, group_id: UUID, owner_id: UUID | None = None,
 ) -> DatasetGroupProcessingJob | None:
-    return db.query(DatasetGroupProcessingJob).filter(
+    query = db.query(DatasetGroupProcessingJob).filter(
         DatasetGroupProcessingJob.group_id == group_id,
         DatasetGroupProcessingJob.operation == "EXPORT",
         DatasetGroupProcessingJob.status == "COMPLETED",
-    ).order_by(DatasetGroupProcessingJob.created_at.desc()).first()
+    )
+    if owner_id is not None:
+        query = query.filter(DatasetGroupProcessingJob.created_by == owner_id)
+    return query.order_by(DatasetGroupProcessingJob.created_at.desc()).first()
 
 
 def save_group_processing_job(db: Session, job: DatasetGroupProcessingJob) -> None:
@@ -97,38 +128,44 @@ def save_group_processing_job(db: Session, job: DatasetGroupProcessingJob) -> No
 
 def list_group_datasets(
     db: Session, group_id: UUID, visible_user_id: UUID | None,
+    *, owner_id: UUID | None = None,
 ) -> list[Dataset]:
     query = db.query(Dataset).options(selectinload(Dataset.group)).filter(
-        Dataset.group_id == group_id, Dataset.versions.any(),
+        Dataset.group_id == group_id, Dataset.dataset_files.any(),
     )
     if visible_user_id is not None:
         query = query.filter(access_filter(visible_user_id))
+    if owner_id is not None:
+        query = query.filter(Dataset.created_by == owner_id)
     return query.order_by(Dataset.recording_date, Dataset.id).all()
 
 
-def list_group_dataset_versions(
+def list_group_dataset_files(
     db: Session, group_id: UUID, approval_status: str | None = None,
-) -> list[DatasetVersion]:
-    query = db.query(DatasetVersion).join(Dataset).options(
-        selectinload(DatasetVersion.dataset),
+    *, owner_id: UUID | None = None,
+) -> list[DatasetFile]:
+    query = db.query(DatasetFile).join(Dataset).options(
+        selectinload(DatasetFile.dataset),
     ).filter(Dataset.group_id == group_id)
     if approval_status is not None:
-        query = query.filter(DatasetVersion.approval_status == approval_status)
+        query = query.filter(DatasetFile.approval_status == approval_status)
+    if owner_id is not None:
+        query = query.filter(Dataset.created_by == owner_id)
     return query.order_by(
-        Dataset.recording_date, Dataset.id, DatasetVersion.created_at.desc(),
+        Dataset.recording_date, Dataset.id, DatasetFile.created_at.desc(),
     ).all()
 
 
-def get_group_dataset_versions_by_ids(
-    db: Session, group_id: UUID, version_ids: list[UUID],
-) -> list[DatasetVersion]:
-    if not version_ids:
+def get_group_dataset_files_by_ids(
+    db: Session, group_id: UUID, file_ids: list[UUID],
+) -> list[DatasetFile]:
+    if not file_ids:
         return []
-    return db.query(DatasetVersion).join(Dataset).options(
-        selectinload(DatasetVersion.dataset),
+    return db.query(DatasetFile).join(Dataset).options(
+        selectinload(DatasetFile.dataset),
     ).filter(
         Dataset.group_id == group_id,
-        DatasetVersion.id.in_(version_ids),
+        DatasetFile.id.in_(file_ids),
     ).all()
 
 
@@ -136,6 +173,25 @@ def get_dataset_group_ids(db: Session, dataset_ids: list[UUID]) -> dict[UUID, UU
     if not dataset_ids:
         return {}
     return dict(db.query(Dataset.id, Dataset.group_id).filter(Dataset.id.in_(dataset_ids)).all())
+
+
+def get_group_approval_counts(
+    db: Session, group_ids: list[UUID], *, owner_id: UUID | None = None,
+    visible_user_id: UUID | None = None,
+) -> dict[UUID, dict[str, int]]:
+    if not group_ids:
+        return {}
+    query = db.query(Dataset.group_id, DatasetFile.approval_status, func.count(DatasetFile.id)).join(
+        DatasetFile, DatasetFile.dataset_id == Dataset.id,
+    ).filter(Dataset.group_id.in_(group_ids))
+    if owner_id is not None:
+        query = query.filter(Dataset.created_by == owner_id)
+    if visible_user_id is not None:
+        query = query.filter(access_filter(visible_user_id), DatasetFile.approval_status == "APPROVED")
+    result: dict[UUID, dict[str, int]] = {}
+    for group_id, approval_status, count in query.group_by(Dataset.group_id, DatasetFile.approval_status).all():
+        result.setdefault(group_id, {})[approval_status] = count
+    return result
 
 
 def lock_dataset_upload(db: Session, name: str) -> None:
@@ -150,6 +206,7 @@ def get_recording_sessions(db: Session, dataset_id: UUID) -> list[RecordingSessi
 def list_uploaded_datasets(
     db: Session, *, search: str | None, page: int, page_size: int,
     visible_user_id: UUID | None,
+    owner_id: UUID | None = None,
     group_id: UUID | None = None,
     drone_id: str | None = None,
     recording_date_from: date | None = None,
@@ -159,10 +216,12 @@ def list_uploaded_datasets(
     query = db.query(Dataset).options(selectinload(Dataset.group)).filter(
         Dataset.drone_id.is_not(None), Dataset.recording_date.is_not(None),
         Dataset.group_id.is_not(None),
-        Dataset.versions.any(),
+        Dataset.dataset_files.any(),
     )
     if visible_user_id is not None:
         query = query.filter(access_filter(visible_user_id))
+    if owner_id is not None:
+        query = query.filter(Dataset.created_by == owner_id)
     if search:
         pattern = f"%{search}%"
         query = query.filter(or_(
@@ -194,37 +253,57 @@ def get_dataset_by_id(db: Session, dataset_id: UUID) -> Dataset | None:
     return db.get(Dataset, dataset_id)
 
 
-def get_latest_versions_for_datasets(
+def list_dataset_files(
+    db: Session, *, dataset_id: UUID | None = None,
+    approval_status: str | None = None, owner_id: UUID | None = None,
+) -> list[DatasetFile]:
+    query = db.query(DatasetFile).join(Dataset)
+    if dataset_id is not None:
+        query = query.filter(DatasetFile.dataset_id == dataset_id)
+    if approval_status is not None:
+        query = query.filter(DatasetFile.approval_status == approval_status)
+    if owner_id is not None:
+        query = query.filter(Dataset.created_by == owner_id)
+    return query.order_by(DatasetFile.created_at.desc(), DatasetFile.id).all()
+
+
+def group_has_other_owners(db: Session, group_id: UUID, owner_id: UUID) -> bool:
+    return db.query(Dataset.id).filter(Dataset.group_id == group_id, or_(
+        Dataset.created_by != owner_id, Dataset.created_by.is_(None),
+    )).first() is not None
+
+
+def get_latest_files_for_datasets(
     db: Session, dataset_ids: list[UUID],
-) -> dict[UUID, DatasetVersion]:
+) -> dict[UUID, DatasetFile]:
     if not dataset_ids:
         return {}
-    versions = db.query(DatasetVersion).filter(
-        DatasetVersion.dataset_id.in_(dataset_ids),
-    ).order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc()).all()
-    latest: dict[UUID, DatasetVersion] = {}
-    for version in versions:
-        latest.setdefault(version.dataset_id, version)
+    dataset_files = db.query(DatasetFile).filter(
+        DatasetFile.dataset_id.in_(dataset_ids),
+    ).order_by(DatasetFile.created_at.desc(), DatasetFile.id.desc()).all()
+    latest: dict[UUID, DatasetFile] = {}
+    for dataset_file in dataset_files:
+        latest.setdefault(dataset_file.dataset_id, dataset_file)
     return latest
 
 
-def get_version_session_counts(db: Session, version_ids: list[UUID]) -> dict[UUID, int]:
-    if not version_ids:
+def get_file_session_counts(db: Session, file_ids: list[UUID]) -> dict[UUID, int]:
+    if not file_ids:
         return {}
     rows = db.query(
-        DatasetVersionSession.version_id, func.count(DatasetVersionSession.session_id),
-    ).filter(DatasetVersionSession.version_id.in_(version_ids)).group_by(
-        DatasetVersionSession.version_id,
+        DatasetFileSession.file_id, func.count(DatasetFileSession.session_id),
+    ).filter(DatasetFileSession.file_id.in_(file_ids)).group_by(
+        DatasetFileSession.file_id,
     ).all()
     return dict(rows)
 
 
-def list_version_sessions(
-    db: Session, version_id: UUID, page: int, page_size: int,
+def list_file_sessions(
+    db: Session, file_id: UUID, page: int, page_size: int,
 ) -> tuple[list[RecordingSession], int]:
     query = db.query(RecordingSession).join(
-        DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
-    ).filter(DatasetVersionSession.version_id == version_id)
+        DatasetFileSession, DatasetFileSession.session_id == RecordingSession.id,
+    ).filter(DatasetFileSession.file_id == file_id)
     total = query.count()
     sessions = query.order_by(
         RecordingSession.scheduled_start, RecordingSession.id,
@@ -232,24 +311,24 @@ def list_version_sessions(
     return sessions, total
 
 
-def list_all_version_sessions(db: Session, version_id: UUID) -> list[RecordingSession]:
-    """Return session metadata for schema compatibility checks within a version."""
+def list_all_file_sessions(db: Session, file_id: UUID) -> list[RecordingSession]:
+    """Return session metadata for schema compatibility checks within a dataset_file."""
     return db.query(RecordingSession).join(
-        DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
+        DatasetFileSession, DatasetFileSession.session_id == RecordingSession.id,
     ).filter(
-        DatasetVersionSession.version_id == version_id,
+        DatasetFileSession.file_id == file_id,
     ).order_by(
         RecordingSession.scheduled_start, RecordingSession.id,
     ).all()
 
 
-def get_version_session(
-    db: Session, version_id: UUID, session_id: UUID,
+def get_file_session(
+    db: Session, file_id: UUID, session_id: UUID,
 ) -> RecordingSession | None:
     return db.query(RecordingSession).join(
-        DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
+        DatasetFileSession, DatasetFileSession.session_id == RecordingSession.id,
     ).filter(
-        DatasetVersionSession.version_id == version_id,
+        DatasetFileSession.file_id == file_id,
         RecordingSession.id == session_id,
     ).first()
 
@@ -286,24 +365,16 @@ def get_dataset_session_by_id(
     ).first()
 
 
-def get_next_upload_version(db: Session, dataset_id: UUID) -> tuple[int, str]:
-    versions = db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset_id).all()
-    number = max((version.version_number or 0 for version in versions), default=0) + 1
-    used_tags = {version.version_tag for version in versions}
-    major = max((int(tag.split(".")[0][1:]) for tag in used_tags
-                 if tag.startswith("v") and tag[1:].split(".")[0].isdigit()), default=0) + 1
-    while f"v{major}.0" in used_tags:
-        major += 1
-    return number, f"v{major}.0"
-
-
 def add_recording_session(db: Session, session: RecordingSession) -> None:
     db.add(session)
 
 
-def link_version_sessions(db: Session, version_id: UUID, session_ids: list[UUID]) -> None:
-    db.add_all(DatasetVersionSession(version_id=version_id, session_id=session_id)
-               for session_id in session_ids)
+def link_file_sessions(db: Session, file_id: UUID, session_ids: list[UUID]) -> None:
+    existing = {row[0] for row in db.query(DatasetFileSession.session_id).filter(
+        DatasetFileSession.file_id == file_id,
+    ).all()}
+    db.add_all(DatasetFileSession(file_id=file_id, session_id=session_id)
+               for session_id in set(session_ids) - existing)
 
 
 def create_upload_job(db: Session, job_id: UUID, creator_id: UUID, total_files: int) -> DatasetUploadJob:
@@ -323,43 +394,43 @@ def save_upload_job(db: Session, job: DatasetUploadJob) -> None:
     db.commit()
 
 
-def get_dataset_latest_version(db: Session, dataset_id: UUID) -> tuple[Dataset, DatasetVersion] | None:
-    """Get a dataset and its latest uploaded version."""
+def get_dataset_latest_file(db: Session, dataset_id: UUID) -> tuple[Dataset, DatasetFile] | None:
+    """Get a dataset and its latest uploaded dataset_file."""
     result = (
-        db.query(Dataset, DatasetVersion)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        db.query(Dataset, DatasetFile)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
         .filter(Dataset.id == dataset_id)
-        .order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc())
+        .order_by(DatasetFile.created_at.desc(), DatasetFile.id.desc())
         .first()
     )
     return result
 
 
-def get_dataset_latest_approved_version(
+def get_dataset_latest_approved_file(
     db: Session, dataset_id: UUID,
-) -> tuple[Dataset, DatasetVersion] | None:
-    """Get the newest version approved for downstream Data Scientist access."""
+) -> tuple[Dataset, DatasetFile] | None:
+    """Get the newest dataset_file approved for downstream Data Scientist access."""
     return (
-        db.query(Dataset, DatasetVersion)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-        .filter(Dataset.id == dataset_id, DatasetVersion.approval_status == "APPROVED")
-        .order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc())
+        db.query(Dataset, DatasetFile)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .filter(Dataset.id == dataset_id, DatasetFile.approval_status == "APPROVED")
+        .order_by(DatasetFile.created_at.desc(), DatasetFile.id.desc())
         .first()
     )
 
 
-def get_dataset_version(
+def get_dataset_file(
     db: Session,
     dataset_id: UUID,
-    dataset_version_id: UUID,
-) -> tuple[Dataset, DatasetVersion] | None:
-    """Get a specific version belonging to a dataset."""
+    dataset_file_id: UUID,
+) -> tuple[Dataset, DatasetFile] | None:
+    """Get a specific dataset_file belonging to a dataset."""
     return (
-        db.query(Dataset, DatasetVersion)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
+        db.query(Dataset, DatasetFile)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
         .filter(
             Dataset.id == dataset_id,
-            DatasetVersion.id == dataset_version_id,
+            DatasetFile.id == dataset_file_id,
         )
         .first()
     )
@@ -368,13 +439,13 @@ def get_dataset_version(
 def get_dataset_column_mapping(
     db: Session,
     dataset_id: UUID,
-    dataset_version_id: UUID,
+    dataset_file_id: UUID,
 ) -> DatasetColumnMapping | None:
     return (
         db.query(DatasetColumnMapping)
         .filter(
             DatasetColumnMapping.dataset_id == dataset_id,
-            DatasetColumnMapping.dataset_version_id == dataset_version_id,
+            DatasetColumnMapping.dataset_file_id == dataset_file_id,
         )
         .first()
     )
@@ -384,7 +455,7 @@ def get_latest_dataset_column_mapping(
     db: Session,
     dataset_id: UUID,
 ) -> DatasetColumnMapping | None:
-    """Get the most recently saved mapping so matching new versions can reuse it."""
+    """Get the most recently saved mapping so matching new dataset_files can reuse it."""
     return db.query(DatasetColumnMapping).filter(
         DatasetColumnMapping.dataset_id == dataset_id,
     ).order_by(
@@ -396,21 +467,21 @@ def save_dataset_column_mapping(
     db: Session,
     *,
     dataset_id: UUID,
-    dataset_version_id: UUID,
+    dataset_file_id: UUID,
     mappings: list[dict[str, str | None]],
     user_id: UUID,
 ) -> DatasetColumnMapping:
-    saved_mapping = get_dataset_column_mapping(db, dataset_id, dataset_version_id)
+    saved_mapping = get_dataset_column_mapping(db, dataset_id, dataset_file_id)
     if saved_mapping is None:
         saved_mapping = DatasetColumnMapping(
             dataset_id=dataset_id,
-            dataset_version_id=dataset_version_id,
+            dataset_file_id=dataset_file_id,
             mappings=mappings,
             updated_by=user_id,
         )
         db.add(saved_mapping)
     else:
-        saved_mapping.dataset_version_id = dataset_version_id
+        saved_mapping.dataset_file_id = dataset_file_id
         saved_mapping.mappings = mappings
         saved_mapping.updated_by = user_id
 
@@ -424,7 +495,7 @@ def save_dataset_column_mapping(
         description="Dataset column mapping updated",
         resource_id=dataset_id,
         details={
-            "dataset_version_id": str(dataset_version_id),
+            "dataset_file_id": str(dataset_file_id),
             "mapping_count": len(mappings),
         },
     )
@@ -437,14 +508,14 @@ def save_group_column_mappings(
     updates: list[tuple[UUID, UUID, list[dict[str, str | None]]]],
     user_id: UUID,
 ) -> None:
-    """Persist all versions in one transaction after service-level validation."""
+    """Persist all dataset_files in one transaction after service-level validation."""
     try:
-        for dataset_id, version_id, mappings in updates:
-            saved = get_dataset_column_mapping(db, dataset_id, version_id)
+        for dataset_id, file_id, mappings in updates:
+            saved = get_dataset_column_mapping(db, dataset_id, file_id)
             if saved is None:
                 db.add(DatasetColumnMapping(
                     dataset_id=dataset_id,
-                    dataset_version_id=version_id,
+                    dataset_file_id=file_id,
                     mappings=mappings,
                     updated_by=user_id,
                 ))
@@ -455,7 +526,7 @@ def save_group_column_mappings(
     except Exception:
         db.rollback()
         raise
-    for dataset_id, version_id, mappings in updates:
+    for dataset_id, file_id, mappings in updates:
         record_audit_event(
             user_id=user_id,
             action="CONFIRM_DATASET_COLUMN_MAPPING",
@@ -463,26 +534,25 @@ def save_group_column_mappings(
             status="SUCCESS",
             description="Dataset column mapping updated through group",
             resource_id=dataset_id,
-            details={"dataset_version_id": str(version_id), "mapping_count": len(mappings)},
+            details={"dataset_file_id": str(file_id), "mapping_count": len(mappings)},
         )
 
 
-def create_dataset_version(
+def create_dataset_file(
     db: Session,
     *,
     metadata: DatasetUploadMetadata,
     dataset_id: UUID,
-    version_id: UUID,
+    file_id: UUID,
     creator_id: UUID,
     dataset_code: str,
-    version_tag: str,
     data_file_path: str,
     original_filename: str,
     file_format: str,
     file_size_bytes: int,
     ip_address: str | None,
-) -> tuple[Dataset, DatasetVersion]:
-    """Persist a dataset and its uploaded file version."""
+) -> tuple[Dataset, DatasetFile]:
+    """Persist a dataset and its uploaded file dataset_file."""
     dataset = Dataset(
         id=dataset_id,
         name=metadata.name,
@@ -493,10 +563,9 @@ def create_dataset_version(
         location_name=metadata.location_name,
         created_by=creator_id,
     )
-    version = DatasetVersion(
-        id=version_id,
+    dataset_file = DatasetFile(
+        id=file_id,
         dataset_id=dataset_id,
-        version_tag=version_tag,
         data_file_path=data_file_path,
         original_filename=original_filename,
         file_format=file_format,
@@ -504,38 +573,36 @@ def create_dataset_version(
         approval_status="PENDING",
     )
     if file_format == "CSV":
-        version.csv_file_path = data_file_path
+        dataset_file.csv_file_path = data_file_path
     elif file_format == "PARQUET":
-        version.parquet_file_path = data_file_path
+        dataset_file.parquet_file_path = data_file_path
 
-    db.add_all([dataset, version])
+    db.add_all([dataset, dataset_file])
     db.commit()
     db.refresh(dataset)
-    db.refresh(version)
+    db.refresh(dataset_file)
     record_audit_event(
         user_id=creator_id,
         action="UPLOAD_DATASET",
         module="Dataset",
         status="SUCCESS",
         description="Dataset uploaded successfully",
-        resource_id=version_id,
+        resource_id=file_id,
         ip_address=ip_address,
         details={
             "dataset_code": dataset_code,
-            "version_tag": version_tag,
             "original_filename": original_filename,
             "file_format": file_format,
             "file_size_bytes": file_size_bytes,
         },
     )
-    return dataset, version
+    return dataset, dataset_file
 
-def create_normalized_version(
+def create_normalized_file(
     db: Session,
     *,
     dataset_id: UUID,
-    new_version_id: UUID,
-    version_tag: str,
+    new_file_id: UUID,
     file_format: str,
     file_path: str,
     file_size_bytes: int,
@@ -544,38 +611,38 @@ def create_normalized_version(
     user_id: UUID,
     cleaning_parameters: dict,
     original_filename: str | None = None,
-) -> tuple[DatasetVersion, DataCleaningHistory]:
-    # Older staging metadata has no filename; recover it from the source version.
-    if original_filename is None and cleaning_parameters.get("source_version_id"):
-        source_id = UUID(str(cleaning_parameters["source_version_id"]))
-        source = db.query(DatasetVersion).filter(
-            DatasetVersion.id == UUID(str(cleaning_parameters["source_version_id"])),
-            DatasetVersion.dataset_id == dataset_id,
+) -> tuple[DatasetFile, DataCleaningHistory]:
+    # Older staging metadata has no filename; recover it from the source dataset_file.
+    if original_filename is None and cleaning_parameters.get("source_file_id"):
+        source_id = UUID(str(cleaning_parameters["source_file_id"]))
+        source = db.query(DatasetFile).filter(
+            DatasetFile.id == UUID(str(cleaning_parameters["source_file_id"])),
+            DatasetFile.dataset_id == dataset_id,
         ).first()
         if source is not None:
             original_filename = source.original_filename
         original_filename = resolve_original_filename(
-            db, dataset_id=dataset_id, version_id=source_id,
+            db, dataset_id=dataset_id, file_id=source_id,
             original_filename=original_filename,
         )
-    # 1. Tạo DatasetVersion mới (ở trạng thái PENDING chờ Admin duyệt)
-    new_version = DatasetVersion(
-        id=new_version_id,
-        dataset_id=dataset_id,
-        version_tag=version_tag,
-        file_format=file_format,
-        data_file_path=file_path,
-        original_filename=original_filename,
-        csv_file_path=file_path if file_format == "CSV" else None,
-        parquet_file_path=file_path if file_format == "PARQUET" else None,
-        file_size_bytes=file_size_bytes,
-        total_records=total_records,
-        approval_status="PENDING",
-    )
-    db.add(new_version)
+    # Each dataset has one current file. Export updates it in place.
+    new_file = db.query(DatasetFile).filter(
+        DatasetFile.dataset_id == dataset_id,
+    ).with_for_update().one()
+    if new_file.id != new_file_id:
+        raise ValueError("Dataset file changed during processing")
+    new_file.file_format = file_format
+    new_file.data_file_path = file_path
+    new_file.original_filename = original_filename
+    new_file.csv_file_path = file_path if file_format == "CSV" else None
+    new_file.parquet_file_path = file_path if file_format == "PARQUET" else None
+    new_file.file_size_bytes = file_size_bytes
+    new_file.total_records = total_records
+    new_file.approval_status = "PENDING"
+    new_file.submitted_by = new_file.submitted_at = new_file.approved_by = new_file.approval_note = None
     # 2. Ghi nhận lịch sử làm sạch vào bảng data_cleaning_histories
     history = DataCleaningHistory(
-        dataset_version_id=new_version_id,
+        dataset_file_id=new_file_id,
         step_order=1,
         cleaning_operation="PNEUMA_UNPIVOT_AND_NORMALIZE",
         parameters=cleaning_parameters,
@@ -585,19 +652,19 @@ def create_normalized_version(
     )
     db.add(history)
     db.commit()
-    db.refresh(new_version)
+    db.refresh(new_file)
     db.refresh(history)
-    return new_version, history
+    return new_file, history
 
 
-def get_cleaning_history_by_version(
+def get_cleaning_history_by_file(
     db: Session,
-    version_id: UUID,
+    file_id: UUID,
 ) -> DataCleaningHistory | None:
-    """Lấy bản ghi lịch sử làm sạch/chuẩn hóa của phiên bản dataset."""
+    """Lấy bản ghi lịch sử làm sạch/chuẩn hóa của dữ liệu dataset."""
     return (
         db.query(DataCleaningHistory)
-        .filter(DataCleaningHistory.dataset_version_id == version_id)
+        .filter(DataCleaningHistory.dataset_file_id == file_id)
         .order_by(DataCleaningHistory.created_at.desc())
         .first()
     )

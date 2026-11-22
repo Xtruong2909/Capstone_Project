@@ -91,15 +91,14 @@ def get_experiments_overview(db: Session, *, limit: int, skip: int = 0) -> Exper
             "status": exp.status,
             "execution_time_sec": float(exp.execution_time_sec) if exp.execution_time_sec else None,
             "creator_name": exp.creator.full_name if exp.creator else None,
-            "dataset_version_tag": exp.dataset_version.version_tag if exp.dataset_version else None,
-            "dataset_name": exp.dataset_version.dataset.name
-            if exp.dataset_version and exp.dataset_version.dataset else None,
+            "dataset_name": exp.dataset_file.dataset.name
+            if exp.dataset_file and exp.dataset_file.dataset else None,
             "metrics": metrics,
             "created_at": exp.created_at,
             "experiment_type": "FORECASTING",
         })
 
-    for (exp, creator_name, version_tag, dataset_name, feature_generation_id,
+    for (exp, creator_name, dataset_name, feature_generation_id,
          aggregation_id, aggregation_interval, group_id, group_name) in (
         crud_admin.list_recent_training_experiments(db, skip + limit)
     ):
@@ -119,7 +118,6 @@ def get_experiments_overview(db: Session, *, limit: int, skip: int = 0) -> Exper
             "status": exp.status,
             "execution_time_sec": exp.execution_time_sec,
             "creator_name": creator_name,
-            "dataset_version_tag": version_tag,
             "dataset_name": dataset_name,
             "metrics": {
                 "mae": random_forest_h1["mae"],

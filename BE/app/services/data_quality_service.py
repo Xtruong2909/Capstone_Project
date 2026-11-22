@@ -27,9 +27,8 @@ from app.crud import crud_data_quality, crud_dataset
 from app.database.database import SessionLocal
 from app.models.data_quality import DataQualityCheck
 from app.models.dataset import (
-    Dataset,
     DatasetColumnMapping,
-    DatasetVersion,
+    DatasetFile,
     RecordingSession,
 )
 from app.models.user import User
@@ -70,7 +69,7 @@ ALIASES = {
 
 
 class DataQualityNotFoundError(FileNotFoundError):
-    """Raised when a dataset version or quality check cannot be found."""
+    """Raised when a dataset or quality check cannot be found."""
 
 
 class DataQualityConflictError(ValueError):
@@ -85,18 +84,18 @@ class DataQualityReportNotReadyError(ValueError):
     """Raised when a report is requested before a check completes."""
 
 
-def _resolve_dataset_version(
+def _resolve_dataset_file(
     db: Session,
     dataset_id: UUID,
-    dataset_version_id: UUID | None = None,
-) -> tuple[Any, DatasetVersion]:
+    dataset_file_id: UUID | None = None,
+) -> tuple[Any, DatasetFile]:
     result = (
-        crud_dataset.get_dataset_version(db, dataset_id, dataset_version_id)
-        if dataset_version_id is not None
-        else crud_dataset.get_dataset_latest_version(db, dataset_id)
+        crud_dataset.get_dataset_file(db, dataset_id, dataset_file_id)
+        if dataset_file_id is not None
+        else crud_dataset.get_dataset_latest_file(db, dataset_id)
     )
     if result is None:
-        raise DataQualityNotFoundError("Không tìm thấy dataset hoặc phiên bản đã tải lên")
+        raise DataQualityNotFoundError("Không tìm thấy dataset hoặc dữ liệu đã tải lên")
     return result
 
 
@@ -147,12 +146,12 @@ def _value_matches_type(value: Any, expected_type: str) -> bool:
 def _get_mappings(
     db: Session,
     dataset_id: UUID,
-    version_id: UUID,
+    file_id: UUID,
 ) -> dict[str, str]:
     record: DatasetColumnMapping | None = crud_dataset.get_dataset_column_mapping(
         db,
         dataset_id,
-        version_id,
+        file_id,
     )
     if record is None:
         record = crud_dataset.get_latest_dataset_column_mapping(db, dataset_id)
@@ -165,9 +164,9 @@ def _get_mappings(
     }
 
 
-def _version_path(version: DatasetVersion) -> Path:
+def _file_path(dataset_file: DatasetFile) -> Path:
     try:
-        return _resolve_file_path(version)
+        return _resolve_file_path(dataset_file)
     except FileNotFoundError as exc:
         raise DataQualityNotFoundError(str(exc)) from exc
 
@@ -176,7 +175,7 @@ def _status_schema(check: DataQualityCheck) -> DataQualityCheckStatus:
     return DataQualityCheckStatus(
         check_id=check.id,
         dataset_id=check.dataset_id,
-        dataset_version_id=check.dataset_version_id,
+        dataset_file_id=check.dataset_file_id,
         session_id=check.recording_session_id,
         status=check.status,
         progress_percent=check.progress_percent,
@@ -223,34 +222,34 @@ def start_data_quality_check(
     *,
     dataset_id: UUID,
     user: User,
-    dataset_version_id: UUID | None = None,
+    dataset_file_id: UUID | None = None,
     session_id: UUID | None = None,
 ) -> tuple[DataQualityCheckStarted, Path | None]:
-    dataset, version = _resolve_dataset_version(db, dataset_id, dataset_version_id)
-    sessions = crud_dataset.list_all_version_sessions(db, version.id)
+    dataset, dataset_file = _resolve_dataset_file(db, dataset_id, dataset_file_id)
+    sessions = crud_dataset.list_all_file_sessions(db, dataset_file.id)
     selected_session: RecordingSession | None = None
     if session_id is not None:
-        selected_session = crud_dataset.get_version_session(db, version.id, session_id)
+        selected_session = crud_dataset.get_file_session(db, dataset_file.id, session_id)
         if selected_session is None or selected_session.dataset_id != dataset_id:
             raise DataQualityNotFoundError(
-                "Không tìm thấy Recording Session trong Dataset Version đã chọn"
+                "Không tìm thấy Recording Session trong Dataset File đã chọn"
             )
         # A missing file is a session-level validation failure, not a reason to
-        # reject the job. The worker records it in the version report.
+        # reject the job. The worker records it in the dataset_file report.
         path = None
     elif sessions:
         path = None
     else:
-        path = _version_path(version)
+        path = _file_path(dataset_file)
 
-    active = crud_data_quality.get_active_check(db, version.id)
+    active = crud_data_quality.get_active_check(db, dataset_file.id)
     if active is not None:
         raise DataQualityConflictError(
             f"Dataset đang được kiểm tra (check_id={active.id})"
         )
     check = DataQualityCheck(
         dataset_id=dataset_id,
-        dataset_version_id=version.id,
+        dataset_file_id=dataset_file.id,
         recording_session_id=session_id,
         started_by=user.id,
         status="queued",
@@ -258,7 +257,7 @@ def start_data_quality_check(
         processed_rows=0,
     )
     if session_id is not None:
-        previous = crud_data_quality.get_latest_completed_check(db, version.id)
+        previous = crud_data_quality.get_latest_completed_check(db, dataset_file.id)
         prior_sessions = (
             previous.report.get("sessions", [])
             if previous is not None and isinstance(previous.report, dict)
@@ -284,7 +283,7 @@ def start_data_quality_check(
         message=(
             "Đã xếp hàng kiểm tra Recording Session"
             if session_id is not None
-            else "Đã xếp hàng kiểm tra Dataset Version"
+            else "Đã xếp hàng kiểm tra Dataset File"
         ),
     )
     return response, path
@@ -783,7 +782,7 @@ def _semantic_sources(
 def _run_check(
     check_id: UUID,
     path: Path,
-    version: DatasetVersion,
+    dataset_file: DatasetFile,
     mappings: dict[str, str],
     *,
     outlier_rules: list[DataQualityOutlierRule] | None = None,
@@ -828,7 +827,7 @@ def _run_check(
         row_has_error = False
         last_progress_at = monotonic()
 
-        with _open_records(path, version.file_format) as (
+        with _open_records(path, dataset_file.file_format) as (
             headers,
             header_issues,
             structure,
@@ -1370,7 +1369,7 @@ def _run_check(
         ]
         report = {
             "dataset_id": str(check.dataset_id),
-            "dataset_version_id": str(check.dataset_version_id),
+            "dataset_file_id": str(check.dataset_file_id),
             "status": "completed",
             "validation_status": (
                 "FAIL" if sum(error_totals.values())
@@ -1421,7 +1420,7 @@ def _run_check(
         db.rollback()
         logger.exception(
             "Data quality check failed",
-            extra={"check_id": str(check_id), "dataset_version_id": str(version.id)},
+            extra={"check_id": str(check_id), "dataset_file_id": str(dataset_file.id)},
         )
         if finalize:
             failed = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
@@ -1477,7 +1476,7 @@ def _populate_cross_session_hashes(
     sessions: list[RecordingSession],
     *,
     skip_session_id: UUID,
-    version: DatasetVersion,
+    dataset_file: DatasetFile,
 ) -> None:
     """Stream other sessions into a disk-backed digest index for single-session rechecks."""
     for session in sessions:
@@ -1485,7 +1484,7 @@ def _populate_cross_session_hashes(
             continue
         try:
             path = resolve_stored_file_path(session.file_path)
-            with _open_records(path, version.file_format) as (
+            with _open_records(path, dataset_file.file_format) as (
                 _, _, structure, records, _,
             ):
                 for _, values, parse_error in records:
@@ -1616,7 +1615,7 @@ def _aggregate_session_report(
     structures = sorted({item.get("detected_structure", "unknown") for item in summaries})
     return {
         "dataset_id": str(check.dataset_id),
-        "dataset_version_id": str(check.dataset_version_id),
+        "dataset_file_id": str(check.dataset_file_id),
         "status": "completed",
         "validation_status": status,
         "session_id": str(check.recording_session_id) if check.recording_session_id else None,
@@ -1655,23 +1654,23 @@ def run_data_quality_check(
         check = db.query(DataQualityCheck).filter(DataQualityCheck.id == check_id).one_or_none()
         if check is None:
             raise DataQualityNotFoundError("Không tìm thấy tác vụ kiểm tra chất lượng")
-        result = crud_dataset.get_dataset_version(
-            db, check.dataset_id, check.dataset_version_id,
+        result = crud_dataset.get_dataset_file(
+            db, check.dataset_id, check.dataset_file_id,
         )
         if result is None:
-            raise DataQualityNotFoundError("Không tìm thấy phiên bản Dataset được kiểm tra")
-        dataset, version = result
-        sessions = crud_dataset.list_all_version_sessions(db, version.id)
-        mappings = _get_mappings(db, check.dataset_id, version.id)
+            raise DataQualityNotFoundError("Không tìm thấy dữ liệu Dataset được kiểm tra")
+        dataset, dataset_file = result
+        sessions = crud_dataset.list_all_file_sessions(db, dataset_file.id)
+        mappings = _get_mappings(db, check.dataset_id, dataset_file.id)
         check.status = "running"
         check.progress_percent = 1
         check.started_at = datetime.now(UTC)
         db.commit()
 
         if not sessions:
-            path = _version_path(version)
+            path = _file_path(dataset_file)
             _run_check(
-                check_id, path, version, mappings,
+                check_id, path, dataset_file, mappings,
                 outlier_rules=outlier_rules,
                 session_id=check.recording_session_id,
                 finalize=True,
@@ -1683,7 +1682,7 @@ def run_data_quality_check(
                 (item for item in sessions if item.id == check.recording_session_id), None,
             )
             if selected is None:
-                raise DataQualityNotFoundError("Session không còn thuộc Dataset Version này")
+                raise DataQualityNotFoundError("Session không còn thuộc Dataset File này")
             targets = [selected]
             cross_temp = tempfile.TemporaryDirectory(prefix="traffic-quality-cross-")
             cross_hashes = sqlite3.connect(str(Path(cross_temp.name) / "cross_hashes.sqlite"))
@@ -1693,7 +1692,7 @@ def run_data_quality_check(
             _populate_cross_session_hashes(
                 cross_hashes, sessions,
                 skip_session_id=selected.id,
-                version=version,
+                dataset_file=dataset_file,
             )
         else:
             targets = sessions
@@ -1717,7 +1716,7 @@ def run_data_quality_check(
             try:
                 path = resolve_stored_file_path(session.file_path)
                 report = _run_check(
-                    check_id, path, version, mappings,
+                    check_id, path, dataset_file, mappings,
                     outlier_rules=outlier_rules,
                     session_id=session.id,
                     finalize=False,
@@ -1779,7 +1778,7 @@ def run_data_quality_check(
                 _add_cross_session_issue(
                     db, check_id=check_id, session_id=session.id,
                     issue_type="schema_inconsistent",
-                    message="Danh sách cột khác với các Recording Session cùng Dataset Version",
+                    message="Danh sách cột khác với các Recording Session cùng Dataset File",
                     summaries=summaries_by_id,
                 )
             if set(mappings) - set(source_columns):

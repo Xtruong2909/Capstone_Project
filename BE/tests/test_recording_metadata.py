@@ -11,25 +11,25 @@ def test_known_filename_never_requires_history_lookup(monkeypatch) -> None:
 
     monkeypatch.setattr(metadata, "recoverable_original_filenames", unexpected_lookup)
     assert metadata.resolve_original_filename(
-        None, dataset_id=uuid4(), version_id=uuid4(), original_filename="original.csv",
+        None, dataset_id=uuid4(), file_id=uuid4(), original_filename="original.csv",
     ) == "original.csv"
 
 
-def test_legacy_version_uses_its_own_lineage_and_recording_start(monkeypatch) -> None:
-    dataset_id, version_id, unrelated_id = uuid4(), uuid4(), uuid4()
+def test_legacy_file_uses_its_own_lineage_and_recording_start(monkeypatch) -> None:
+    dataset_id, file_id, unrelated_id = uuid4(), uuid4(), uuid4()
 
     def candidates(db: object, requested_dataset: object) -> dict:
         assert requested_dataset == dataset_id
         return {
-            version_id: "20181024_d3_1030_1100.csv",
+            file_id: "20181024_d3_1030_1100.csv",
             unrelated_id: "20181024_d1_0830_0900.csv",
         }
 
     monkeypatch.setattr(metadata, "recoverable_original_filenames", candidates)
-    version = SimpleNamespace(id=version_id, dataset_id=dataset_id, original_filename=None)
-    assert service._recording_start(None, version).isoformat() == "2018-10-24T10:30:00+03:00"
+    dataset_file = SimpleNamespace(id=file_id, dataset_id=dataset_id, original_filename=None)
+    assert service._recording_start(None, dataset_file).isoformat() == "2018-10-24T10:30:00+03:00"
     assert metadata.resolve_original_filename(
-        None, dataset_id=dataset_id, version_id=uuid4(), original_filename=None,
+        None, dataset_id=dataset_id, file_id=uuid4(), original_filename=None,
     ) is None
 
 
@@ -43,7 +43,7 @@ def test_backfill_does_not_commit_or_overwrite_concurrently_updated_name(monkeyp
     class FakeDB:
         def execute(self, statement: object, parameters: dict) -> SimpleNamespace:
             assert "original_filename), '') IS NULL" in str(statement)
-            result = first_id if parameters["version_id"] == first_id else None
+            result = first_id if parameters["file_id"] == first_id else None
             return SimpleNamespace(scalar_one_or_none=lambda: result)
 
     assert metadata.restore_original_filenames(FakeDB()) == {first_id: "first.csv"}

@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.dataset import (
     Dataset,
+    DatasetFile,
+    DatasetFileSession,
     DatasetGroup,
-    DatasetVersion,
-    DatasetVersionSession,
     RecordingSession,
 )
 from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
@@ -182,8 +182,8 @@ def experiment_group_id(db: Session, experiment: ModelTrainingExperiment) -> UUI
     if experiment.split_id:
         return db.scalar(
             select(Dataset.group_id)
-            .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-            .join(ModelTrainingSplit, ModelTrainingSplit.dataset_version_id == DatasetVersion.id)
+            .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+            .join(ModelTrainingSplit, ModelTrainingSplit.dataset_file_id == DatasetFile.id)
             .where(ModelTrainingSplit.id == experiment.split_id)
         )
     if experiment.lag_feature_split_id:
@@ -197,17 +197,17 @@ def experiment_group_id(db: Session, experiment: ModelTrainingExperiment) -> UUI
     return None
 
 
-def get_latest_approved_version(db: Session, dataset_id: UUID) -> DatasetVersion | None:
+def get_latest_approved_file(db: Session, dataset_id: UUID) -> DatasetFile | None:
     return db.scalars(
-        select(DatasetVersion).where(
-            DatasetVersion.dataset_id == dataset_id,
-            DatasetVersion.approval_status == "APPROVED",
-        ).order_by(DatasetVersion.created_at.desc(), DatasetVersion.id.desc()).limit(1)
+        select(DatasetFile).where(
+            DatasetFile.dataset_id == dataset_id,
+            DatasetFile.approval_status == "APPROVED",
+        ).order_by(DatasetFile.created_at.desc(), DatasetFile.id.desc()).limit(1)
     ).first()
 
 
-def get_version(db: Session, version_id: UUID) -> DatasetVersion | None:
-    return db.get(DatasetVersion, version_id)
+def get_file(db: Session, file_id: UUID) -> DatasetFile | None:
+    return db.get(DatasetFile, file_id)
 
 
 def get_split(db: Session, resource_id: UUID) -> LagFeatureSplit | None:
@@ -280,7 +280,7 @@ def create_resource_shares(
             db.flush()
             db.add(SharedReportItem(
                 share_id=report.id, resource_type=kind, resource_id=resource_id,
-                resource_version_id=item.get("resource_version_id"),
+                resource_file_id=item.get("resource_file_id"),
                 visible_sections=list(item["visible_sections"]),
             ))
             db.flush()
@@ -345,13 +345,13 @@ def get_session_names(db: Session, session_ids: set[UUID]) -> dict[str, str]:
 
 
 def page_dataset_sessions(
-    db: Session, version_id: UUID, page: int, page_size: int,
+    db: Session, file_id: UUID, page: int, page_size: int,
 ) -> tuple[int, list[RecordingSession]]:
-    condition = DatasetVersionSession.version_id == version_id
-    total = db.scalar(select(func.count()).select_from(DatasetVersionSession).where(condition)) or 0
+    condition = DatasetFileSession.file_id == file_id
+    total = db.scalar(select(func.count()).select_from(DatasetFileSession).where(condition)) or 0
     rows = db.scalars(
         select(RecordingSession).join(
-            DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id,
+            DatasetFileSession, DatasetFileSession.session_id == RecordingSession.id,
         ).where(condition).order_by(RecordingSession.scheduled_start, RecordingSession.id)
         .offset((page - 1) * page_size).limit(page_size)
     ).all()
@@ -359,7 +359,7 @@ def page_dataset_sessions(
 
 
 def page_traffic_bins(
-    db: Session, version_id: UUID, page: int, page_size: int,
+    db: Session, file_id: UUID, page: int, page_size: int,
 ) -> tuple[int, list[TrafficTimeSeries]]:
     # Repeated aggregation runs may contain the same observation. Select the
     # newest saved value before counting/paging so duplicates cannot span pages.
@@ -372,7 +372,7 @@ def page_traffic_bins(
             ),
             order_by=(TrafficTimeSeries.created_at.desc().nulls_last(), TrafficTimeSeries.id.desc()),
         ).label("observation_rank"),
-    ).where(TrafficTimeSeries.dataset_version_id == version_id).subquery()
+    ).where(TrafficTimeSeries.dataset_file_id == file_id).subquery()
     latest = select(ranked.c.id).where(ranked.c.observation_rank == 1).subquery()
     total = db.scalar(select(func.count()).select_from(latest)) or 0
     rows = db.scalars(
