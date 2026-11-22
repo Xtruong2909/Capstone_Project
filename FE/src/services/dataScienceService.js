@@ -56,8 +56,8 @@ export const dataScienceService = {
     }, config)
     return data
   },
-  async listExperiments({ datasetVersionId, page = 1, pageSize = 100 } = {}) {
-    const { data } = await apiClient.get('/model-training/experiments', { ...config, params: { dataset_version_id: datasetVersionId, page, page_size: pageSize } })
+  async listExperiments({ datasetFileId, page = 1, pageSize = 100 } = {}) {
+    const { data } = await apiClient.get('/model-training/experiments', { ...config, params: { dataset_file_id: datasetFileId, page, page_size: pageSize } })
     return data
   },
   async getExperiment(experimentId) {
@@ -80,12 +80,19 @@ export const dataScienceService = {
     }, config)
     return data
   },
+  async selectBestOverall(experimentIds, splitId) {
+    const { data } = await apiClient.post('/model-training/experiments/best-overall', {
+      split_id: splitId,
+      experiment_ids: experimentIds,
+    }, config)
+    return data
+  },
   async listPredictionExperiments() {
     const { data } = await apiClient.get('/prediction/experiments', config)
     return data.experiments
   },
-  async listPredictionSessions({ experimentId, versionId, page = 1 }) {
-    const { data } = await apiClient.get('/prediction/sessions', { ...config, params: { experiment_id: experimentId || undefined, dataset_version_id: versionId || undefined, eligible_only: true, page, page_size: 100 } })
+  async listPredictionSessions({ experimentId, fileId, page = 1 }) {
+    const { data } = await apiClient.get('/prediction/sessions', { ...config, params: { experiment_id: experimentId || undefined, dataset_file_id: fileId || undefined, eligible_only: true, page, page_size: 100 } })
     return data
   },
   async createForecast(experimentId, sessionIds) {

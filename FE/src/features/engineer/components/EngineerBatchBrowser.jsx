@@ -3,14 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useEngineerBatchBrowser } from '../../../hooks/useEngineerData'
 import { useLanguage } from '../../../hooks/useLanguage'
 import { EngineerBadge, EngineerHeader, EngineerPagination, EngineerState } from './EngineerUi'
+import EngineerBatchApproval from './EngineerBatchApproval'
 
 export default function EngineerBatchBrowser({ mode = 'preview' }) {
   const { t } = useLanguage()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const groupId = mode === 'preview' ? params.get('groupId') : null
-  const { search, setSearch, resource, groupName } = useEngineerBatchBrowser(groupId)
-  const path = mode === 'pipeline' ? '/engineer/pipeline-studio' : '/engineer/preview'
+  const groupId = mode !== 'pipeline' ? params.get('groupId') : null
+  const { search, setSearch, resource, groupName } = useEngineerBatchBrowser(groupId, mode)
+  const path = mode === 'pipeline' ? '/engineer/pipeline-studio' : mode === 'catalog' ? '/engineer/datasets' : '/engineer/preview'
   const openBatch = (id) => {
     setSearch('')
     navigate(path + '?groupId=' + encodeURIComponent(id))
@@ -21,7 +22,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
   return (
     <section className="admin-card de-catalog">
       <EngineerHeader
-        title={groupId ? groupName || 'Batch' : mode === 'pipeline' ? 'Pipeline Studio' : 'Schema & Data Preview'}
+        title={groupId ? groupName || 'Batch' : mode === 'pipeline' ? 'Pipeline Studio' : mode === 'catalog' ? 'Dataset Catalog' : 'Schema & Data Preview'}
         onRefresh={resource.reload}
         onBack={groupId ? () => { setSearch(''); navigate(path) } : undefined}
       />
@@ -74,7 +75,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
                 <tr>
                   {(groupId
                     ? ['Dataset', 'Recording Date', 'Sessions', 'Status', 'Action']
-                    : ['Batch', 'Datasets', 'Sessions', 'Action']
+                    : ['Batch', 'Datasets', 'Sessions', ...(mode === 'catalog' ? ['Trạng thái phê duyệt'] : []), 'Action']
                   ).map((label) => (
                     <th key={label}>{t(label)}</th>
                   ))}
@@ -98,7 +99,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
                           className="btn-secondary"
                           onClick={() =>
                             navigate(
-                              path +
+                              '/engineer/preview' +
                                 '?groupId=' +
                                 encodeURIComponent(groupId) +
                                 '&datasetId=' +
@@ -107,7 +108,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
                           }
                         >
                           <Eye size={16} />
-                          {t('Preview')}
+                          {mode === 'preview' ? 'Xem các phiên ghi hình' : t('Preview')}
                         </button>
                       </td>
                     </tr>
@@ -122,9 +123,14 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
                           {item.group_name || item.drone_id}
                         </button>
                         <small className="admin-cell-note">{item.source}</small>
+                        {mode === 'pipeline' && item.pipeline && <small className="admin-cell-note">
+                          {['', 'Chuẩn hóa tên cột', 'Chuẩn hóa dữ liệu', 'Xuất tệp', 'Gửi phê duyệt'][item.pipeline.step]}
+                          {['PENDING', 'RUNNING'].includes(item.pipeline.job?.status) ? ' · Đang xử lý' : ''}
+                        </small>}
                       </td>
                       <td>{item.dataset_count}</td>
                       <td>{item.total_sessions}</td>
+                      {mode === 'catalog' && <td><EngineerBatchApproval status={item.approval_status} counts={item.approval_counts} /></td>}
                       <td>
                         <button
                           type="button"

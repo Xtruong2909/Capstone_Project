@@ -24,7 +24,7 @@ export default function ScientistApprovedDatasetsPage() {
         {groupId && <ScientistBackLink to="/scientist/datasets">Tất cả batch</ScientistBackLink>}
         <h2 className="admin-card__title">{groupId ? group?.group_name || 'Dataset trong batch' : 'Các batch đã được phê duyệt'}</h2>
         <p className="admin-card__subtitle">{groupId ? 'Chọn dataset để xem các Recording Session.' : 'Chọn một batch để xem các dataset đã được duyệt.'}</p>
-      </div><span className="sci-pill sci-pill--version">{groupId ? datasets.length : groups.length} {groupId ? 'dataset' : 'batch'}</span></div>
+      </div><span className="sci-pill sci-pill--data">{groupId ? datasets.length : groups.length} {groupId ? 'dataset' : 'batch'}</span></div>
       <div className="sci-toolbar"><label className="sci-search"><Search size={16} />
         <input className="admin-input" type="search" value={search} onChange={(event) => setSearch(event.target.value)}
           placeholder={groupId ? 'Tìm dataset…' : 'Tìm batch…'} aria-label={groupId ? 'Tìm dataset' : 'Tìm batch'} />
@@ -55,8 +55,8 @@ export default function ScientistApprovedDatasetsPage() {
     </div>}
 
     {!loading && !error && groupId && group && visibleDatasets.length > 0 && <div className="sci-overview-list sci-hierarchy-list">
-      {visibleDatasets.map((item) => <button type="button" key={item.version_id} className="sci-overview-row sci-hierarchy-button"
-        onClick={() => navigate(`/scientist/datasets/${item.dataset_id}/versions/${item.version_id}?groupId=${groupId}`)}>
+      {visibleDatasets.map((item) => <button type="button" key={item.file_id} className="sci-overview-row sci-hierarchy-button"
+        onClick={() => navigate(`/scientist/datasets/${item.dataset_id}/files/${item.file_id}?groupId=${groupId}`)}>
         <span className="sci-overview-row__left"><span className="sci-overview-row__avatar"><Database size={22} /></span>
           <span className="sci-overview-row__info"><span className="sci-overview-row__name">{item.dataset_name}</span>
             <span className="sci-overview-row__meta"><span className="sci-overview-row__meta-item">{item.total_sessions} session</span>

@@ -5,15 +5,15 @@ import { useDatasetPreview } from '../../../hooks/useScientistData'
 import { formatBytes, formatNumber } from '../utils/formatters'
 
 export default function ScientistDatasetPreviewPage() {
-  const { datasetId, versionId, sessionId } = useParams()
+  const { datasetId, fileId, sessionId } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('groupId')
   const groupQuery = groupId ? `?groupId=${encodeURIComponent(groupId)}` : ''
-  const basePath = `/scientist/datasets/${datasetId}/versions/${versionId}`
+  const basePath = `/scientist/datasets/${datasetId}/files/${fileId}`
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const pendingScrollPosition = useRef(null)
-  const { preview, isLoading, error, reload } = useDatasetPreview(datasetId, versionId, {
+  const { preview, isLoading, error, reload } = useDatasetPreview(datasetId, fileId, {
     sessionId, page, pageSize, representation: 'normalized',
   })
   const columns = preview?.columns || []

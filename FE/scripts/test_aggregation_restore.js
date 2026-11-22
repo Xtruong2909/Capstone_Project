@@ -36,7 +36,7 @@ function mount(service, datasetId = 'dataset-a', featureState = null) {
   const render = () => {
     cursor = 0
     return featureState
-      ? context.useTrainingFeatureEngineering(datasetId, 'version-1')
+      ? context.useTrainingFeatureEngineering(datasetId, 'dataset_file-1')
       : context.useOneMinuteVehicleAggregation(datasetId)
   }
   render()
@@ -58,8 +58,8 @@ const flush = () => new Promise((resolve) => setImmediate(resolve))
 function featureMemory() {
   const entries = new Map()
   return {
-    read: (dataset, version) => entries.get(`${dataset}:${version}`) || null,
-    save: (dataset, version, roi) => entries.set(`${dataset}:${version}`, roi),
+    read: (dataset, dataset_file) => entries.get(`${dataset}:${dataset_file}`) || null,
+    save: (dataset, dataset_file, roi) => entries.set(`${dataset}:${dataset_file}`, roi),
   }
 }
 
@@ -68,8 +68,8 @@ test('features require a click first and restore the successful ROI after remoun
   let calls = 0
   const data = { sample_count: 2, roi_identifier: 'CUSTOM_ROI', samples: [] }
   const service = {
-    async prepareTrainingFeatures(version, roi) {
-      assert.equal(version, 'version-1')
+    async prepareTrainingFeatures(dataset_file, roi) {
+      assert.equal(dataset_file, 'dataset_file-1')
       assert.equal(roi, 'CUSTOM_ROI')
       calls += 1
       return data
@@ -102,13 +102,13 @@ test('failed extraction does not mark features as saved', async () => {
   }, 'dataset-a', memory)
   await hook.read().generateTrainingFeatures()
   assert.equal(hook.read().error, 'Request failed')
-  assert.equal(memory.read('dataset-a', 'version-1'), null)
+  assert.equal(memory.read('dataset-a', 'dataset_file-1'), null)
   hook.unmount()
 })
 
 test('late feature restore cannot overwrite another dataset', async () => {
   const memory = featureMemory()
-  memory.save('dataset-a', 'version-1', 'MAIN_ROI')
+  memory.save('dataset-a', 'dataset_file-1', 'MAIN_ROI')
   let finish
   const hook = mount({
     prepareTrainingFeatures() { return new Promise((resolve) => { finish = resolve }) },

@@ -76,11 +76,11 @@ export const trafficForecastService = {
 
   // ---------------------------------------------------------- Feature Engineering
   /** POST /api/feature-engineering/training - prepare complete lag X and target Y samples. */
-  async prepareTrainingFeatures(datasetVersionId, roiIdentifier = 'MAIN_ROI') {
+  async prepareTrainingFeatures(datasetFileId, roiIdentifier = 'MAIN_ROI') {
     const response = await apiClient.post(
       '/feature-engineering/training',
       {
-        dataset_version_id: datasetVersionId,
+        dataset_file_id: datasetFileId,
         roi_identifier: roiIdentifier,
       },
       { baseURL: FEATURE_API_BASE_URL }
@@ -89,11 +89,11 @@ export const trafficForecastService = {
   },
 
   /** POST /api/feature-engineering/prediction - prepare latest lag X and forecast timestamps. */
-  async preparePredictionFeatures(datasetVersionId, roiIdentifier = 'MAIN_ROI') {
+  async preparePredictionFeatures(datasetFileId, roiIdentifier = 'MAIN_ROI') {
     const response = await apiClient.post(
       '/feature-engineering/prediction',
       {
-        dataset_version_id: datasetVersionId,
+        dataset_file_id: datasetFileId,
         roi_identifier: roiIdentifier,
       },
       { baseURL: FEATURE_API_BASE_URL }
@@ -111,7 +111,7 @@ export const trafficForecastService = {
     { trainRatio = 0.7, splitStrategy = 'chronological' } = {}
   ) {
     const payload = {
-      dataset_version_id: featureResponse.dataset_version_id,
+      dataset_file_id: featureResponse.dataset_file_id,
       roi_identifier: featureResponse.roi_identifier || 'MAIN_ROI',
       configuration: featureResponse.configuration,
       sample_count: featureResponse.sample_count ?? featureResponse.samples?.length,
@@ -176,12 +176,12 @@ export const trafficForecastService = {
 
   /**
    * GET /api/model-training/experiments
-   * Lists persisted training experiments, optionally filtered by dataset_version_id.
+   * Lists persisted training experiments, optionally filtered by dataset_file_id.
    */
-  async listTrainingExperiments({ datasetVersionId, page = 1, pageSize = 100 } = {}) {
+  async listTrainingExperiments({ datasetFileId, page = 1, pageSize = 100 } = {}) {
     const params = { page, page_size: pageSize }
-    if (datasetVersionId) {
-      params.dataset_version_id = datasetVersionId
+    if (datasetFileId) {
+      params.dataset_file_id = datasetFileId
     }
     const response = await apiClient.get('/model-training/experiments', {
       baseURL: FEATURE_API_BASE_URL,
@@ -203,7 +203,7 @@ export const trafficForecastService = {
 
   /**
    * POST /api/model-training/experiments/compare
-   * Compares 2 to 20 completed experiments sharing the same dataset version, split, and evaluation rules.
+   * Compares 2 to 20 completed experiments sharing the same dataset, split, and evaluation rules.
    */
   async compareTrainingExperiments(experimentIds) {
     const response = await apiClient.post(
@@ -219,9 +219,9 @@ export const trafficForecastService = {
    * POST /api/model-training/predict
    * Selects the best experiment by Validation score and predicts +1, +3, +5 minutes using Final Model.
    */
-  async predictTrafficFlow({ datasetVersionId, splitId, experimentId } = {}) {
+  async predictTrafficFlow({ datasetFileId, splitId, experimentId } = {}) {
     const payload = {}
-    if (datasetVersionId) payload.dataset_version_id = datasetVersionId
+    if (datasetFileId) payload.dataset_file_id = datasetFileId
     if (splitId) payload.split_id = splitId
     if (experimentId) payload.experiment_id = experimentId
 
@@ -244,7 +244,7 @@ export const trafficForecastService = {
     predictionId,
       forecastId,
     modelId,
-    datasetVersionId,
+    datasetFileId,
       groupId,
     aggregationId,
   } = {}) {
@@ -262,8 +262,8 @@ export const trafficForecastService = {
     if (modelId && String(modelId).trim() !== '') {
       payload.model_id = String(modelId).trim()
     }
-    if (datasetVersionId && String(datasetVersionId).trim() !== '') {
-      payload.dataset_version_id = String(datasetVersionId).trim()
+    if (datasetFileId && String(datasetFileId).trim() !== '') {
+      payload.dataset_file_id = String(datasetFileId).trim()
     }
       if (groupId) payload.group_id = String(groupId).trim()
     if (aggregationId) payload.aggregation_id = String(aggregationId).trim()

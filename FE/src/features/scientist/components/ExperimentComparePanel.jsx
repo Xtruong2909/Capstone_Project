@@ -4,11 +4,11 @@ import {
   Trophy,
   ArrowLeft,
   Loader2,
-  Info,
   Eye,
   PlusCircle,
   Rocket,
 } from 'lucide-react'
+import BestOverallResult from './BestOverallResult'
 
 function formatMetric(val, digits = 2) {
   if (val == null || Number.isNaN(Number(val))) return '—'
@@ -28,7 +28,7 @@ function isCompatibleWithAnchor(exp, anchor) {
   if (!exp || exp.status !== 'COMPLETED') return false
   if (!anchor) return true
   return (
-    String(exp.dataset_version_id) === String(anchor.dataset_version_id) &&
+    String(exp.dataset_file_id) === String(anchor.dataset_file_id) &&
     String(exp.split_id) === String(anchor.split_id) &&
     String(exp.evaluation_mode) === String(anchor.evaluation_mode) &&
     String(exp.evaluation_policy) === String(anchor.evaluation_policy) &&
@@ -44,6 +44,8 @@ export default function ExperimentComparePanel({
   selectedCompareIds = [],
   onChangeCompareIds,
   onRunCompare,
+  onSelectBestOverall,
+  resultMode = 'compare',
   comparisonData,
   isComparing,
   compareError,
@@ -161,28 +163,36 @@ export default function ExperimentComparePanel({
         <div className="sci-compare-picker">
           <div className="sci-compare-picker__top">
             <div>
-              <strong>Chọn thí nghiệm COMPLETED để so sánh (tối thiểu 2 thí nghiệm cùng Split ID):</strong>
+              <strong>Chọn ít nhất 2 thí nghiệm hoàn thành cùng Split:</strong>
               <p>
-                Chỉ so sánh các thí nghiệm có cùng phiên bản Dataset, ROI, Split ID, tập Test, horizon và quy tắc đánh giá. Backend sẽ đối chiếu chính xác các mốc Test trước khi trả kết quả.
+                Chỉ so sánh các thí nghiệm có cùng dữ liệu Dataset, ROI, Split ID, tập Test, horizon và quy tắc đánh giá. Backend sẽ đối chiếu chính xác các mốc Test trước khi trả kết quả.
               </p>
             </div>
+            <div className="sci-train-actions">
             <button
               type="button"
               className="btn-action btn-action--primary sci-train-btn"
               disabled={selectedCompareIds.length < 2 || isComparing}
               onClick={() => onRunCompare?.(selectedCompareIds)}
             >
-              {isComparing ? (
+              {isComparing && resultMode === 'compare' ? (
                 <Loader2 size={16} className="sci-spin" />
               ) : (
                 <GitCompareArrows size={16} />
               )}
               <span>
-                {isComparing
+                {isComparing && resultMode === 'compare'
                   ? 'Đang so sánh...'
                   : `So sánh đã chọn (${selectedCompareIds.length})`}
               </span>
             </button>
+            <button type="button" className="btn-action btn-action--primary sci-train-btn"
+              disabled={selectedCompareIds.length < 2 || isComparing}
+              onClick={() => onSelectBestOverall?.(selectedCompareIds)}>
+              {isComparing && resultMode === 'overall' ? <Loader2 size={16} className="sci-spin" /> : <Trophy size={16} />}
+              <span>{isComparing && resultMode === 'overall' ? 'Đang chọn Best Overall…' : `Best Overall (${selectedCompareIds.length})`}</span>
+            </button>
+            </div>
           </div>
 
           {completedExperiments.length === 0 ? (
@@ -201,7 +211,7 @@ export default function ExperimentComparePanel({
                   <button
                     key={idStr}
                     type="button"
-                    disabled={!enabled}
+                    disabled={!enabled || isComparing}
                     onClick={() => handleToggleChip(exp)}
                     className={`sci-compare-chip ${
                       isSelected ? 'sci-compare-chip--active' : ''
@@ -209,7 +219,7 @@ export default function ExperimentComparePanel({
                     title={
                       enabled
                         ? `${exp.experiment_name} · Split ${String(exp.split_id).slice(0, 8)}`
-                        : 'Khác phiên bản Dataset, Split ID, horizon hoặc quy tắc đánh giá với thí nghiệm đã chọn'
+                        : 'Khác dữ liệu Dataset, Split ID, horizon hoặc quy tắc đánh giá với thí nghiệm đã chọn'
                     }
                   >
                     <input
@@ -237,7 +247,7 @@ export default function ExperimentComparePanel({
           <div className="sci-state">
             <div className="sci-spinner" />
             <div style={{ fontWeight: 700, color: '#0f172a' }}>
-              Đang đối chiếu chỉ số MAE / RMSE của các thí nghiệm...
+              {resultMode === 'overall' ? 'Đang tìm thí nghiệm tốt nhất trong các thí nghiệm đã chọn…' : 'Đang đối chiếu chỉ số MAE / RMSE của các thí nghiệm…'}
             </div>
           </div>
         )}
@@ -256,12 +266,15 @@ export default function ExperimentComparePanel({
             </div>
             <div style={{ fontSize: '0.84rem' }}>
               Đánh dấu ít nhất <strong>2 thí nghiệm COMPLETED</strong> cùng Split ID ở trên rồi nhấn{' '}
-              <strong>&ldquo;So sánh đã chọn&rdquo;</strong>.
+              <strong>&ldquo;So sánh đã chọn&rdquo;</strong> hoặc <strong>&ldquo;Best Overall&rdquo;</strong>.
             </div>
           </div>
         )}
 
-        {!isComparing && comparedList.length >= 2 && (
+        {!isComparing && !compareError && resultMode === 'overall' && comparisonData?.best_overall && <BestOverallResult
+          result={comparisonData} onViewExperiment={onViewExperimentDetail} onUseForPrediction={onUseForPrediction} />}
+
+        {!isComparing && !compareError && resultMode === 'compare' && comparedList.length >= 2 && (
           <>
             {/* Best by Horizon Summary Cards */}
             <div className="sci-fe-config-grid">
@@ -440,15 +453,6 @@ export default function ExperimentComparePanel({
               </table>
             </div>
 
-            {/* Footer Disclaimer Note required by gợi ý.txt */}
-            <div className="sci-notice">
-              <Info size={16} style={{ flexShrink: 0 }} />
-              <span>
-                <strong>Lưu ý đánh giá:</strong> Đây là{' '}
-                <strong>kết quả so sánh theo từng horizon (+1, +3, +5 phút)</strong> dựa trên chỉ số RMSE thấp nhất ở mỗi mốc dự báo,{' '}
-                <strong>chưa phải quyết định chọn mô hình cuối cùng</strong>.
-              </span>
-            </div>
           </>
         )}
       </div>

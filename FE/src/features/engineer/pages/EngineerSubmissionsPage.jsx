@@ -15,13 +15,13 @@ export default function EngineerSubmissionsPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [batch, setBatch] = useState(null)
-  const submissions = useEngineerPage(batch ? engineerService.listSubmittedVersions : engineerService.listSubmissionBatches, {
+  const submissions = useEngineerPage(batch ? engineerService.listSubmittedFiles : engineerService.listSubmissionBatches, {
     search: search.trim() || undefined, status: batch ? undefined : status || undefined,
     group_id: batch?.group_id || undefined, ungrouped: batch ? !batch.group_id : undefined,
   })
   const batchName = (item) => item.group_name || (item.group_id ? `${t('Batch')} ${item.group_id}` : t('Unassigned Batch'))
   return <section className="admin-card de-catalog">
-    <EngineerHeader title={batch ? batchName(batch) : 'Submitted Datasets & Status'} description="Track submitted dataset versions and administrator review results." onRefresh={submissions.reload} onBack={batch ? () => { setBatch(null); setSearch('') } : undefined} />
+    <EngineerHeader title={batch ? batchName(batch) : 'Submitted Datasets & Status'} description="Track submitted datasets and administrator review results." onRefresh={submissions.reload} onBack={batch ? () => { setBatch(null); setSearch('') } : undefined} />
     <div className="admin-filters">
       <input type="search" className="admin-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Search submitted datasets...')} aria-label={t('Search submitted datasets...')} />
       {!batch && <select className="admin-select" value={status} onChange={(event) => setStatus(event.target.value)} aria-label={t('Status')}>
@@ -31,10 +31,10 @@ export default function EngineerSubmissionsPage() {
     </div>
     <EngineerState resource={submissions}>
       <div className="admin-table-scroll"><table className="admin-table">
-        <thead><tr>{(batch ? ['Dataset', 'Version', 'Sessions'] : ['Batch', 'Datasets', 'Submitted At', 'Status', 'Note', 'Action']).map((label) => <th key={label}>{t(label)}</th>)}</tr></thead>
-        <tbody>{batch ? submissions.items.map((row) => <tr key={row.version_id}>
+        <thead><tr>{(batch ? ['Dataset', 'Sessions'] : ['Batch', 'Datasets', 'Submitted At', 'Status', 'Note', 'Action']).map((label) => <th key={label}>{t(label)}</th>)}</tr></thead>
+        <tbody>{batch ? submissions.items.map((row) => <tr key={row.file_id}>
           <td><strong>{row.dataset_name || '—'}</strong></td>
-          <td>{row.version_tag}</td>
+          
           <td>{row.source_session_count}</td>
         </tr>) : submissions.items.map((row) => <tr key={row.group_id || 'ungrouped'}>
           <td><button className="admin-batch-link" onClick={() => { setBatch(row); setSearch('') }}>{batchName(row)}</button></td>

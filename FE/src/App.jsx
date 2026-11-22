@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import HomePage from './features/home/HomePage'
 import LoginPage from './features/auth/LoginPage'
 import ForgotPasswordPage from './features/auth/ForgotPasswordPage'
+import InitialPasswordPage from './features/auth/InitialPasswordPage'
 
 // Admin features
 import AdminLayout from './features/admin/AdminLayout'
@@ -34,6 +35,7 @@ import ScientistPredictionPage from './features/scientist/pages/ScientistPredict
 import ScientistForecastDetailPage from './features/scientist/pages/ScientistForecastDetailPage'
 import ScientistExperimentsPage from './features/scientist/pages/ScientistExperimentsPage'
 import ScientistExperimentComparisonPage from './features/scientist/pages/ScientistExperimentComparisonPage'
+import ScientistBestOverallPage from './features/scientist/pages/ScientistBestOverallPage'
 import ScientistExperimentSetupPage from './features/scientist/pages/ScientistExperimentSetupPage'
 import ScientistSharesPage from './features/scientist/pages/ScientistSharesPage'
 import BusinessSharedResultsPage from './features/business/pages/BusinessSharedResultsPage'
@@ -48,6 +50,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/change-password" element={<InitialPasswordPage />} />
       </Route>
 
       {/* Admin Portal (Protected: only 'admin' role) */}
@@ -89,15 +92,16 @@ export default function App() {
           <Route path="experiments/groups/:groupId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/groups/:groupId/new" element={<ScientistExperimentSetupPage />} />
           <Route path="experiments/groups/:groupId/compare" element={<ScientistExperimentComparisonPage />} />
+          <Route path="experiments/groups/:groupId/best-overall" element={<ScientistBestOverallPage />} />
           <Route path="experiments/groups/:groupId/:experimentId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/:datasetId" element={<ScientistExperimentsPage />} />
           <Route path="experiments/:datasetId/:experimentId" element={<ScientistExperimentsPage />} />
           <Route path="shares" element={<ScientistSharesPage />} />
           <Route path="preview" element={<Navigate to="/scientist/datasets" replace />} />
-          <Route path="datasets/:datasetId/versions/:versionId" element={<ScientistDatasetSessionsPage />} />
-          <Route path="datasets/:datasetId/versions/:versionId/sessions/:sessionId/preview" element={<ScientistDatasetPreviewPage />} />
-          <Route path="datasets/:datasetId/versions/:versionId/train" element={<ScientistTrainingPage />} />
-          <Route path="datasets/:datasetId/versions/:versionId/predict" element={<ScientistPredictionPage />}>
+          <Route path="datasets/:datasetId/files/:fileId" element={<ScientistDatasetSessionsPage />} />
+          <Route path="datasets/:datasetId/files/:fileId/sessions/:sessionId/preview" element={<ScientistDatasetPreviewPage />} />
+          <Route path="datasets/:datasetId/files/:fileId/train" element={<ScientistTrainingPage />} />
+          <Route path="datasets/:datasetId/files/:fileId/predict" element={<ScientistPredictionPage />}>
             <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
           </Route>
         </Route>

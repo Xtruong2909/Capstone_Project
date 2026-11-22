@@ -60,13 +60,13 @@ export default function ForgotPasswordPage() {
             <h2>{t(titles[step])}</h2>
             <p className="login-description">{t(descriptions[step])}</p>
 
-            {recovery.error && <p className="login-error" role="alert">{recovery.error}</p>}
-            {recovery.notice && <p className="recovery-notice" role="status">{recovery.notice}</p>}
+            {recovery.error && <p className="login-error" role="alert">{t(recovery.error)}</p>}
+            {recovery.notice && <p className="recovery-notice" role="status">{t(recovery.notice)}</p>}
 
             {step === 'success' ? (
               <Link className="login-submit recovery-submit" to="/login">{t('Back to Sign In')} <ArrowRight size={18} /></Link>
             ) : (
-              <form onSubmit={submit} aria-busy={isLoading}>
+              <form onSubmit={submit} aria-busy={isLoading} noValidate>
                 {step === 'email' && (
                   <div className="form-group">
                     <label htmlFor="recovery-email">{t('Email address')}</label>

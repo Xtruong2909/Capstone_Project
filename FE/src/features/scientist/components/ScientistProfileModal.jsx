@@ -128,6 +128,9 @@ export default function ScientistProfileModal({ isOpen, onClose, roleLabel = 'Da
     >
       <div
         className="modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('Account Profile & Security')}
         style={{
           width: '100%',
           maxWidth: '720px',
@@ -315,8 +318,8 @@ export default function ScientistProfileModal({ isOpen, onClose, roleLabel = 'Da
                         <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
                           {userProfile.full_name || t(roleLabel)}
                         </h4>
-                        <span className={userProfile.role_id === 'business_user' ? 'biz-role-badge' : 'badge badge--scientist'} style={{ fontSize: '0.68rem', padding: '0.12rem 0.5rem' }}>
-                          {userProfile.role_id === 'business_user' ? roleLabel : userProfile.role_id === 'data_scientist' ? t('Data Scientist') : t(userProfile.role_id)}
+                        <span className={userProfile.role_id === 'business_user' ? 'biz-role-badge' : userProfile.role_id === 'data_engineer' ? 'badge badge--engineer' : 'badge badge--scientist'} style={{ fontSize: '0.68rem', padding: '0.12rem 0.5rem' }}>
+                          {['business_user', 'data_engineer'].includes(userProfile.role_id) ? t(roleLabel) : userProfile.role_id === 'data_scientist' ? t('Data Scientist') : t(userProfile.role_id)}
                         </span>
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.15rem' }}>
@@ -420,7 +423,7 @@ export default function ScientistProfileModal({ isOpen, onClose, roleLabel = 'Da
                       lineHeight: 1.45,
                     }}
                   >
-                    💡 <strong>{t('Note:')}</strong> {userProfile.role_id === 'business_user'
+                    💡 <strong>{t('Note:')}</strong> {userProfile.role_id !== 'data_scientist'
                       ? 'Thông tin tài khoản và quyền truy cập được quản trị viên quản lý. Hãy liên hệ quản trị viên nếu cần thay đổi email hoặc vai trò.'
                       : t('Account details and Data Scientist permissions are centrally managed by the System Administrator. If you need to update your email or role permissions, please contact an Admin.')}
                   </div>
@@ -431,7 +434,7 @@ export default function ScientistProfileModal({ isOpen, onClose, roleLabel = 'Da
 
           {/* TAB 2: CHANGE PASSWORD (POST /api/v1/auth/profile/change-password) */}
           {activeTab === 'password' && (
-            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+            <form noValidate onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
               {passwordSuccess && (
                 <div
                   style={{

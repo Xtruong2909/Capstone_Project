@@ -5,17 +5,17 @@ import { useDatasetSessions, useGroupDatasets } from '../../../hooks/useScientis
 import ScientistBackLink from '../components/ScientistBackLink'
 
 export default function ScientistDatasetSessionsPage() {
-  const { datasetId, versionId } = useParams()
+  const { datasetId, fileId } = useParams()
   const [searchParams] = useSearchParams()
   const groupId = searchParams.get('groupId')
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const { datasets } = useGroupDatasets(groupId)
-  const dataset = datasets.find((item) => item.dataset_id === datasetId && item.version_id === versionId)
-  const { sessions, isLoading, error, reload } = useDatasetSessions(datasetId, versionId)
+  const dataset = datasets.find((item) => item.dataset_id === datasetId && item.file_id === fileId)
+  const { sessions, isLoading, error, reload } = useDatasetSessions(datasetId, fileId)
   const visibleSessions = useMemo(() => sessions.filter((session) =>
     `${session.original_filename} ${session.recording_date} ${session.drone_id}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [sessions, search])
-  const basePath = `/scientist/datasets/${datasetId}/versions/${versionId}`
+  const basePath = `/scientist/datasets/${datasetId}/files/${fileId}`
   const groupQuery = groupId ? `?groupId=${encodeURIComponent(groupId)}` : ''
 
   return <div className="sci-page">
@@ -23,7 +23,7 @@ export default function ScientistDatasetSessionsPage() {
       <ScientistBackLink to={groupId ? `/scientist/datasets/groups/${groupId}` : '/scientist/datasets'}>{groupId ? 'Dataset trong batch' : 'Tất cả batch'}</ScientistBackLink>
       <h2 className="admin-card__title">{dataset?.dataset_name || 'Recording Sessions'}</h2>
       <p className="admin-card__subtitle">Chọn một session để xem trước dữ liệu của phiên ghi hình đó.</p>
-    </div><span className="sci-pill sci-pill--version">{sessions.length} session</span></div>
+    </div><span className="sci-pill sci-pill--data">{sessions.length} session</span></div>
       <div className="sci-toolbar"><label className="sci-search"><Search size={16} /><input className="admin-input" type="search"
         aria-label="Tìm session" placeholder="Tìm theo tên file, ngày ghi hình…" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
         <div className="sci-toolbar__right"><Link className="btn-secondary" to={`${basePath}/train`}><FlaskConical size={14} /> Huấn luyện</Link>

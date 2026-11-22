@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -10,12 +10,12 @@ import {
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useLogout } from '../../hooks/useLogout'
 import { useLanguage } from '../../hooks/useLanguage'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
-import { datasetService } from '../../services/datasetService'
-import apiClient from '../../services/apiClient'
+import ScientistProfileModal from '../scientist/components/ScientistProfileModal'
+import { useEngineerCatalog } from '../../hooks/useEngineerCatalog'
 import {
-  LINEAGE_STORAGE_KEY,
   RECORD_CACHE_STORAGE_KEY,
   loadJsonStorage,
   saveJsonStorage,
@@ -28,64 +28,24 @@ import './EngineerData.css'
 const ROUTE_META = {
   '/engineer': { title: 'Pipeline Overview' },
   '/engineer/datasets': { title: 'Dataset Catalog' },
-  '/engineer/upload': { title: 'Upload & Versioning' },
+  '/engineer/upload': { title: 'Upload & Fileing' },
   '/engineer/pipeline-studio': { title: 'Pipeline Studio' },
   '/engineer/preview': { title: 'Schema & Data Preview' },
 }
 
 export default function EngineerLayout() {
   const { t } = useLanguage()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
+  const { handleLogout, isLoggingOut } = useLogout()
   const navigate = useNavigate()
   const location = useLocation()
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
-  const [dbStatus, setDbStatus] = useState(null)
-  const [datasets, setDatasets] = useState([])
-  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true)
-  const [catalogError, setCatalogError] = useState(null)
+  const { datasets, setDatasets, dbStatus, isLoadingCatalog, catalogError, fetchCatalogAndHealth } = useEngineerCatalog()
 
-  const [versionLineageMap, setVersionLineageMap] = useState(() =>
-    loadJsonStorage(LINEAGE_STORAGE_KEY, {})
-  )
   const [recordCountsMap, setRecordCountsMap] = useState(() =>
     loadJsonStorage(RECORD_CACHE_STORAGE_KEY, {})
   )
-
-  const fetchCatalogAndHealth = useCallback(async () => {
-    setIsLoadingCatalog(true)
-    setCatalogError(null)
-    try {
-      const [listResult, healthResult] = await Promise.all([
-        datasetService.listDatasets({ limit: 100 }),
-        apiClient.get('/health/db').catch(() => ({ data: { status: 'disconnected' } })),
-      ])
-      setDatasets(listResult)
-      setDbStatus(healthResult.data)
-    } catch (err) {
-      setCatalogError(
-        err.response?.data?.detail || 'Failed to load dataset catalog from the server.'
-      )
-    } finally {
-      setIsLoadingCatalog(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchCatalogAndHealth()
-  }, [fetchCatalogAndHealth])
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
-
-  const registerVersionLineage = (datasetId, lineageEntry) => {
-    setVersionLineageMap((prev) => {
-      const updated = { ...prev, [datasetId]: lineageEntry }
-      saveJsonStorage(LINEAGE_STORAGE_KEY, updated)
-      return updated
-    })
-  }
 
   const registerRecordCount = (datasetId, rowCount) => {
     if (rowCount == null) return
@@ -105,17 +65,6 @@ export default function EngineerLayout() {
       navigate(`/engineer/preview?datasetId=${encodeURIComponent(datasetId)}`)
     } else {
       navigate('/engineer/preview')
-    }
-  }
-
-  const startNewVersionIteration = (baseDataset) => {
-    if (baseDataset?.dataset_id) {
-      navigate(
-        `/engineer/upload?mode=iteration&parentId=${encodeURIComponent(baseDataset.dataset_id)}`,
-        { state: { baseDataset } }
-      )
-    } else {
-      navigate('/engineer/upload?mode=iteration')
     }
   }
 
@@ -171,11 +120,11 @@ export default function EngineerLayout() {
             <span className="adm-nav-group__label">{t('Ingestion & QA')}</span>
             <NavLink
               to="/engineer/upload"
-              title={t('Upload & Versioning')}
+              title={t('Upload & Fileing')}
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
               <Upload size={18} style={{ flexShrink: 0 }} />
-              <span className="adm-nav-link__text">{t('Upload & Versioning')}</span>
+              <span className="adm-nav-link__text">{t('Upload & Fileing')}</span>
             </NavLink>
             <NavLink
               to="/engineer/pipeline-studio"
@@ -201,15 +150,19 @@ export default function EngineerLayout() {
         </nav>
 
         <div className="adm-sidebar__footer">
-          <div
-            className="adm-user-card"
-            title={`${user?.full_name || 'Data Engineer'} • Engineer (${user?.email || 'engineer@gmail.com'})`}
+          <button
+            type="button"
+            className="adm-user-card eng-profile-trigger"
+            onClick={() => setIsProfileModalOpen(true)}
+            title={t('Click to view account profile and change password')}
+            aria-label={t('Manage account profile and change password')}
+            aria-haspopup="dialog"
+            aria-expanded={isProfileModalOpen}
           >
             <div className="adm-user-card__avatar-wrap">
-              <div className="adm-user-card__avatar eng-avatar">
+              <div className="adm-user-card__avatar">
                 {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'E'}
               </div>
-              <span className="adm-user-card__status-dot" title="Online" />
             </div>
             <div className="adm-user-card__meta">
               <div className="adm-user-card__name-row">
@@ -223,16 +176,18 @@ export default function EngineerLayout() {
               </div>
               <span className="adm-user-card__role">{user?.email || 'engineer@gmail.com'}</span>
             </div>
-          </div>
+          </button>
 
           <button
             type="button"
             className="adm-logout-btn"
             onClick={handleLogout}
+              disabled={isLoggingOut}
+              aria-busy={isLoggingOut}
             title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            <span className="adm-logout-btn__text">{t('Sign Out')}</span>
+              <span className="adm-logout-btn__text">{t(isLoggingOut ? 'Đang đăng xuất...' : 'Sign Out')}</span>
           </button>
         </div>
       </aside>
@@ -255,19 +210,21 @@ export default function EngineerLayout() {
               datasets,
               isLoadingCatalog,
               catalogError,
-              versionLineageMap,
               recordCountsMap,
               fetchCatalogAndHealth,
-              registerVersionLineage,
               registerRecordCount,
               prependUploadedDataset,
               openPreviewForDataset,
               openPipelineStudioForDataset,
-              startNewVersionIteration,
             }}
           />
         </main>
       </div>
+      <ScientistProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        roleLabel="Data Engineer"
+      />
     </div>
   )
 }

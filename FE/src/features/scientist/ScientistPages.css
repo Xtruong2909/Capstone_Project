@@ -186,7 +186,7 @@
 
 .sci-pill { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.18rem 0.65rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 700; }
 .sci-pill--approved { background: #dcfce7; color: #15803d; }
-.sci-pill--version { background: #e0ecff; color: #1650b8; font-weight: 800; }
+.sci-pill--data { background: #e0ecff; color: #1650b8; font-weight: 800; }
 .sci-pill--format { background: #f1f5f9; color: #475569; text-transform: uppercase; font-size: 0.68rem; }
 
 .sci-state { padding: 2.5rem 1rem; text-align: center; color: #64748b; background: #fff; border: 1px dashed #cbd5e1; border-radius: 14px; }
@@ -3331,3 +3331,32 @@
 .sci-aggregation-progress progress { width: 100%; height: 8px; accent-color: #2677e0; }
 .sci-training-status--partial { color: #a46611; background: #fff4dc; }
 .sci-training-step--partial { border-color: #efd5a7; }
+.sci-best-overall {
+  margin: 0 0 22px;
+  padding: 24px;
+  border: 1px solid #a7dfd5;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #effbf6, #f2f7ff);
+  color: #18394d;
+}
+.sci-best-overall__heading, .sci-best-overall__footer, .sci-best-overall__details {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+}
+.sci-best-overall__eyebrow { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: .07em; color: #047857; }
+.sci-best-overall h3 { margin: 10px 0 6px; font-size: 28px; color: #12334b; }
+.sci-best-overall p { margin: 0; color: #526b7c; font-size: 14px; }
+.sci-best-overall__score { display: grid; gap: 4px; text-align: right; }
+.sci-best-overall__score strong { color: #047857; font-size: 40px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.sci-best-overall__score span { color: #526b7c; font-size: 13px; }
+.sci-best-overall__details { justify-content: flex-start; margin-top: 22px; font-size: 13px; }
+.sci-best-overall__formula { margin: 16px 0; padding: 12px 15px; background: #ffffffb8; border: 1px solid #d8e8e8; border-radius: 10px; font-size: 13px; line-height: 1.6; }
+.sci-best-overall__footer { border-top: 1px solid #d8e8e8; padding-top: 15px; font-size: 12px; color: #526b7c; }
+@media (max-width: 640px) {
+  .sci-best-overall { padding: 18px; }
+  .sci-best-overall__score { text-align: left; }
+}
+.sci-best-overall-row { background: #f0fdf7; }
+.sci-comparison-page .sci-compare-picker__top > .sci-train-actions { flex: 0 0 auto; min-width: 0; flex-wrap: nowrap; }
+@media (max-width: 680px) {
+  .sci-comparison-page .sci-compare-picker__top > .sci-train-actions { width: 100%; flex-wrap: wrap; }
+}

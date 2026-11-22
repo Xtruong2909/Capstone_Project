@@ -5,7 +5,7 @@ import { AdminFeedback, AdminModal, AdminState } from './AdminUi'
 export default function AdminBatchGrantDialog({ batch, onClose, onGranted, revokeMode = false }) {
   const { t } = useLanguage()
   const { users, mutation, search, setSearch, page, setPage, grant, revoke, hasNextPage } = useAdminBatchAccess(batch.group_id, onGranted, revokeMode)
-  return <AdminModal title={t(revokeMode ? 'Revoke Batch Access' : 'Grant Batch Access')} busy={mutation.busy} onClose={onClose}>
+  return <AdminModal className="admin-batch-access-dialog" title={t(revokeMode ? 'Revoke Batch Access' : 'Grant Batch Access')} busy={mutation.busy} onClose={onClose}>
     <h4>{batch.group_name || t('Batch')}</h4>
     <p className="admin-cell-note">{t(revokeMode ? 'Revoke the selected user’s access to every dataset in this batch.' : 'Grant access to every dataset in this batch. All datasets must be approved.')}</p>
     <AdminFeedback mutation={mutation} />

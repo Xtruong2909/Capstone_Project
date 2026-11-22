@@ -9,10 +9,11 @@ import ScientistBackLink from '../components/ScientistBackLink'
 export default function ScientistExperimentComparisonPage() {
   const { groupId } = useParams()
   const navigate = useNavigate()
-  const [selectedCompareIds, setSelectedCompareIds] = useState([])
+  const [selection, setSelection] = useState({ groupId, ids: [] })
+  const selectedCompareIds = selection.groupId === groupId ? selection.ids : []
   const { groups } = useApprovedGroups()
   const { experiments, loading, error } = useScienceExperiments()
-  const { comparisonData, isComparing, compareError, compareExperiments } = useScienceExperimentComparison()
+  const { comparisonData, isComparing, compareError, compareExperiments, selectBestOverall, resultMode, clearComparison } = useScienceExperimentComparison(`compare:${groupId}`)
 
   const group = groups.find((item) => String(item.group_id) === String(groupId))
   const groupExperiments = useMemo(() => experiments
@@ -37,8 +38,13 @@ export default function ScientistExperimentComparisonPage() {
     {!loading && !error && <ExperimentComparePanel
       experiments={groupExperiments}
       selectedCompareIds={selectedCompareIds}
-      onChangeCompareIds={setSelectedCompareIds}
+      onChangeCompareIds={(ids) => { clearComparison(); setSelection({ groupId, ids }) }}
       onRunCompare={compareExperiments}
+      onSelectBestOverall={(ids) => {
+        const anchor = groupExperiments.find((item) => String(item.experiment_id) === String(ids[0]))
+        return selectBestOverall(ids, anchor?.split_id)
+      }}
+      resultMode={resultMode}
       comparisonData={comparisonData}
       isComparing={isComparing}
       compareError={compareError}
