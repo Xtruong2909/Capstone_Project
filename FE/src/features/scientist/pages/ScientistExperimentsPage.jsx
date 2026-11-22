@@ -214,9 +214,9 @@ export default function ScientistExperimentsPage() {
         <h2 className="admin-card__title">{selectedGroupId ? `Thí nghiệm · ${groupName(selectedGroupId)}` : 'Thí nghiệm theo batch'}</h2>
         <p className="admin-card__subtitle">{selectedGroupId ? 'Tất cả thí nghiệm của batch được hiển thị trên cùng một trang.' : 'Chọn batch để xem các thí nghiệm đã tạo.'}</p>
       </div><div className="sci-experiments-header-actions">
-        {groupId && visibleExperiments.filter((item) => item.status === 'COMPLETED').length >= 2 && <Link className="sci-training-button sci-training-button--secondary" to={`/scientist/experiments/groups/${groupId}/compare`}><GitCompareArrows size={16} /> So sánh thí nghiệm</Link>}
+        {groupId && groupExperiments.some((item) => item.status === 'COMPLETED') && <Link className="sci-training-button sci-training-button--secondary" to={`/scientist/experiments/groups/${groupId}/compare`}><GitCompareArrows size={16} /> So sánh thí nghiệm</Link>}
         {groupId && selectedSplitId && <Link className="sci-training-button" to={`/scientist/experiments/groups/${groupId}/new${splitQuery}`}><FlaskConical size={16} /> Tạo thí nghiệm mới</Link>}
-        <span className="sci-pill sci-pill--version">{selectedGroupId ? visibleExperiments.length : grouped.length} {selectedGroupId ? 'thí nghiệm' : 'batch'}</span>
+        <span className="sci-pill sci-pill--data">{selectedGroupId ? visibleExperiments.length : grouped.length} {selectedGroupId ? 'thí nghiệm' : 'batch'}</span>
       </div></div>
       <div className="sci-toolbar sci-experiment-toolbar"><input className="admin-input" type="search" aria-label="Tìm thí nghiệm"
         placeholder={selectedGroupId ? 'Tìm thí nghiệm…' : 'Tìm batch hoặc thí nghiệm…'} value={search} onChange={(event) => setSearch(event.target.value)} />

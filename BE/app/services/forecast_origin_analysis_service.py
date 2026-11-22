@@ -23,6 +23,7 @@ from app.schemas.forecast_origin_analysis import (
 )
 from app.services import model_training_service as legacy_service
 from app.services.ds_temporal_aggregation_service import get_accessible_temporal_jobs
+from app.services.scientist_ownership_service import require_scientist_owner
 from app.services.train_test_splits_service import get_accessible_split
 
 HORIZONS = (1, 3, 5)
@@ -60,7 +61,7 @@ def _valid_origin(
     for index in range(5):
         history_time = origin - index * step
         observed = bins.get((sample.session_id, history_time))
-        if not _valid_bin(observed, interval) or observed.dataset_version_id != job.dataset_version_id or observed.aggregation_id != job.id:
+        if not _valid_bin(observed, interval) or observed.dataset_file_id != job.dataset_file_id or observed.aggregation_id != job.id:
             return False
         if observed.vehicle_count != getattr(sample, f"lag_{index + 1}"):
             return False
@@ -68,7 +69,7 @@ def _valid_origin(
         target_time = origin + horizon * MINUTE
         observed = bins.get((sample.session_id, target_time))
         result = rows.get(horizon)
-        if not _valid_bin(observed, interval) or observed.dataset_version_id != job.dataset_version_id or observed.aggregation_id != job.id:
+        if not _valid_bin(observed, interval) or observed.dataset_file_id != job.dataset_file_id or observed.aggregation_id != job.id:
             return False
         if result is None or result.dataset_id != sample.dataset_id or result.session_id != sample.session_id:
             return False
@@ -132,12 +133,13 @@ def get_forecast_origin_analysis(
     experiment = experiment_repo.get_experiment(db, experiment_id)
     if experiment is None:
         raise HTTPException(404, "Experiment not found")
+    require_scientist_owner(user, experiment.created_by)
     if experiment.status != "COMPLETED":
         raise HTTPException(409, "Forecast origin analysis requires a completed experiment")
     if experiment.lag_feature_split_id is None:
         legacy_service.get_detail(db, experiment_id, user)
         return ForecastOriginAnalysisResponse(
-            experiment_id=experiment_id, dataset_version_id=None, sessions=[],
+            experiment_id=experiment_id, dataset_file_id=None, sessions=[],
             selected_session_id=None, origins=[], selected_origin_time=None,
             predictions=[], session_metrics=[], overall_metrics=[],
             message="Thí nghiệm cũ không có bộ lag Test đã lưu để xác minh thời gian gốc.",
@@ -157,15 +159,15 @@ def get_forecast_origin_analysis(
         if latest_train_target >= earliest_test_history:
             raise HTTPException(409, "Saved Train/Test Split has overlapping target and Test history")
 
-    version_sessions: dict[UUID, tuple[RecordingSession, TrafficAggregationJob]] = {}
+    file_sessions: dict[UUID, tuple[RecordingSession, TrafficAggregationJob]] = {}
     for job in jobs:
         for row in repo.list_completed_run_sessions(db, job.id, job.dataset_id):
-            version_sessions[row.id] = (row, job)
-    version_session_ids = {str(key) for key in version_sessions}
+            file_sessions[row.id] = (row, job)
+    file_session_ids = {str(key) for key in file_sessions}
     observations = {
         (UUID(row.recording_session_id), _utc(row.time_bucket)): row
         for row in repo.list_observations(db, [job.id for job in jobs])
-        if row.recording_session_id in version_session_ids
+        if row.recording_session_id in file_session_ids
     }
     predictions: dict[tuple[UUID, datetime], dict[int, ModelTrainingForecastResult]] = defaultdict(dict)
     for row in repo.list_random_forest_predictions(db, experiment_id):
@@ -173,7 +175,7 @@ def get_forecast_origin_analysis(
 
     valid: dict[UUID, list[tuple[datetime, dict[int, ModelTrainingForecastResult]]]] = defaultdict(list)
     for sample in test_samples:
-        session_and_job = version_sessions.get(sample.session_id)
+        session_and_job = file_sessions.get(sample.session_id)
         if session_and_job is None:
             continue
         _, job = session_and_job
@@ -186,16 +188,16 @@ def get_forecast_origin_analysis(
 
     sessions = [
         ForecastOriginSession(
-            session_id=key, filename=version_sessions[key][0].original_filename, origin_count=len(values),
+            session_id=key, filename=file_sessions[key][0].original_filename, origin_count=len(values),
         )
         for key, values in sorted(valid.items(), key=lambda item: (item[1][0][0], str(item[0])))
     ]
-    if session_id is not None and session_id not in version_sessions:
-        raise HTTPException(404, "Recording Session does not belong to the experiment dataset version")
+    if session_id is not None and session_id not in file_sessions:
+        raise HTTPException(404, "Recording Session does not belong to the experiment dataset")
     if session_id is not None and session_id not in valid:
         raise HTTPException(422, "Recording Session has no valid Test forecast origins")
     selected_session_id = session_id or (sessions[0].session_id if sessions else None)
-    selected_version_id = version_sessions[selected_session_id][1].dataset_version_id if selected_session_id else None
+    selected_file_id = file_sessions[selected_session_id][1].dataset_file_id if selected_session_id else None
     selected = valid.get(selected_session_id, [])
     origins = [item[0] for item in selected]
     selected_origin = _utc(origin_time) if origin_time is not None else (origins[0] if origins else None)
@@ -204,7 +206,7 @@ def get_forecast_origin_analysis(
     selected_rows = next((rows for timestamp, rows in selected if timestamp == selected_origin), {})
     detail = [
         ForecastOriginPrediction(
-            experiment_id=experiment_id, dataset_version_id=selected_version_id,
+            experiment_id=experiment_id, dataset_file_id=selected_file_id,
             session_id=selected_session_id, origin_time=selected_origin,
             horizon_minutes=horizon, target_time=selected_origin + horizon * MINUTE,
             actual=selected_rows[horizon].actual_vehicle_count,
@@ -222,7 +224,7 @@ def get_forecast_origin_analysis(
         else _metrics(all_valid_rows)
     )
     return ForecastOriginAnalysisResponse(
-        experiment_id=experiment_id, dataset_version_id=selected_version_id,
+        experiment_id=experiment_id, dataset_file_id=selected_file_id,
         sessions=sessions, selected_session_id=selected_session_id,
         origins=origins, selected_origin_time=selected_origin, predictions=detail,
         session_metrics=_metrics([rows for _, rows in selected]),

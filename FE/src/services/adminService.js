@@ -1,7 +1,7 @@
 import apiClient from './apiClient'
 
 const APPROVED_CACHE_KEY = 'admin_approved_datasets_v1'
-const CATALOG_CACHE_KEY = 'admin_dataset_versions_catalog_v1'
+const CATALOG_CACHE_KEY = 'admin_dataset_files_catalog_v1'
 
 function readJsonStorage(key, fallback) {
   try {
@@ -20,19 +20,38 @@ function writeJsonStorage(key, value) {
   }
 }
 
-function extractVersionTagFromFilename(filename, datasetId) {
-  if (!filename) return null
-  const base = filename.replace(/\.[^/.]+$/, '')
-  if (datasetId && base.startsWith(`${datasetId}_`)) {
-    return base.slice(String(datasetId).length + 1)
-  }
-  const match = base.match(/(v\d+(?:\.\d+)*)$/i)
-  return match ? match[1] : null
-}
-
 const get = async (url, params = {}, signal) => (await apiClient.get(url, { params, signal })).data
 
 export const adminService = {
+  async getUserManagementData(_, signal) {
+    const [users, roles] = await Promise.all([adminService.getUsers({}, signal), adminService.getRoles(signal)])
+    return { users, roles }
+  },
+  async getOverviewData(_, signal) {
+    const results = await Promise.allSettled([
+      adminService.getStats(signal), adminService.getDatabaseHealth({}, signal),
+      adminService.getUsers({ limit: 100 }, signal), adminService.getPendingDatasets({}, signal),
+      adminService.getExperimentsOverview({}, signal), adminService.getAccessGrants({ page: 1, page_size: 50 }, signal),
+      adminService.getReviewGroups({}, signal),
+    ])
+    const [statsResult, health, usersResult, datasetsResult, experiments, grants, groups] = results
+    if ([statsResult, usersResult, datasetsResult, experiments, grants, groups].every((result) => result.status === 'rejected')) {
+      throw statsResult.reason
+    }
+    const value = (result, fallback) => result.status === 'fulfilled' ? result.value : fallback
+    const users = value(usersResult, [])
+    const datasets = value(datasetsResult, [])
+    return {
+      stats: value(statsResult, {
+        total_users: users.length, total_datasets: datasets.length, total_audit_logs: 0,
+        pending_approvals: datasets.filter((item) => item.approval_status === 'SUBMITTED').length,
+      }),
+      dbStatus: value(health, { status: 'disconnected' }), users, datasets,
+      experimentsData: value(experiments, { stats: {}, experiments: [] }), accessGrants: value(grants, []),
+      reviewGroups: value(groups, []), reviewGroupsError: groups.status === 'rejected',
+      partialWarning: results.some((result) => result.status === 'rejected') ? 'Some overview data could not be refreshed. Please try again.' : null,
+    }
+  },
   /**
    * Lấy thống kê tổng quan hệ thống từ DB (/admin/stats)
    */
@@ -53,8 +72,10 @@ export const adminService = {
   /**
    * Tạo người dùng mới (/admin/users)
    */
-  async createUser(userData) {
-    const response = await apiClient.post('/admin/users', userData)
+  async createUser({ full_name, email, role_id }) {
+    const response = await apiClient.post('/admin/users', {
+      full_name: full_name.trim(), email: email.trim(), role_id,
+    })
     return response.data
   },
 
@@ -86,13 +107,13 @@ export const adminService = {
   },
 
   /**
-   * Lấy danh sách phiên bản dataset để phê duyệt (/admin/datasets)
+   * Lấy danh sách dữ liệu dataset để phê duyệt (/admin/datasets)
    */
   async getDatasets(params = {}, signal) {
     const response = await apiClient.get('/admin/datasets', { params, signal })
     const items = Array.isArray(response.data) ? response.data : response.data?.items || []
 
-    // Lưu vào catalog cache để giữ thông tin metadata khi version chuyển sang APPROVED
+    // Lưu vào catalog cache để giữ thông tin metadata khi dataset_file chuyển sang APPROVED
     const catalog = readJsonStorage(CATALOG_CACHE_KEY, {})
     items.forEach((item) => {
       if (item?.id) {
@@ -105,6 +126,24 @@ export const adminService = {
     writeJsonStorage(CATALOG_CACHE_KEY, catalog)
 
     return items
+  },
+
+  async getPendingDatasets(_, signal) {
+    const rows = []
+    const seen = new Set()
+    const limit = 100
+    for (let skip = 0; ; skip += limit) {
+      const data = await get('/admin/datasets', { skip, limit }, signal)
+      const page = Array.isArray(data) ? data : data?.items || []
+      let added = 0
+      for (const item of page) {
+        if (item.approval_status === 'SUBMITTED' && !seen.has(item.id)) {
+          rows.push(item); seen.add(item.id); added++
+        }
+      }
+      if (page.length < limit || added === 0) break
+    }
+    return rows
   },
 
   /**
@@ -120,7 +159,7 @@ export const adminService = {
   },
 
   /**
-   * Lưu thông tin phiên bản dataset vừa được phê duyệt hoặc cập nhật vào bộ nhớ đệm
+   * Lưu thông tin dữ liệu dataset vừa được phê duyệt hoặc cập nhật vào bộ nhớ đệm
    */
   recordDatasetReviewInCache(item, status, note) {
     if (!item?.id) return
@@ -150,7 +189,7 @@ export const adminService = {
   },
 
   /**
-   * Lấy danh sách các phiên bản dataset đã được APPROVED
+   * Lấy danh sách các dữ liệu dataset đã được APPROVED
    */
   async getApprovedDatasets() {
     const [datasetsRes, auditLogsRes, grantsRes] = await Promise.all([
@@ -180,7 +219,6 @@ export const adminService = {
           approvedMap[item.id] = {
             ...item,
             dataset_name: item.dataset_name || catalog[item.id]?.dataset_name,
-            version_tag: item.version_tag || catalog[item.id]?.version_tag,
             file_format: item.file_format || catalog[item.id]?.file_format,
             total_records: item.total_records ?? catalog[item.id]?.total_records,
           }
@@ -188,16 +226,15 @@ export const adminService = {
       }
     })
 
-    // 2. Tìm trong accessGrants những dataset_version_id đã được cấp quyền -> chắc chắn đã APPROVED
+    // 2. Tìm trong accessGrants những dataset_file_id đã được cấp quyền -> chắc chắn đã APPROVED
     accessGrants.forEach((grant) => {
-      const vId = grant.dataset_version_id
+      const vId = grant.dataset_file_id
       if (vId && !approvedMap[vId]) {
         const cached = catalog[vId] || {}
         approvedMap[vId] = {
           id: vId,
           dataset_id: cached.dataset_id || grant.dataset_id,
           dataset_name: grant.dataset_name || cached.dataset_name || 'Traffic Dataset',
-          version_tag: grant.version_tag || cached.version_tag || 'v1.0',
           file_format: (cached.file_format || 'PARQUET').toUpperCase(),
           approval_status: 'APPROVED',
           approval_note: cached.approval_note || 'Approved via Access Grant',
@@ -209,12 +246,12 @@ export const adminService = {
       }
     })
 
-    // 3. Quét audit logs để khôi phục phiên bản nào từng có quyết định APPROVE
+    // 3. Quét audit logs để khôi phục dữ liệu nào từng có quyết định APPROVE
     const approvedDecisions = {}
     auditLogs.forEach((log) => {
       const action = (log.action || '').toUpperCase()
-      if (action.includes('APPROVE') && log.dataset_version_id) {
-        const vId = log.dataset_version_id
+      if (action.includes('APPROVE') && log.dataset_file_id) {
+        const vId = log.dataset_file_id
         if (
           !approvedDecisions[vId] ||
           new Date(log.created_at).getTime() > new Date(approvedDecisions[vId].reviewed_at).getTime()
@@ -239,7 +276,6 @@ export const adminService = {
           id: vId,
           dataset_id: decision.dataset_id || existing.dataset_id,
           dataset_name: decision.dataset_name || existing.dataset_name || 'Traffic Dataset',
-          version_tag: existing.version_tag || 'v1.0',
           file_format: (existing.file_format || 'PARQUET').toUpperCase(),
           total_records: existing.total_records ?? 0,
           approval_status: 'APPROVED',
@@ -251,44 +287,6 @@ export const adminService = {
         }
       }
     })
-
-    // 4. Với các phiên bản APPROVED chưa đủ thông tin, gọi API preview của Admin để làm giàu metadata
-    const enrichPromises = Object.values(approvedMap).map(async (item) => {
-      if (
-        item.dataset_id &&
-        item.id &&
-        (!item.dataset_name || !item.version_tag || item.total_records == null)
-      ) {
-        try {
-          const preview = await this.getDatasetVersionPreview(item.dataset_id, item.id, {
-            page: 1,
-            pageSize: 1,
-            representation: 'normalized',
-          })
-          const inferredTag =
-            item.version_tag ||
-            extractVersionTagFromFilename(preview.original_filename, item.dataset_id) ||
-            'v1.0'
-          const enriched = {
-            ...item,
-            dataset_name: preview.dataset_name || item.dataset_name || 'Traffic Dataset',
-            version_tag: inferredTag,
-            file_format: (preview.file_format || item.file_format || 'PARQUET').toUpperCase(),
-            total_records:
-              preview.pagination?.total_rows ??
-              preview.pagination?.returned_rows ??
-              item.total_records ??
-              0,
-          }
-          approvedMap[item.id] = enriched
-          catalog[item.id] = { ...catalog[item.id], ...enriched }
-        } catch {
-          // Giữ nguyên thông tin hiện có nếu không gọi được preview
-        }
-      }
-    })
-
-    await Promise.all(enrichPromises)
 
     writeJsonStorage(CATALOG_CACHE_KEY, catalog)
     writeJsonStorage(APPROVED_CACHE_KEY, approvedMap)
@@ -303,62 +301,23 @@ export const adminService = {
   },
 
   /**
-   * Admin xem trước dữ liệu của một phiên bản dataset (raw hoặc normalized)
-   * GET /api/v1/admin/datasets/{dataset_id}/versions/{id}/preview
-   */
-  async getDatasetVersionPreview(
-    datasetId,
-    versionId,
-    { page = 1, pageSize = 20, representation = 'normalized' } = {}
-  ) {
-    const response = await apiClient.get(
-      `/admin/datasets/${datasetId}/versions/${versionId}/preview`,
-      {
-        params: {
-          page,
-          page_size: pageSize,
-          representation,
-        },
-      }
-    )
-    return response.data
-  },
-
-  /**
-   * Phê duyệt hoặc từ chối phiên bản dataset
+   * Phê duyệt hoặc từ chối dữ liệu dataset
    * Hỗ trợ cả 2 chữ ký:
-   * - reviewDataset(datasetId, versionId, action) -> POST /admin/datasets/{dataset_id}/versions/{id}/review
-   * - reviewDataset(versionId, action) -> POST /admin/datasets/{versionId}/review (legacy fallback)
+   * - reviewDataset(datasetId, fileId, action) -> POST /admin/datasets/{dataset_id}/files/{id}/review
+   * - reviewDataset(fileId, action) -> POST /admin/datasets/{fileId}/review (legacy fallback)
    */
-  async reviewDataset(datasetIdOrVersionId, versionIdOrAction, maybeAction) {
+  async reviewDataset(datasetIdOrFileId, fileIdOrAction, maybeAction) {
     if (typeof maybeAction !== 'undefined') {
-      const datasetId = datasetIdOrVersionId
-      const versionId = versionIdOrAction
+      const datasetId = datasetIdOrFileId
+      const fileId = fileIdOrAction
       const action = maybeAction
-      if (datasetId) {
-        try {
-          const response = await apiClient.post(
-            `/admin/datasets/${datasetId}/versions/${versionId}/review`,
-            action
-          )
-          return response.data
-        } catch (err) {
-          if (err?.response?.status === 404) {
-            const fallbackResponse = await apiClient.post(
-              `/admin/datasets/${versionId}/review`,
-              action
-            )
-            return fallbackResponse.data
-          }
-          throw err
-        }
-      }
-      const response = await apiClient.post(`/admin/datasets/${versionId}/review`, action)
+        if (datasetId) return (await apiClient.post(`/admin/datasets/${datasetId}/files/${fileId}/review`, action)).data
+      const response = await apiClient.post(`/admin/datasets/${fileId}/review`, action)
       return response.data
     }
-    const versionId = datasetIdOrVersionId
-    const action = versionIdOrAction
-    const response = await apiClient.post(`/admin/datasets/${versionId}/review`, action)
+    const fileId = datasetIdOrFileId
+    const action = fileIdOrAction
+    const response = await apiClient.post(`/admin/datasets/${fileId}/review`, action)
     return response.data
   },
 
@@ -374,7 +333,7 @@ export const adminService = {
    * Lấy danh sách các quyền truy cập dataset đã cấp
    */
   async getAccessGrants(params = {}, signal) {
-    const response = await apiClient.get('/admin/access-grants', { params, signal })
+    const response = await apiClient.get('/admin/portal/access-grants', { params, signal })
     const data = response.data
     return Array.isArray(data) ? data : data?.items || []
   },
@@ -386,7 +345,7 @@ export const adminService = {
    * 2. grantAccess({ dataset_id, user_id }) -> fallback POST /admin/datasets/{id}/access
    */
   async grantAccess(payload) {
-    if (payload?.user_id && payload?.dataset_version_id) {
+    if (payload?.user_id && payload?.dataset_file_id) {
       const response = await apiClient.post('/admin/access-grants', payload)
       return response.data
     }
@@ -420,6 +379,8 @@ export const adminService = {
      BATCH & PORTAL EXTENSIONS (Dành cho Batch Workflow & Session Preview)
      ========================================================================= */
   getDatasetGroups: (params, signal) => get('/admin/portal/dataset-groups', params, signal),
+  getBatchAccessGrants: (params, signal) => get('/admin/portal/batch-access-grants', params, signal),
+  getDatasetFilesPage: (params, signal) => get('/admin/portal/datasets', params, signal),
   getBatchEligibleUsers: ({ group_id, ...params }, signal) =>
     get(`/admin/datasets/groups/${group_id}/eligible-users`, params, signal),
   async grantBatchAccess({ group_id, user_id }) {
@@ -433,12 +394,36 @@ export const adminService = {
   async reviewBatch(groupId, payload) {
     return (await apiClient.post(`/admin/datasets/groups/${groupId}/review`, payload)).data
   },
-  async getDatasetSessions({ dataset_id, version_id, ...params }, signal) {
-    const result = await get(`/admin/datasets/${dataset_id}/versions/${version_id}/sessions`, params, signal)
+  async getReviewGroups(_, signal) {
+    const rows = []
+    const seen = new Set()
+    const limit = 100
+    for (let skip = 0; ; skip += limit) {
+      const page = await get('/admin/datasets/groups', { skip, limit }, signal)
+      let added = 0
+      for (const item of page) {
+        if (!seen.has(item.group_id)) {
+          rows.push(item); seen.add(item.group_id); added++
+        }
+      }
+      if (page.length < limit || added === 0) break
+    }
+    return rows
+  },
+  getReviewDatasets: ({ group_id }, signal) =>
+    get(`/admin/datasets/groups/${group_id}/datasets`, {}, signal),
+  getReviewSessions: ({ group_id, dataset_id, page = 1, page_size = 20 }, signal) =>
+    get(`/admin/datasets/groups/${group_id}/datasets/${dataset_id}/sessions`, { page, page_size }, signal),
+  getReviewSessionPreview: ({ group_id, dataset_id, session_id, page = 1, limit = 20,
+    column_offset = 0, representation = 'normalized' }, signal) =>
+    get(`/admin/datasets/groups/${group_id}/datasets/${dataset_id}/sessions/${session_id}/preview`,
+      { page, limit, column_offset, representation }, signal),
+  async getDatasetSessions({ dataset_id, file_id, ...params }, signal) {
+    const result = await get(`/admin/datasets/${dataset_id}/files/${file_id}/sessions`, params, signal)
     return { ...result, items: result?.sessions || [] }
   },
-  getSessionPreview: ({ dataset_id, version_id, session_id, page_size = 20, ...params }, signal) =>
-    get(`/admin/datasets/${dataset_id}/versions/${version_id}/sessions/${session_id}/preview`, { ...params, limit: page_size }, signal),
+  getSessionPreview: ({ dataset_id, file_id, session_id, page_size = 20, ...params }, signal) =>
+    get(`/admin/datasets/${dataset_id}/files/${file_id}/sessions/${session_id}/preview`, { ...params, limit: page_size }, signal),
   getEligibleUsers: ({ dataset_id, ...params }, signal) =>
     get(`/admin/datasets/${dataset_id}/eligible-users`, params, signal),
 }

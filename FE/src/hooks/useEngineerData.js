@@ -1,22 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './useAuth'
 import { adminError } from './useAdminData'
 import { engineerService } from '../services/engineerService'
 import { useAdminMutation, useAdminPage, useAdminResource } from './useAdminData'
+import { engineerStorageKey } from '../services/engineerStorage'
+import { getProcessingAvailability, readWizardStep, resolveWizardStep, saveWizardStep } from '../services/engineerWorkflowState'
+import { invalidateEngineerPreviews } from '../services/engineerPreviewCache'
 
 // The resource and pagination hooks are shared by both administrative workspaces.
 export { useAdminResource as useEngineerResource, useAdminPage as useEngineerPage, useAdminMutation as useEngineerMutation } from './useAdminData'
 
-export function useEngineerBatchBrowser(groupId) {
+export function useEngineerBatchBrowser(groupId, mode = 'preview') {
   const [search, setSearch] = useState('')
   const filters = { search: search.trim() || undefined }
-  const groups = useAdminPage(engineerService.listGroups, filters, !groupId)
+  const groups = useAdminPage(mode === 'pipeline' ? engineerService.listPipelineGroups : engineerService.listGroups, filters, !groupId)
   const datasets = useAdminPage(engineerService.listDatasets, { ...filters, group_id: groupId }, Boolean(groupId))
   return { search, setSearch, resource: groupId ? datasets : groups,
     groupName: datasets.data?.groups?.[0]?.group_name }
 }
 
-export function useEngineerJob(scope, upload = false) {
+export function useEngineerJob(scope, upload = false, serverJob) {
   const { user } = useAuth()
   const storageKey = 'de-job:' + user?.id + ':' + scope
   const [stored, setStored] = useState({ key: '', job: null })
@@ -24,7 +27,8 @@ export function useEngineerJob(scope, upload = false) {
   const [revision, setRevision] = useState(0)
   let job = stored.key === storageKey ? stored.job : null
   if (stored.key !== storageKey) {
-    try { job = JSON.parse(sessionStorage.getItem(storageKey) || 'null') } catch { /* Ignore invalid saved job IDs. */ }
+    if (serverJob !== undefined) job = serverJob
+    else try { job = JSON.parse(sessionStorage.getItem(storageKey) || 'null') } catch { /* Ignore invalid saved job IDs. */ }
   }
   const descriptor = JSON.stringify(job)
   const key = storageKey + ':' + descriptor
@@ -58,21 +62,27 @@ export function useEngineerJob(scope, upload = false) {
 }
 
 export function useEngineerPipeline(groupId) {
-  const job = useEngineerJob('processing:' + groupId)
+  const pipeline = useAdminResource(engineerService.getPipelineState, { group_id: groupId }, Boolean(groupId))
+  const job = useEngineerJob('processing:' + groupId, false, pipeline.data ? pipeline.data.job : undefined)
   const mutation = useAdminMutation()
   const params = { group_id: groupId, job_state: job.data?.job_id + ':' + job.data?.status }
   const status = useAdminResource(engineerService.getStatus, params, Boolean(groupId))
-  const versions = useAdminResource(engineerService.getVersions, params, Boolean(groupId))
+  const dataset_files = useAdminResource(engineerService.getFiles, params, Boolean(groupId))
   const report = useAdminResource(engineerService.getReport, params, Boolean(groupId))
-  const refresh = () => { status.reload(); versions.reload(); report.reload() }
+  const refresh = () => { invalidateEngineerPreviews(groupId); pipeline.reload(); status.reload(); dataset_files.reload(); report.reload() }
+  const jobId = job.data?.job_id
+  const jobStatus = job.data?.status
+  const reloadPipeline = useRef(pipeline.reload)
+  useEffect(() => { reloadPipeline.current = pipeline.reload }, [pipeline.reload])
+  useEffect(() => { if (jobId) reloadPipeline.current() }, [jobId, jobStatus])
   const process = (operation) => mutation.run(async () => {
     const next = await (operation === 'NORMALIZE' ? engineerService.normalize : engineerService.exportGroup)(groupId)
     job.track(next)
   })
   const submit = (comment) => mutation.run(() => engineerService.submit(groupId, comment), refresh)
   const resubmit = () => mutation.run(() => engineerService.resubmit(groupId), refresh)
-  return { job, mutation, status, versions, report, refresh, process, submit, resubmit,
-    busy: mutation.busy || job.running }
+  return { pipeline, job, mutation, status, dataset_files, report, refresh, process, submit, resubmit,
+    busy: mutation.busy || job.running || pipeline.loading || Boolean(pipeline.error) }
 }
 
 export function useEngineerMapping(groupId, onSaved) {
@@ -83,7 +93,8 @@ export function useEngineerMapping(groupId, onSaved) {
 
 export function useEngineerWizard(groupId) {
   const workflow = useEngineerPipeline(groupId)
-  const [step, setStep] = useState(1)
+  const storageKey = engineerStorageKey('de-wizard:' + groupId)
+  const [selected, setSelected] = useState(null)
   const [dirty, setDirty] = useState(false)
   const [mappingConfirmed, setMappingConfirmed] = useState(false)
   const [needsExport, setNeedsExport] = useState(false)
@@ -93,22 +104,35 @@ export function useEngineerWizard(groupId) {
     setNeedsExport(true)
     workflow.job.track(null)
     workflow.mutation.clear()
-    setStep(2)
+    selectStep(2)
+    workflow.refresh()
   })
   const schemaReady = Boolean(mapping.resource.data) && !mapping.resource.loading && !mapping.resource.error && !dirty
   const savedMapping = mappingConfirmed || Boolean(mapping.resource.data?.mappings.length)
   const busy = workflow.busy || mapping.mutation.busy
   const job = workflow.job.data
   // An accepted export job also proves that the backend validated a completed normalization.
-  const normalized = schemaReady && (job?.operation === 'EXPORT' || (job?.operation === 'NORMALIZE' && job.status === 'COMPLETED'))
-  const exported = !dirty && !workflow.status.loading && !workflow.status.error && Boolean(workflow.status.data)
-    && ((!needsExport && job?.operation !== 'NORMALIZE' && !workflow.job.running) || (job?.operation === 'EXPORT' && job.status === 'COMPLETED'))
+  const normalized = schemaReady && !dirty && (Boolean(workflow.pipeline.data?.normalized) || job?.operation === 'EXPORT' || (job?.operation === 'NORMALIZE' && job.status === 'COMPLETED'))
+  const exportCompleted = !dirty && ((!needsExport && workflow.pipeline.data?.exported
+    && job?.operation !== 'NORMALIZE' && !workflow.job.running)
+    || (job?.operation === 'EXPORT' && job.status === 'COMPLETED'))
+  const exported = exportCompleted && !workflow.status.loading && !workflow.status.error && Boolean(workflow.status.data)
   const available = [true, schemaReady && savedMapping, normalized, exported]
-  return { ...workflow, mapping, step, busy, normalized, exported, available,
-    goTo: (next) => { if (!busy && available[next - 1]) setStep(next) },
+  const processing = getProcessingAvailability({ busy, normalized, exported: exportCompleted, schemaReady: available[1] })
+  const saved = selected?.storageKey === storageKey ? selected : readWizardStep(storageKey)
+  const step = resolveWizardStep(workflow.pipeline.data, saved, available, job)
+  function selectStep(next) {
+    const value = { storageKey, sourceKey: workflow.pipeline.data?.source_key, step: next }
+    setSelected(value)
+    saveWizardStep(storageKey, value)
+  }
+  return { ...workflow, ...processing, mapping, step, busy, normalized, exported, exportCompleted, available,
+    restoring: workflow.pipeline.loading || workflow.job.loading || mapping.resource.loading || workflow.status.loading,
+    goTo: (next) => { if (!busy && available[next - 1]) selectStep(next) },
     markDirty: () => { setDirty(true); setNeedsExport(true) },
     process: async (operation) => {
-      if (busy || (operation === 'NORMALIZE' ? !available[1] : !normalized)) return
+      if (operation === 'NORMALIZE' ? !processing.canNormalize : !processing.canExport) return
+      selectStep(operation === 'NORMALIZE' ? 2 : 3)
       const success = await workflow.process(operation)
       if (success) setNeedsExport(true)
     },

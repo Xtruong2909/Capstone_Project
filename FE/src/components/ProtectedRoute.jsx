@@ -1,8 +1,9 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { PASSWORD_CHANGE_PATH } from '../services/authSession'
 
 export default function ProtectedRoute({ allowedRoles = [] }) {
-  const { isAuthenticated, role, isLoading } = useAuth()
+  const { isAuthenticated, role, isLoading, mustChangePassword, user } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -17,6 +18,8 @@ export default function ProtectedRoute({ allowedRoles = [] }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
+  if (mustChangePassword) return <Navigate to={PASSWORD_CHANGE_PATH} replace />
+
   if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
     const roleRoutes = {
       admin: '/admin',
@@ -28,5 +31,5 @@ export default function ProtectedRoute({ allowedRoles = [] }) {
     return <Navigate to={targetRoute} replace />
   }
 
-  return <Outlet />
+  return <Outlet key={user?.id} />
 }

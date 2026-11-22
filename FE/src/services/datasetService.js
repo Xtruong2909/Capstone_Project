@@ -1,19 +1,20 @@
 import apiClient from './apiClient'
+import { engineerStorageKey, readEngineerStorage, writeEngineerStorage } from './engineerStorage'
 
 const DATASET_META_CACHE_KEY = 'pneuma_de_dataset_meta_v1'
 
 function loadMetaCache() {
   try {
-    const raw = localStorage.getItem(DATASET_META_CACHE_KEY)
-    return raw ? JSON.parse(raw) : {}
+    return readEngineerStorage(DATASET_META_CACHE_KEY, {})
   } catch {
     return {}
   }
 }
 
-function saveMetaCache(cache) {
+function saveMetaCache(cache, ownerKey) {
+  if (!ownerKey || ownerKey !== engineerStorageKey(DATASET_META_CACHE_KEY)) return
   try {
-    localStorage.setItem(DATASET_META_CACHE_KEY, JSON.stringify(cache))
+    writeEngineerStorage(DATASET_META_CACHE_KEY, cache)
   } catch {
     // Ignore storage errors
   }
@@ -21,47 +22,28 @@ function saveMetaCache(cache) {
 
 export const datasetService = {
   /**
-   * Lấy danh sách các bộ dữ liệu và phiên bản đã tải lên hệ thống.
-   * Tương thích với endpoint GET /api/v1/datasets/versions trên nhánh Dev-D.Khang.
+   * Lấy danh sách các bộ dữ liệu và dữ liệu đã tải lên hệ thống.
+   * Tương thích với endpoint GET /api/v1/datasets/files trên nhánh Dev-D.Khang.
    */
-  listDatasets: async (params = {}) => {
+  listDatasets: async (params = {}, signal) => {
     try {
-      const response = await apiClient.get('/datasets/versions', {
+      const response = await apiClient.get('/datasets/files', {
         params: params.status ? { status: params.status } : {},
+        signal,
       })
-      const versions = Array.isArray(response.data) ? response.data : []
-      const metaCache = loadMetaCache()
+      const dataset_files = Array.isArray(response.data) ? response.data : []
 
-      return versions.map((v) => {
-        const cached = metaCache[v.dataset_id] || {}
-        const shortId = String(v.dataset_id || '')
-          .slice(0, 8)
-          .toUpperCase()
-        return {
-          dataset_id: v.dataset_id,
-          version_id: v.version_id,
-          name: cached.name || v.name || `Traffic Dataset #${shortId}`,
-          code: cached.code || v.code || `DATASET_${shortId}`,
-          source: cached.source || v.source || 'pNEUMA Drone Swarm - Athens',
-          description: cached.description || v.description || '',
-          capture_date: cached.capture_date || v.capture_date || null,
-          location_name:
-            cached.location_name || v.location_name || 'Athens Central Business District',
-          version_tag: v.version_tag || 'v1.0',
-          file_format: cached.file_format || v.file_format || 'CSV',
-          original_filename: cached.original_filename || v.original_filename || `dataset_${shortId}.csv`,
-          file_size_bytes: cached.file_size_bytes ?? v.file_size_bytes ?? 0,
-          approval_status: v.approval_status || 'PENDING',
-          approval_note: v.approval_note || null,
-          submitted_by: v.submitted_by || null,
-          submitted_at: v.submitted_at || null,
-          approved_by: v.approved_by || null,
-          created_at: v.created_at,
-        }
-      })
-    } catch {
-      const fallback = await apiClient.get('/datasets', { params })
-      return fallback.data
+      // Metadata belongs to a specific API dataset_file. A dataset-level browser cache
+      // can contain another dataset_file's CSV name, byte count or source details.
+      return dataset_files.map((dataset_file) => ({
+        ...dataset_file,
+        name: dataset_file.dataset_name || dataset_file.name || '',
+        source_sessions: dataset_file.source_sessions || [],
+      }))
+    } catch (error) {
+      if (error.response?.status !== 404) throw error
+      const fallback = await apiClient.get('/datasets', { params, signal })
+      return Array.isArray(fallback.data) ? fallback.data : (fallback.data?.groups || []).flatMap((group) => group.datasets || [])
     }
   },
 
@@ -70,6 +52,7 @@ export const datasetService = {
    * Tải lên file dataset (.csv, .json, .xls, .xlsx, .parquet) kèm metadata
    */
   uploadDataset: async (payload, onUploadProgress) => {
+    const ownerKey = engineerStorageKey(DATASET_META_CACHE_KEY)
     const formData = new FormData()
     formData.append('file', payload.file)
     formData.append('name', payload.name.trim())
@@ -104,7 +87,7 @@ export const datasetService = {
         original_filename: uploaded.original_filename,
         file_size_bytes: uploaded.file_size_bytes,
       }
-      saveMetaCache(cache)
+      saveMetaCache(cache, ownerKey)
     }
 
     return uploaded
@@ -115,7 +98,9 @@ export const datasetService = {
    * Xem trước cấu trúc cột, cảnh báo và các dòng dữ liệu (hỗ trợ chuẩn hóa pNEUMA)
    */
   previewDataset: async (datasetId, params = {}) => {
+    const ownerKey = engineerStorageKey(DATASET_META_CACHE_KEY)
     const response = await apiClient.get(`/datasets/${datasetId}/preview`, {
+        signal: params.signal,
       params: {
         page: params.page ?? 1,
         page_size: params.page_size ?? 20,
@@ -132,7 +117,7 @@ export const datasetService = {
         original_filename: data.original_filename || existing.original_filename,
         file_size_bytes: data.file_size ?? existing.file_size_bytes,
       }
-      saveMetaCache(cache)
+      saveMetaCache(cache, ownerKey)
     }
 
     return data

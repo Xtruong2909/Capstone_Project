@@ -49,7 +49,7 @@ def connection():
                     id uuid PRIMARY KEY, experiment_id uuid UNIQUE REFERENCES experiments(id),
                     mae numeric(10,4), rmse numeric(10,4), evaluated_at timestamptz);
                 CREATE TABLE traffic_time_series (
-                    id bigserial PRIMARY KEY, dataset_version_id uuid NOT NULL,
+                    id bigserial PRIMARY KEY, dataset_file_id uuid NOT NULL,
                     time_bucket timestamptz NOT NULL, aggregation_interval integer NOT NULL,
                     roi_identifier varchar(64) NOT NULL, vehicle_count integer NOT NULL DEFAULT 0,
                     traffic_flow numeric(10,2) NOT NULL DEFAULT 0,
@@ -77,7 +77,7 @@ def test_preserves_valid_rows_and_enforces_constraints(connection) -> None:
         (experiment_id,),
     )
     connection.exec_driver_sql(
-        "INSERT INTO traffic_time_series(dataset_version_id, time_bucket, aggregation_interval, roi_identifier, traffic_flow) VALUES (%s, '2026-01-01Z', 60, 'ROI', 12)",
+        "INSERT INTO traffic_time_series(dataset_file_id, time_bucket, aggregation_interval, roi_identifier, traffic_flow) VALUES (%s, '2026-01-01Z', 60, 'ROI', 12)",
         (dataset_id,),
     )
     apply_migration(connection)

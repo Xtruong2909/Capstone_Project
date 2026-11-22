@@ -13,20 +13,20 @@ from fastapi.testclient import TestClient
 from app.api.v1.endpoints import admin
 from app.core.deps import get_current_user
 from app.database.database import get_db
-from app.models.dataset import Dataset, DatasetVersion, RecordingSession
+from app.models.dataset import Dataset, DatasetFile, RecordingSession
 from app.schemas.admin import DatasetApprovalAction
 from app.services import admin_group_review_service, dataset_preview_service, dataset_review_service
 
 
 def _admin_review_app(tmp_path: Path, monkeypatch):
-    dataset_id, version_id, session_id = uuid4(), uuid4(), uuid4()
+    dataset_id, file_id, session_id = uuid4(), uuid4(), uuid4()
     dataset = Dataset(
         id=dataset_id, name="20181024-d1", source="pNEUMA",
         location_name="Athens, Greece", drone_id="d1",
         recording_date=date(2018, 10, 24),
     )
-    version = DatasetVersion(
-        id=version_id, dataset_id=dataset_id, version_tag="v1.0",
+    dataset_file = DatasetFile(
+        id=file_id, dataset_id=dataset_id, 
         approval_status="SUBMITTED", created_at=datetime.now().astimezone(),
     )
     session = RecordingSession(
@@ -44,13 +44,13 @@ def _admin_review_app(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(dataset_preview_service, "DATASET_UPLOAD_DIR", tmp_path)
     repo = dataset_review_service.crud_dataset
     monkeypatch.setattr(repo, "get_dataset_by_id", lambda db, key: dataset if key == dataset_id else None)
-    monkeypatch.setattr(repo, "get_dataset_version", lambda db, did, vid:
-                        (dataset, version) if (did, vid) == (dataset_id, version_id) else None)
-    monkeypatch.setattr(repo, "get_version_session_counts", lambda db, ids: {version_id: 1})
-    monkeypatch.setattr(repo, "list_version_sessions", lambda db, vid, page, page_size:
-                        ([session], 1) if vid == version_id else ([], 0))
-    monkeypatch.setattr(repo, "get_version_session", lambda db, vid, sid:
-                        session if (vid, sid) == (version_id, session_id) else None)
+    monkeypatch.setattr(repo, "get_dataset_file", lambda db, did, vid:
+                        (dataset, dataset_file) if (did, vid) == (dataset_id, file_id) else None)
+    monkeypatch.setattr(repo, "get_file_session_counts", lambda db, ids: {file_id: 1})
+    monkeypatch.setattr(repo, "list_file_sessions", lambda db, vid, page, page_size:
+                        ([session], 1) if vid == file_id else ([], 0))
+    monkeypatch.setattr(repo, "get_file_session", lambda db, vid, sid:
+                        session if (vid, sid) == (file_id, session_id) else None)
 
     app = FastAPI()
     app.include_router(
@@ -62,14 +62,14 @@ def _admin_review_app(tmp_path: Path, monkeypatch):
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
         id=uuid4(), role_id="admin",
     )
-    return app, dataset, version, session
+    return app, dataset, dataset_file, session
 
 
 def test_admin_can_list_sessions_and_preview_session_csv(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    app, dataset, version, session = _admin_review_app(tmp_path, monkeypatch)
-    base = f"/api/v1/admin/datasets/{dataset.id}/versions/{version.id}"
+    app, dataset, dataset_file, session = _admin_review_app(tmp_path, monkeypatch)
+    base = f"/api/v1/admin/datasets/{dataset.id}/files/{dataset_file.id}"
     with TestClient(app) as client:
         sessions = client.get(f"{base}/sessions")
         preview = client.get(f"{base}/sessions/{session.id}/preview",
@@ -81,15 +81,15 @@ def test_admin_can_list_sessions_and_preview_session_csv(
     assert preview.json()["rows"] == [{"id": "1", "flow": "100"}]
 
 
-def test_admin_can_review_sessions_from_normalized_version_provenance(
+def test_admin_can_review_sessions_from_normalized_file_provenance(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    app, dataset, version, session = _admin_review_app(tmp_path, monkeypatch)
+    app, dataset, dataset_file, session = _admin_review_app(tmp_path, monkeypatch)
     repo = dataset_review_service.crud_dataset
     history = SimpleNamespace(parameters={"source_session_ids": [str(session.id)]})
-    monkeypatch.setattr(repo, "list_version_sessions", lambda db, vid, page, page_size: ([], 0))
-    monkeypatch.setattr(repo, "get_version_session", lambda db, vid, sid: None)
-    monkeypatch.setattr(repo, "get_cleaning_history_by_version", lambda db, vid: history)
+    monkeypatch.setattr(repo, "list_file_sessions", lambda db, vid, page, page_size: ([], 0))
+    monkeypatch.setattr(repo, "get_file_session", lambda db, vid, sid: None)
+    monkeypatch.setattr(repo, "get_cleaning_history_by_file", lambda db, vid: history)
     monkeypatch.setattr(
         repo, "list_dataset_sessions_by_ids",
         lambda db, did, ids, page, page_size: ([session], 1),
@@ -98,7 +98,7 @@ def test_admin_can_review_sessions_from_normalized_version_provenance(
         repo, "get_dataset_session_by_id",
         lambda db, did, sid: session if (did, sid) == (dataset.id, session.id) else None,
     )
-    base = f"/api/v1/admin/datasets/{dataset.id}/versions/{version.id}/sessions"
+    base = f"/api/v1/admin/datasets/{dataset.id}/files/{dataset_file.id}/sessions"
 
     with TestClient(app) as client:
         sessions = client.get(base)
@@ -137,21 +137,21 @@ def test_admin_session_review_endpoints_are_in_swagger(
 def test_admin_reviews_group_dataset_sessions_and_csv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app, dataset, version, session = _admin_review_app(tmp_path, monkeypatch)
+    app, dataset, dataset_file, session = _admin_review_app(tmp_path, monkeypatch)
     group_id = uuid4()
     dataset.group_id = group_id
-    version.dataset = dataset
+    dataset_file.dataset = dataset
     group = SimpleNamespace(id=group_id, name="Drone d1", drone_id="d1")
     monkeypatch.setattr(
-        admin_group_review_service, "get_exported_group_versions",
-        lambda *_: (SimpleNamespace(), [version]),
+        admin_group_review_service, "get_exported_group_files",
+        lambda *_: (SimpleNamespace(), [dataset_file]),
     )
     monkeypatch.setattr(
         admin_group_review_service.crud_dataset, "get_dataset_group_by_id",
         lambda *_: group,
     )
     monkeypatch.setattr(
-        admin_group_review_service, "build_dataset_version_item",
+        admin_group_review_service, "build_dataset_file_item",
         lambda *_: SimpleNamespace(source_session_count=1),
     )
     base = f"/api/v1/admin/datasets/groups/{group_id}/datasets"
@@ -163,24 +163,24 @@ def test_admin_reviews_group_dataset_sessions_and_csv(
             params={"representation": "raw"},
         )
     assert datasets.status_code == 200, datasets.text
-    assert datasets.json()["datasets"][0]["version_id"] == str(version.id)
+    assert datasets.json()["datasets"][0]["file_id"] == str(dataset_file.id)
     assert sessions.status_code == 200, sessions.text
     assert sessions.json()["sessions"][0]["session_id"] == str(session.id)
     assert preview.status_code == 200, preview.text
     assert preview.json()["rows"] == [{"id": "1", "flow": "100"}]
 
 
-def test_group_review_updates_only_submitted_versions_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_group_review_updates_only_submitted_files_once(monkeypatch: pytest.MonkeyPatch) -> None:
     group_id = uuid4()
     pending = SimpleNamespace(id=uuid4(), approval_status="SUBMITTED")
     approved = SimpleNamespace(id=uuid4(), approval_status="APPROVED")
     db = MagicMock()
     monkeypatch.setattr(
-        admin_group_review_service, "get_exported_group_versions",
+        admin_group_review_service, "get_exported_group_files",
         lambda *_: (object(), [pending, approved]),
     )
     monkeypatch.setattr(
-        admin_group_review_service.crud_admin, "lock_dataset_versions",
+        admin_group_review_service.crud_admin, "lock_dataset_files",
         lambda *_: [pending, approved],
     )
     monkeypatch.setattr(admin_group_review_service, "record_audit_event", lambda **_: None)
@@ -190,22 +190,22 @@ def test_group_review_updates_only_submitted_versions_once(monkeypatch: pytest.M
     )
 
     assert result.status == "APPROVED"
-    assert result.reviewed_versions == 1
+    assert result.reviewed_files == 1
     assert pending.approval_status == approved.approval_status == "APPROVED"
     db.commit.assert_called_once_with()
 
 
 def test_group_review_rejects_when_nothing_was_submitted(monkeypatch: pytest.MonkeyPatch) -> None:
     group_id = uuid4()
-    version = SimpleNamespace(id=uuid4(), approval_status="PENDING")
+    dataset_file = SimpleNamespace(id=uuid4(), approval_status="PENDING")
     db = MagicMock()
     monkeypatch.setattr(
-        admin_group_review_service, "get_exported_group_versions",
-        lambda *_: (object(), [version]),
+        admin_group_review_service, "get_exported_group_files",
+        lambda *_: (object(), [dataset_file]),
     )
     monkeypatch.setattr(
-        admin_group_review_service.crud_admin, "lock_dataset_versions",
-        lambda *_: [version],
+        admin_group_review_service.crud_admin, "lock_dataset_files",
+        lambda *_: [dataset_file],
     )
     with pytest.raises(HTTPException) as exc:
         admin_group_review_service.review_group(

@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
@@ -9,6 +9,8 @@ import {
   Shield,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useLogout } from '../../hooks/useLogout'
+import { useAdminNavigation } from '../../hooks/useAdminNavigation'
 import { useLanguage } from '../../hooks/useLanguage'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
 import './AdminPortal.css'
@@ -24,14 +26,10 @@ const ROUTE_META = {
 
 export default function AdminLayout() {
   const { t } = useLanguage()
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { handleLogout, isLoggingOut } = useLogout()
   const location = useLocation()
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
+  const prefetchPage = useAdminNavigation()
 
   const currentMeta = ROUTE_META[location.pathname] || ROUTE_META['/admin']
 
@@ -53,7 +51,7 @@ export default function AdminLayout() {
           <div className="adm-nav-group">
             <span className="adm-nav-group__label">{t('Command')}</span>
             <NavLink
-              to="/admin"
+              to="/admin" onMouseEnter={() => prefetchPage('/admin')} onFocus={() => prefetchPage('/admin')}
               end
               title={t('System Overview')}
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
@@ -62,7 +60,7 @@ export default function AdminLayout() {
               <span className="adm-nav-link__text">{t('System Overview')}</span>
             </NavLink>
             <NavLink
-              to="/admin/users"
+              to="/admin/users" onMouseEnter={() => prefetchPage('/admin/users')} onFocus={() => prefetchPage('/admin/users')}
               title={t('User Management')}
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
@@ -74,7 +72,7 @@ export default function AdminLayout() {
           <div className="adm-nav-group">
             <span className="adm-nav-group__label">{t('Data Quality Gate')}</span>
             <NavLink
-              to="/admin/datasets"
+              to="/admin/datasets" onMouseEnter={() => prefetchPage('/admin/datasets')} onFocus={() => prefetchPage('/admin/datasets')}
               end
               title={t('Dataset Approvals')}
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
@@ -83,7 +81,7 @@ export default function AdminLayout() {
               <span className="adm-nav-link__text">{t('Dataset Approvals')}</span>
             </NavLink>
             <NavLink
-              to="/admin/datasets-available"
+              to="/admin/datasets-available" onMouseEnter={() => prefetchPage('/admin/datasets-available')} onFocus={() => prefetchPage('/admin/datasets-available')}
               title={t('Dataset Available')}
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
@@ -95,7 +93,7 @@ export default function AdminLayout() {
           <div className="adm-nav-group">
             <span className="adm-nav-group__label">{t('Compliance')}</span>
             <NavLink
-              to="/admin/audit-logs"
+              to="/admin/audit-logs" onMouseEnter={() => prefetchPage('/admin/audit-logs')} onFocus={() => prefetchPage('/admin/audit-logs')}
               title={t('Audit Logs')}
               className={({ isActive }) => `adm-nav-link ${isActive ? 'active' : ''}`}
             >
@@ -114,7 +112,6 @@ export default function AdminLayout() {
               <div className="adm-user-card__avatar">
                 {user?.full_name ? user.full_name.charAt(0).toUpperCase() : 'A'}
               </div>
-              <span className="adm-user-card__status-dot" title="Online" />
             </div>
             <div className="adm-user-card__meta">
               <div className="adm-user-card__name-row">
@@ -136,10 +133,12 @@ export default function AdminLayout() {
             type="button"
             className="adm-logout-btn"
             onClick={handleLogout}
+            disabled={isLoggingOut}
+            aria-busy={isLoggingOut}
             title={t('Sign Out')}
           >
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            <span className="adm-logout-btn__text">{t('Sign Out')}</span>
+            <span className="adm-logout-btn__text">{t(isLoggingOut ? 'Đang đăng xuất...' : 'Sign Out')}</span>
           </button>
         </div>
       </aside>

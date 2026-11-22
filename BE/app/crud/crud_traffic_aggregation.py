@@ -1,4 +1,4 @@
-"""Repository helpers for traffic aggregation jobs and selected versions."""
+"""Repository helpers for traffic aggregation jobs and selected dataset_files."""
 
 from datetime import UTC, datetime
 from uuid import UUID
@@ -9,9 +9,11 @@ from sqlalchemy.orm import Query, Session
 from app.models.dataset import (
     DataCleaningHistory,
     Dataset,
-    DatasetVersion,
+    DatasetFile,
     RecordingSession,
 )
+from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
+from app.models.model_training import ModelTrainingExperiment
 from app.models.traffic import (
     TrafficAggregationJob,
     TrafficAggregationSessionResult,
@@ -19,15 +21,15 @@ from app.models.traffic import (
 )
 
 
-def get_versions_by_ids(
-    db: Session, version_ids: list[UUID],
-) -> dict[UUID, tuple[Dataset, DatasetVersion]]:
-    if not version_ids:
+def get_files_by_ids(
+    db: Session, file_ids: list[UUID],
+) -> dict[UUID, tuple[Dataset, DatasetFile]]:
+    if not file_ids:
         return {}
-    rows = db.query(Dataset, DatasetVersion).join(
-        DatasetVersion, DatasetVersion.dataset_id == Dataset.id,
-    ).filter(DatasetVersion.id.in_(version_ids)).all()
-    return {version.id: (dataset, version) for dataset, version in rows}
+    rows = db.query(Dataset, DatasetFile).join(
+        DatasetFile, DatasetFile.dataset_id == Dataset.id,
+    ).filter(DatasetFile.id.in_(file_ids)).all()
+    return {dataset_file.id: (dataset, dataset_file) for dataset, dataset_file in rows}
 
 
 def create_aggregation_jobs(
@@ -65,19 +67,31 @@ def list_group_temporal_roots(db: Session, group_id: UUID, dataset_ids: list[UUI
     ]
 
 
-def get_dataset_version(db: Session, version_id: UUID) -> tuple[Dataset, DatasetVersion] | None:
+def legacy_temporal_owner_ids(db: Session, aggregation_id: UUID) -> set[UUID]:
+    """Infer legacy provenance only from persisted experiments with a known creator."""
+    return {row[0] for row in db.query(ModelTrainingExperiment.created_by).join(
+        LagFeatureSplit, LagFeatureSplit.id == ModelTrainingExperiment.lag_feature_split_id,
+    ).join(
+        LagFeatureGeneration, LagFeatureGeneration.id == LagFeatureSplit.feature_generation_id,
+    ).filter(
+        LagFeatureGeneration.aggregation_id == aggregation_id,
+        ModelTrainingExperiment.created_by.is_not(None),
+    ).distinct().all()}
+
+
+def get_dataset_file(db: Session, file_id: UUID) -> tuple[Dataset, DatasetFile] | None:
     return (
-        db.query(Dataset, DatasetVersion)
-        .join(DatasetVersion, DatasetVersion.dataset_id == Dataset.id)
-        .filter(DatasetVersion.id == version_id)
+        db.query(Dataset, DatasetFile)
+        .join(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .filter(DatasetFile.id == file_id)
         .one_or_none()
     )
 
 
-def get_cleaning_history(db: Session, version_id: UUID) -> DataCleaningHistory | None:
+def get_cleaning_history(db: Session, file_id: UUID) -> DataCleaningHistory | None:
     return (
         db.query(DataCleaningHistory)
-        .filter(DataCleaningHistory.dataset_version_id == version_id)
+        .filter(DataCleaningHistory.dataset_file_id == file_id)
         .order_by(DataCleaningHistory.created_at.desc(), DataCleaningHistory.id.desc())
         .first()
     )
@@ -92,13 +106,13 @@ def save_session_row_counts(
 
 
 def get_historical_session_row_counts(
-    db: Session, version_id: UUID, session_ids: list[UUID],
+    db: Session, file_id: UUID, session_ids: list[UUID],
 ) -> dict[str, int] | None:
-    """Reuse complete per-session row counts from an earlier run of this version."""
+    """Reuse complete per-session row counts from an earlier run of this dataset_file."""
     jobs = (
         db.query(TrafficAggregationJob)
         .filter(
-            TrafficAggregationJob.dataset_version_id == version_id,
+            TrafficAggregationJob.dataset_file_id == file_id,
             TrafficAggregationJob.status == "COMPLETED",
         )
         .order_by(TrafficAggregationJob.created_at.desc())
@@ -118,13 +132,13 @@ def get_historical_session_row_counts(
     return None
 
 
-def get_version_sessions(db: Session, version_id: UUID) -> list[RecordingSession]:
-    from app.models.dataset import DatasetVersionSession
+def get_file_sessions(db: Session, file_id: UUID) -> list[RecordingSession]:
+    from app.models.dataset import DatasetFileSession
 
     return (
         db.query(RecordingSession)
-        .join(DatasetVersionSession, DatasetVersionSession.session_id == RecordingSession.id)
-        .filter(DatasetVersionSession.version_id == version_id)
+        .join(DatasetFileSession, DatasetFileSession.session_id == RecordingSession.id)
+        .filter(DatasetFileSession.file_id == file_id)
         .order_by(RecordingSession.scheduled_start, RecordingSession.id)
         .all()
     )
@@ -141,15 +155,18 @@ def get_sessions_by_ids(
     ).all()
 
 
-def get_active_temporal_run(db: Session, version_id: UUID) -> TrafficAggregationJob | None:
+def get_active_temporal_run(
+    db: Session, file_id: UUID, *, owner_id: UUID | None = None,
+) -> TrafficAggregationJob | None:
     jobs = db.query(TrafficAggregationJob).filter(
-        TrafficAggregationJob.dataset_version_id == version_id,
+        TrafficAggregationJob.dataset_file_id == file_id,
         TrafficAggregationJob.status.in_(
             ["QUEUED", "PROCESSING", "RUNNING", "queued", "running"]
         ),
     ).order_by(TrafficAggregationJob.created_at.desc()).all()
     return next(
-        (job for job in jobs if (job.job_metadata or {}).get("workflow") == "ds_temporal_v1"),
+        (job for job in jobs if (job.job_metadata or {}).get("workflow") == "ds_temporal_v1"
+         and (owner_id is None or (job.job_metadata or {}).get("created_by") == str(owner_id))),
         None,
     )
 

@@ -67,12 +67,12 @@ def test_service_preview_and_filename(tmp_path: Path, monkeypatch: pytest.Monkey
         ";".join(FIELDS) + "\n1;car;100;10;37;23;12;0;0;0;38;24;13;0;0;60\n",
         encoding="utf-8",
     )
-    version = SimpleNamespace(
-        id=uuid4(), data_file_path=str(source), version_tag="v1.0",
+    dataset_file = SimpleNamespace(
+        id=uuid4(), data_file_path=str(source), 
         original_filename=source.name, dataset=SimpleNamespace(name="test"),
     )
     db = MagicMock()
-    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = version
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = dataset_file
     monkeypatch.setattr(service, "DATASET_UPLOAD_DIR", tmp_path)
     monkeypatch.setattr(service.crud_dataset, "get_dataset_column_mapping", lambda *args: None)
     result = service.normalize_dataset_structure_service(

@@ -27,7 +27,7 @@ class AdminDatasetGroupItem(BaseModel):
     group_id: UUID | None
     group_name: str | None
     dataset_count: int
-    version_count: int
+    file_count: int
     approval_status: str
     approval_notes: list[str]
 
@@ -44,13 +44,27 @@ class AdminGrantItem(BaseModel):
     created_at: datetime
 
 
+class AdminBatchGrantItem(BaseModel):
+    group_id: UUID | None
+    group_name: str | None
+    dataset_id: UUID | None
+    dataset_name: str | None
+    user_id: UUID
+    user_name: str
+    user_email: str
+    user_role: str
+    granted_datasets: int
+    total_datasets: int
+    created_at: datetime
+
+
 class AdminSummary(BaseModel):
     total_users: int
     active_users: int
     users_by_role: dict[str, int]
     total_datasets: int
-    total_versions: int
+    total_files: int
     pending_approvals: int
-    approved_versions: int
+    approved_files: int
     total_audit_logs: int
     total_access_grants: int

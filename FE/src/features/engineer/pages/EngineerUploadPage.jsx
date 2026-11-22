@@ -27,6 +27,8 @@ import { formatBytes, MAX_UPLOAD_SIZE_BYTES } from "../utils/engineerHelpers";
 import "../EngineerData.css";
 
 const FILENAME_REGEX = /^\d{8}_d\d+_\d{4}_\d{4}\.csv$/i;
+const DEFAULT_SOURCE = "pNEUMA UAV Swarm";
+const DEFAULT_LOCATION = "Athens Central Business District, Greece";
 
 export default function EngineerUploadPage() {
   const { t } = useLanguage();
@@ -36,8 +38,8 @@ export default function EngineerUploadPage() {
   const [files, setFiles] = useState([]);
   const [metadata, setMetadata] = useState({
     group_name: "",
-    source: "pNEUMA UAV Swarm",
-    location_name: "Athens Central Business District, Greece",
+    source: "",
+    location_name: "",
     description: "",
   });
   const [progress, setProgress] = useState(0);
@@ -386,6 +388,7 @@ export default function EngineerUploadPage() {
                 className="admin-input"
                 type="text"
                 maxLength={255}
+                placeholder={t(DEFAULT_SOURCE)}
                 value={metadata.source}
                 disabled={busy}
                 onChange={(e) =>
@@ -400,6 +403,7 @@ export default function EngineerUploadPage() {
                 className="admin-input"
                 type="text"
                 maxLength={255}
+                placeholder={t(DEFAULT_LOCATION)}
                 value={metadata.location_name}
                 disabled={busy}
                 onChange={(e) =>

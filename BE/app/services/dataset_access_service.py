@@ -36,11 +36,11 @@ def check_dataset_access(current_user: User, dataset_id: UUID, db: Session) -> D
     raise HTTPException(403, "Dataset access has not been granted")
 
 
-def check_dataset_version_access(current_user: User, version_id: UUID, db: Session) -> Dataset:
-    version = repo.get_version(db, version_id)
-    if version is None:
-        raise HTTPException(404, "Dataset version not found")
-    return check_dataset_access(current_user, version.dataset_id, db)
+def check_dataset_file_access(current_user: User, file_id: UUID, db: Session) -> Dataset:
+    dataset_file = repo.get_file(db, file_id)
+    if dataset_file is None:
+        raise HTTPException(404, "Dataset dataset_file not found")
+    return check_dataset_access(current_user, dataset_file.dataset_id, db)
 
 
 def require_access_admin(user: User) -> None:
@@ -73,10 +73,10 @@ def grant_access(
         raise HTTPException(422, "Only Data Scientist can receive dataset access")
     if repo.get_grant(db, dataset_id, user_id):
         raise HTTPException(409, "Dataset access already exists")
-    if not repo.has_approved_version(db, dataset_id):
+    if not repo.has_approved_file(db, dataset_id):
         raise HTTPException(
             409,
-            "Dataset phải có ít nhất một phiên bản được Admin phê duyệt (APPROVED) "
+            "Dataset phải có ít nhất một dữ liệu được Admin phê duyệt (APPROVED) "
             "trước khi cấp quyền cho Data Scientist",
         )
     try:
@@ -151,12 +151,11 @@ def list_approved_datasets(
             location_name=dataset.location_name,
             recording_date=getattr(dataset, "recording_date", None),
             drone_id=getattr(dataset, "drone_id", None),
-            version_id=version.id,
-            version_tag=version.version_tag,
-            approval_status=version.approval_status,
-            approved_by=version.approved_by,
+            file_id=dataset_file.id,
+            approval_status=dataset_file.approval_status,
+            approved_by=dataset_file.approved_by,
         )
-        for dataset, version in repo.approved_datasets(db, user, search, skip, limit)
+        for dataset, dataset_file in repo.approved_datasets(db, user, search, skip, limit)
     ]
 
 
@@ -172,7 +171,7 @@ def list_approved_groups(
             group_name=group.name,
             source=group.source,
             drone_id=group.drone_id,
-            total_datasets=len(repo.list_group_datasets(db, group.id)),
+            total_datasets=len(repo.approved_group_dataset_ids_for_user(db, group.id, user.id)),
             approved_datasets=len(repo.approved_group_dataset_ids_for_user(db, group.id, user.id)),
         )
         for group in groups
@@ -197,10 +196,12 @@ def list_accessible_groups(
     result = []
     for group in groups:
         datasets = repo.list_group_datasets(db, group.id)
-        approved = repo.approved_group_dataset_ids(db, group.id)
+        approved = (repo.approved_group_dataset_ids(db, group.id) if user.role_id == "admin"
+                    else repo.approved_group_dataset_ids_for_user(db, group.id, user.id))
         result.append(GroupAccessCatalogItem(
             group_id=group.id, group_name=group.name, source=group.source,
-            drone_id=group.drone_id, total_datasets=len(datasets),
+            drone_id=group.drone_id,
+            total_datasets=len(datasets) if user.role_id == "admin" else len(approved),
             approved_datasets=len(approved),
         ))
     return result
@@ -254,7 +255,7 @@ def grant_group_access(
         raise HTTPException(422, "Only Data Scientist can receive dataset access")
     approved = repo.approved_group_dataset_ids(db, group_id)
     if approved != {dataset.id for dataset in datasets}:
-        raise HTTPException(409, "Every Dataset in the group must have an APPROVED version")
+        raise HTTPException(409, "Every Dataset in the group must have an APPROVED dataset_file")
     existing = repo.list_group_grants(db, group_id, user_id)
     granted_ids = {grant.dataset_id for grant in existing}
     try:

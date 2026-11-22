@@ -24,7 +24,7 @@ class ForecastRequest(BaseModel):
 class PredictionExperiment(BaseModel):
     experiment_id: UUID
     experiment_name: str
-    dataset_version_ids: list[UUID]
+    dataset_file_ids: list[UUID]
     status: str
     hyperparameters: dict
     model_ids: dict[str, UUID]
@@ -40,7 +40,7 @@ class PredictionSession(BaseModel):
     session_id: UUID
     aggregation_id: UUID
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     start_time: datetime | None
     end_time: datetime | None
     aggregation_interval: int
@@ -72,7 +72,7 @@ class ForecastSessionResult(BaseModel):
     session_id: UUID
     original_filename: str | None = None
     dataset_id: UUID
-    dataset_version_id: UUID
+    dataset_file_id: UUID
     forecast_origin_time: datetime
     lag_features: dict[str, int]
     predictions: list[ForecastPrediction]

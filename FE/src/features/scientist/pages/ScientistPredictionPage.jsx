@@ -14,34 +14,34 @@ const shortId = (value) => value ? String(value).slice(0, 8) : '—'
 const formatDateTime = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—'
 
 export default function ScientistPredictionPage() {
-  const { groupId, datasetId, versionId, forecastId } = useParams()
+  const { groupId, datasetId, fileId, forecastId } = useParams()
   const location = useLocation()
   const preferredExperimentId = new URLSearchParams(location.search).get('experimentId')
-  const [selectedVersionId, setSelectedVersionId] = useState('')
+  const [selectedFileId, setSelectedFileId] = useState('')
   const { groups, isLoading: groupsLoading, error: groupsError } = useApprovedGroups()
   const { datasets: groupDatasets, isLoading: groupDatasetsLoading, error: groupDatasetsError } = useGroupDatasets(groupId)
   const { datasets, isLoading: datasetsLoading, error: datasetsError } = useApprovedDatasets()
 
-  const effectiveVersionId = selectedVersionId || groupDatasets[0]?.version_id || ''
+  const effectiveFileId = selectedFileId || groupDatasets[0]?.file_id || ''
 
   const dataset = groupId
-    ? groupDatasets.find((item) => item.version_id === effectiveVersionId)
-    : datasets.find((item) => item.dataset_id === datasetId && item.version_id === versionId)
+    ? groupDatasets.find((item) => item.file_id === effectiveFileId)
+    : datasets.find((item) => item.dataset_id === datasetId && item.file_id === fileId)
   const sessionsById = useGroupSessionMetadata(dataset ? [dataset] : [])
   const activeGroupId = groupId || dataset?.group_id
   const group = groups.find((item) => item.group_id === activeGroupId)
-  const activeVersionId = groupId ? effectiveVersionId : versionId
+  const activeFileId = groupId ? effectiveFileId : fileId
   const {
     experiments, experimentId, setExperimentId, sessions, sessionsLoading, compatibleSessionIds, compatibilityLoading,
     sessionIds, setSessionIds, forecast, history, busy, error, predict,
-  } = useSciencePrediction(activeVersionId, preferredExperimentId)
+  } = useSciencePrediction(activeFileId, preferredExperimentId)
   const { charts, errors: chartErrors, loading: chartsLoading } = useForecastCharts(forecast)
   const isLoading = groupsLoading || (groupId ? groupDatasetsLoading : datasetsLoading)
   const loadError = groupsError || (groupId ? groupDatasetsError : datasetsError)
   const incompatibleSessionCount = compatibleSessionIds == null ? 0
     : sessionIds.filter((id) => !compatibleSessionIds.includes(id)).length
   const selectedSessionId = sessionIds[0] || ''
-  const selectedSession = sessions.find((session) => session.session_id === selectedSessionId && session.dataset_version_id === activeVersionId)
+  const selectedSession = sessions.find((session) => session.session_id === selectedSessionId && session.dataset_file_id === activeFileId)
   const selectedExperiment = experiments.find((item) => item.experiment_id === experimentId)
   const aggregationPreview = usePredictionSessionAggregation(selectedSession?.aggregation_id, selectedSession?.session_id)
   const canPredict = Boolean(experimentId && selectedSession && sessionIds.length === 1 && compatibleSessionIds
@@ -74,9 +74,9 @@ export default function ScientistPredictionPage() {
 
       <div className="sci-prediction-fields">
         {groupId && <label><span><b>1</b> Dataset trong batch</span>
-          <select value={effectiveVersionId} onChange={(event) => { setSelectedVersionId(event.target.value); setExperimentId('') }}>
+          <select value={effectiveFileId} onChange={(event) => { setSelectedFileId(event.target.value); setExperimentId('') }}>
             <option value="">Chọn dataset</option>
-            {groupDatasets.map((item) => <option key={item.version_id} value={item.version_id}>{item.dataset_name}</option>)}
+            {groupDatasets.map((item) => <option key={item.file_id} value={item.file_id}>{item.dataset_name}</option>)}
           </select>
         </label>}
       </div>

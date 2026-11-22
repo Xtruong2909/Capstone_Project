@@ -54,14 +54,14 @@ def test_traffic_aggregation_api_contracts_exclude_density() -> None:
 
 
 def test_repair_preserves_other_fields_and_is_idempotent(monkeypatch) -> None:
-    version = SimpleNamespace(id=uuid4())
+    dataset_file = SimpleNamespace(id=uuid4())
     record = SimpleNamespace(
         id=23, time_bucket=datetime(1970, 1, 1, tzinfo=UTC), mean_speed=10,
         vehicle_count=342, traffic_flow=342, traffic_density=0.342,
     )
-    monkeypatch.setattr(repair, "list_speed_groups", lambda db: [(version, 60, "MAIN_ROI")])
+    monkeypatch.setattr(repair, "list_speed_groups", lambda db: [(dataset_file, 60, "MAIN_ROI")])
     monkeypatch.setattr(repair, "_recording_start", lambda db, v: None)
-    monkeypatch.setattr(repair, "_iter_rows_from_version", lambda v: iter([
+    monkeypatch.setattr(repair, "_iter_rows_from_file", lambda v: iter([
         {"time": 0, "track_id": 1, "speed": 10},
     ]))
     monkeypatch.setattr(repair, "get_speed_records", lambda *a, **kw: [record])
@@ -74,11 +74,11 @@ def test_repair_preserves_other_fields_and_is_idempotent(monkeypatch) -> None:
 
 
 def test_repair_aborts_when_source_bucket_is_missing(monkeypatch) -> None:
-    version = SimpleNamespace(id=uuid4())
+    dataset_file = SimpleNamespace(id=uuid4())
     record = SimpleNamespace(id=23, time_bucket=datetime(1970, 1, 1, tzinfo=UTC), mean_speed=10)
-    monkeypatch.setattr(repair, "list_speed_groups", lambda db: [(version, 60, "MAIN_ROI")])
+    monkeypatch.setattr(repair, "list_speed_groups", lambda db: [(dataset_file, 60, "MAIN_ROI")])
     monkeypatch.setattr(repair, "_recording_start", lambda db, v: None)
-    monkeypatch.setattr(repair, "_iter_rows_from_version", lambda v: iter([]))
+    monkeypatch.setattr(repair, "_iter_rows_from_file", lambda v: iter([]))
     monkeypatch.setattr(repair, "get_speed_records", lambda *a, **kw: [record])
     with pytest.raises(ValueError, match="Source bucket missing"):
         repair.repair_traffic_speeds(None)

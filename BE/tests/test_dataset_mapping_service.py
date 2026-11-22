@@ -43,14 +43,14 @@ def test_session_schema_reports_actual_header_difference(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
     second_header: str, expected_error: str | None,
 ) -> None:
-    version = SimpleNamespace(id=uuid4())
+    dataset_file = SimpleNamespace(id=uuid4())
     sessions = []
     for index, header in enumerate(["track_id;time", second_header]):
         path = tmp_path / f"session_{index}.csv"
         path.write_text(header + "\n1;2\n", encoding="utf-8")
         sessions.append(SimpleNamespace(file_path=str(path), original_filename=path.name))
-    monkeypatch.setattr(crud_dataset, "get_dataset_latest_version", lambda *args: (object(), version))
-    monkeypatch.setattr(dataset_mapping_service, "get_version_recording_sessions", lambda *args: sessions)
+    monkeypatch.setattr(crud_dataset, "get_dataset_latest_file", lambda *args: (object(), dataset_file))
+    monkeypatch.setattr(dataset_mapping_service, "get_file_recording_sessions", lambda *args: sessions)
     monkeypatch.setattr(dataset_mapping_service, "resolve_stored_file_path", Path)
     if expected_error:
         with pytest.raises(DatasetMappingReadError) as exc:
@@ -66,7 +66,7 @@ def test_session_schema_reports_actual_header_difference(
 @pytest.fixture(autouse=True)
 def no_recording_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Legacy mapping tests use a dataset preview without a database session."""
-    monkeypatch.setattr(dataset_mapping_service, "get_version_recording_sessions", lambda db, version: [])
+    monkeypatch.setattr(dataset_mapping_service, "get_file_recording_sessions", lambda db, dataset_file: [])
     monkeypatch.setattr(dataset_mapping_service.crud_dataset,
                         "get_latest_dataset_column_mapping", lambda db, dataset_id: None)
 
@@ -101,11 +101,11 @@ def test_get_columns_reports_type_and_saved_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dataset_id = uuid4()
-    _, version = _dataset_stub()
+    _, dataset_file = _dataset_stub()
     monkeypatch.setattr(
         dataset_mapping_service.crud_dataset,
-        "get_dataset_latest_version",
-        lambda db, requested_id: (object(), version),
+        "get_dataset_latest_file",
+        lambda db, requested_id: (object(), dataset_file),
     )
     monkeypatch.setattr(
         dataset_mapping_service,
@@ -122,7 +122,7 @@ def test_get_columns_reports_type_and_saved_target(
 
     result = get_dataset_columns(FakeSession(), dataset_id)
 
-    assert result.dataset_version_id == version.id
+    assert result.dataset_file_id == dataset_file.id
     assert result.columns[0].source_column == "track_id"
     assert result.columns[0].data_type == "integer"
     assert result.columns[0].mapped_column == "vehicle_id"
@@ -136,13 +136,13 @@ def test_patch_merges_mappings_and_null_removes_existing(
 ) -> None:
     dataset_id = uuid4()
     user_id = uuid4()
-    _, version = _dataset_stub()
+    _, dataset_file = _dataset_stub()
     persisted: dict[str, object] = {}
 
     monkeypatch.setattr(
         dataset_mapping_service.crud_dataset,
-        "get_dataset_latest_version",
-        lambda db, requested_id: (object(), version),
+        "get_dataset_latest_file",
+        lambda db, requested_id: (object(), dataset_file),
     )
     monkeypatch.setattr(
         dataset_mapping_service,
@@ -163,7 +163,7 @@ def test_patch_merges_mappings_and_null_removes_existing(
     def save_mapping(db: object, **kwargs: object) -> SimpleNamespace:
         persisted.update(kwargs)
         return SimpleNamespace(
-            dataset_version_id=version.id,
+            dataset_file_id=dataset_file.id,
             mappings=kwargs["mappings"],
         )
 
@@ -184,7 +184,7 @@ def test_patch_merges_mappings_and_null_removes_existing(
     assert [mapping.model_dump() for mapping in result.mappings] == [
         {"source_column": "time", "target_column": "timestamp"}
     ]
-    assert persisted["dataset_version_id"] == version.id
+    assert persisted["dataset_file_id"] == dataset_file.id
 
 
 @pytest.mark.parametrize(
@@ -216,11 +216,11 @@ def test_patch_rejects_invalid_mappings(
     requested: list[DatasetColumnMappingInput],
     error: str,
 ) -> None:
-    _, version = _dataset_stub()
+    _, dataset_file = _dataset_stub()
     monkeypatch.setattr(
         dataset_mapping_service.crud_dataset,
-        "get_dataset_latest_version",
-        lambda db, requested_id: (object(), version),
+        "get_dataset_latest_file",
+        lambda db, requested_id: (object(), dataset_file),
     )
     monkeypatch.setattr(
         dataset_mapping_service,
@@ -246,13 +246,13 @@ def test_preview_renames_column_metadata_and_row_keys_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dataset_id = uuid4()
-    _, version = _dataset_stub()
+    _, dataset_file = _dataset_stub()
     preview = _preview()
     preview.rows[0]["extra_values"] = [99]
     monkeypatch.setattr(
         dataset_mapping_service.crud_dataset,
-        "get_dataset_latest_version",
-        lambda db, requested_id: (object(), version),
+        "get_dataset_latest_file",
+        lambda db, requested_id: (object(), dataset_file),
     )
     monkeypatch.setattr(
         dataset_mapping_service.crud_dataset,
@@ -276,20 +276,20 @@ def test_preview_renames_column_metadata_and_row_keys_only(
     assert mapped.rows[0]["vehicle_id"] == 7
 
 
-def test_group_mapping_saves_every_dataset_version_once(
+def test_group_mapping_saves_every_dataset_file_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = uuid4()
     datasets = [SimpleNamespace(id=uuid4(), name=f"day-{index}") for index in range(2)]
-    versions = {dataset.id: SimpleNamespace(id=uuid4()) for dataset in datasets}
+    dataset_files = {dataset.id: SimpleNamespace(id=uuid4()) for dataset in datasets}
     saved: dict[str, object] = {}
     repo = dataset_mapping_service.crud_dataset
     monkeypatch.setattr(repo, "get_dataset_group_by_id", lambda db, key: object())
-    monkeypatch.setattr(repo, "list_group_datasets", lambda db, key, visible_user_id: datasets)
+    monkeypatch.setattr(repo, "list_group_datasets", lambda db, key, visible_user_id, **kwargs: datasets)
     monkeypatch.setattr(
         dataset_mapping_service, "_dataset_schema",
         lambda db, key: (
-            versions[key], [{"name": "track_id", "type": "integer"}], 5,
+            dataset_files[key], [{"name": "track_id", "type": "integer"}], 5,
         ),
     )
     monkeypatch.setattr(repo, "save_group_column_mappings",
@@ -319,7 +319,7 @@ def test_group_mapping_rejects_mismatched_dataset_before_save(
     datasets = [SimpleNamespace(id=uuid4(), name=f"day-{index}") for index in range(2)]
     repo = dataset_mapping_service.crud_dataset
     monkeypatch.setattr(repo, "get_dataset_group_by_id", lambda db, key: object())
-    monkeypatch.setattr(repo, "list_group_datasets", lambda db, key, visible_user_id: datasets)
+    monkeypatch.setattr(repo, "list_group_datasets", lambda db, key, visible_user_id, **kwargs: datasets)
     monkeypatch.setattr(
         dataset_mapping_service, "_dataset_schema",
         lambda db, key: (
@@ -349,13 +349,13 @@ def test_group_mapping_reads_shared_mapping_and_reports_conflict(
     datasets = [SimpleNamespace(id=uuid4(), name=f"day-{index}") for index in range(2)]
     repo = dataset_mapping_service.crud_dataset
     monkeypatch.setattr(repo, "get_dataset_group_by_id", lambda db, key: object())
-    monkeypatch.setattr(repo, "list_group_datasets", lambda db, key, visible_user_id: datasets)
+    monkeypatch.setattr(repo, "list_group_datasets", lambda db, key, visible_user_id, **kwargs: datasets)
     monkeypatch.setattr(dataset_mapping_service, "_dataset_schema",
                         lambda db, key: (SimpleNamespace(id=uuid4()),
                                          [{"name": "track_id", "type": "integer"}], 5))
     targets = {dataset.id: "vehicle_id" for dataset in datasets}
-    monkeypatch.setattr(dataset_mapping_service, "_mapping_for_version",
-                        lambda db, key, version_id: SimpleNamespace(mappings=[{
+    monkeypatch.setattr(dataset_mapping_service, "_mapping_for_file",
+                        lambda db, key, file_id: SimpleNamespace(mappings=[{
                             "source_column": "track_id", "target_column": targets[key],
                         }]))
 
@@ -395,7 +395,7 @@ def test_group_mapping_crud_commits_once_and_rolls_back_on_failure(
         "source_column": "track_id", "target_column": "vehicle_id",
     }]) for dataset_id in dataset_ids]
     monkeypatch.setattr(crud_dataset, "get_dataset_column_mapping",
-                        lambda db, dataset_id, version_id: None)
+                        lambda db, dataset_id, file_id: None)
     audit_events: list[object] = []
     monkeypatch.setattr(crud_dataset, "record_audit_event",
                         lambda **kwargs: audit_events.append(kwargs))

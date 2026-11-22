@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useAdminResource } from '../../../hooks/useAdminData'
 import {
   Users,
   UserPlus,
   Search,
   AlertCircle,
   RefreshCw,
-  X,
   ShieldCheck,
   CheckCircle2,
   Ban,
 } from 'lucide-react'
 import { adminService } from '../../../services/adminService'
 import { useLanguage } from '../../../hooks/useLanguage'
+import AdminCreateUserDialog from '../components/AdminCreateUserDialog'
 
 const ROLE_DESCRIPTIONS = {
   data_engineer:
-    'Ingests raw pNEUMA UAV trajectories, executes 3-step pipeline QA, and submits canonical versions.',
+    'Ingests raw pNEUMA UAV trajectories, executes 3-step pipeline QA, and submits canonical dataset_files.',
   data_scientist:
     'Aggregates 1-min & 5-min intervals, trains Random Forest traffic flow models, and benchmarks accuracy.',
   business_user:
@@ -26,10 +27,12 @@ const ROLE_DESCRIPTIONS = {
 
 export default function AdminUsersPage() {
   const { t, language } = useLanguage()
-  const [users, setUsers] = useState([])
-  const [roles, setRoles] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const resource = useAdminResource(adminService.getUserManagementData)
+  const users = resource.data?.users || []
+  const roles = resource.data?.roles || []
+  const isLoading = resource.loading
+  const error = resource.error
+  const fetchUsersAndRoles = resource.reload
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('')
@@ -37,67 +40,18 @@ export default function AdminUsersPage() {
 
   // Modal create user
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    email: '',
-    full_name: '',
-    role_id: 'data_engineer',
-    password: '',
-  })
-  const [formSubmitting, setFormSubmitting] = useState(false)
-  const [formError, setFormError] = useState(null)
-
-  const fetchUsersAndRoles = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const [usersData, rolesData] = await Promise.all([
-        adminService.getUsers(),
-        adminService.getRoles(),
-      ])
-      setUsers(Array.isArray(usersData) ? usersData : usersData?.items || [])
-      setRoles(Array.isArray(rolesData) ? rolesData : rolesData?.items || [])
-    } catch (err) {
-      setError(t('Failed to load user list from the server.'))
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchUsersAndRoles()
-  }, [])
+  const [createdEmail, setCreatedEmail] = useState('')
 
   const handleToggleStatus = async (user) => {
     try {
-      const updated = await adminService.updateUserStatus(user.id, !user.is_active)
-      setUsers((prev) => prev.map((u) => (u.id === user.id ? updated : u)))
+      await adminService.updateUserStatus(user.id, !user.is_active)
+      fetchUsersAndRoles()
     } catch (err) {
       alert(err.response?.data?.detail || t('Failed to update user status.'))
     }
   }
 
-  const handleCreateSubmit = async (e) => {
-    e.preventDefault()
-    setFormSubmitting(true)
-    setFormError(null)
-    try {
-      const newUser = await adminService.createUser(formData)
-      setUsers((prev) => [newUser, ...prev])
-      setIsModalOpen(false)
-      setFormData({
-        email: '',
-        full_name: '',
-        role_id: 'data_engineer',
-        password: '',
-      })
-    } catch (err) {
-      setFormError(err.response?.data?.detail || t('Failed to create new user.'))
-    } finally {
-      setFormSubmitting(false)
-    }
-  }
-
-  const safeUsers = Array.isArray(users) ? users : []
+  const safeUsers = (Array.isArray(users) ? users : []).filter((user) => user.role_id !== 'admin')
 
   const filteredUsers = safeUsers.filter((u) => {
     const matchesSearch =
@@ -146,6 +100,9 @@ export default function AdminUsersPage() {
 
   return (
     <div>
+      {createdEmail && <p className="admin-notice admin-notice--success" role="status">
+        {t('Account created. Login details have been emailed to:')} <strong>{createdEmail}</strong>
+      </p>}
       {/* 1. Interactive 4-Column Role Summary Strip */}
       <div className="adm-bento-grid">
         <div
@@ -262,7 +219,7 @@ export default function AdminUsersPage() {
             style={{ width: 'auto', minWidth: '180px' }}
           >
             <option value="ALL">{t('All Roles')}</option>
-            {roles.map((r) => (
+            {roles.filter((role) => role.id !== 'admin').map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
               </option>
@@ -283,7 +240,8 @@ export default function AdminUsersPage() {
           <button
             type="button"
             className="adm-btn adm-btn--primary"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setCreatedEmail(''); setIsModalOpen(true) }}
+            disabled={isLoading || !roles.length}
           >
             <UserPlus size={16} />
             <span>{t('Add User')}</span>
@@ -314,7 +272,7 @@ export default function AdminUsersPage() {
               </div>
               <h4 className="adm-empty__title">{t('Loading user accounts...')}</h4>
             </div>
-          ) : error ? (
+          ) : error && !resource.data ? (
             <div className="adm-empty">
               <div className="adm-empty__icon adm-tone--rose">
                 <AlertCircle size={24} />
@@ -365,7 +323,6 @@ export default function AdminUsersPage() {
                           </div>
                           <div>
                             <div style={{ fontWeight: 700, color: '#0f172a' }}>{u.full_name}</div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>ID: #{u.id}</div>
                           </div>
                         </div>
                       </td>
@@ -415,118 +372,17 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Create User Modal */}
-      {isModalOpen && (
-        <div
-          className="adm-modal-backdrop"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsModalOpen(false)
-          }}
-        >
-          <div className="modal-dialog">
-            <div className="modal-header">
-              <h3>{t('Create New User')}</h3>
-              <button
-                type="button"
-                className="adm-modal__close"
-                onClick={() => setIsModalOpen(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSubmit} className="modal-body">
-              {formError && (
-                <div style={{
-                  padding: '0.75rem',
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '6px',
-                  color: '#dc2626',
-                  fontSize: '0.85rem',
-                  marginBottom: '1rem',
-                }}>
-                  {t(formError)}
-                </div>
-              )}
-
-              <div className="form-field">
-                <label className="form-label">{t('Full Name')}</label>
-                <input
-                  type="text"
-                  required
-                  placeholder={t('e.g. Alex Morgan')}
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">{t('Email Address')}</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="user@metroflow.ai"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="form-field">
-                <label className="form-label">{t('Role')}</label>
-                <select
-                  value={formData.role_id}
-                  onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
-                  className="admin-select"
-                  style={{ width: '100%' }}
-                >
-                  {roles
-                    .filter((r) => r.id !== 'admin')
-                    .map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {t(r.name)}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-field" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">{t('Initial Password')}</label>
-                <input
-                  type="password"
-                  required
-                  placeholder={t('Enter initial password...')}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="admin-input"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div className="adm-modal__footer">
-                <button
-                  type="button"
-                  className="adm-btn adm-btn--ghost"
-                  onClick={() => setIsModalOpen(false)}
-                >
-                  {t('Cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="adm-btn adm-btn--primary"
-                >
-                  {t(formSubmitting ? 'Creating...' : 'Create Account')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {isModalOpen && <AdminCreateUserDialog
+        roles={roles}
+        onClose={() => setIsModalOpen(false)}
+        onCreated={(newUser) => {
+          fetchUsersAndRoles()
+          setSearchQuery('')
+          setSelectedRole('ALL')
+          setCreatedEmail(newUser.email)
+          setIsModalOpen(false)
+        }}
+      />}
     </div>
   )
 }

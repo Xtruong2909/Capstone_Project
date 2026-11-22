@@ -464,15 +464,13 @@ export async function getNormalizedPreview(
 
 /**
  * Step 3: POST /datasets/{dataset_id}/export
- * Commit normalized staging Parquet into a new official DatasetVersion.
+ * Commit normalized staging Parquet into a new official DatasetFile.
  */
 export async function exportNormalizedDataset(
   datasetId,
   {
     stagingId,
     staging_id,
-    newVersionTag = 'v1.1',
-    new_version_tag,
     exportFormat = 'PARQUET',
     export_format,
     qualityCheckId = null,
@@ -481,7 +479,6 @@ export async function exportNormalizedDataset(
 ) {
   const payload = {
     staging_id: stagingId ?? staging_id ?? null,
-    new_version_tag: new_version_tag ?? newVersionTag ?? 'v1.1',
     export_format: export_format ?? exportFormat ?? 'PARQUET',
     quality_check_id: qualityCheckId ?? quality_check_id ?? null,
   }
@@ -491,49 +488,49 @@ export async function exportNormalizedDataset(
 }
 
 /**
- * Step 3: POST /datasets/{dataset_id}/versions/{version_id}/submit
- * Submit exported dataset version to Administrator for approval.
+ * Step 3: POST /datasets/{dataset_id}/files/{file_id}/submit
+ * Submit exported dataset to Administrator for approval.
  */
-export async function submitVersionForReview(datasetId, versionId, note = '') {
+export async function submitFileForReview(datasetId, fileId, note = '') {
   const payload = typeof note === 'string' ? { note } : (note || { note: '' })
-  const response = await apiClient.post(`/datasets/${datasetId}/versions/${versionId}/submit`, payload)
+  const response = await apiClient.post(`/datasets/${datasetId}/files/${fileId}/submit`, payload)
   return response.data
 }
 
 /**
- * Step 3: POST /datasets/{dataset_id}/versions/{version_id}/resubmit
- * Re-submit a previously rejected dataset version after resolving feedback.
+ * Step 3: POST /datasets/{dataset_id}/files/{file_id}/resubmit
+ * Re-submit a previously rejected dataset after resolving feedback.
  */
-export async function resubmitVersionForReview(datasetId, versionId, note = '') {
+export async function resubmitFileForReview(datasetId, fileId, note = '') {
   const payload = typeof note === 'string' ? { note } : (note || { note: '' })
-  const response = await apiClient.post(`/datasets/${datasetId}/versions/${versionId}/resubmit`, payload)
+  const response = await apiClient.post(`/datasets/${datasetId}/files/${fileId}/resubmit`, payload)
   return response.data
 }
 
 /**
- * GET /datasets/{dataset_id}/versions
- * List all versions associated with a specific dataset.
+ * GET /datasets/{dataset_id}/files
+ * List all dataset_files associated with a specific dataset.
  */
-export async function getDatasetVersionsByDatasetId(datasetId, params = {}) {
-  const response = await apiClient.get(`/datasets/${datasetId}/versions`, { params })
+export async function getDatasetFilesByDatasetId(datasetId, params = {}) {
+  const response = await apiClient.get(`/datasets/${datasetId}/files`, { params })
   return response.data
 }
 
 /**
- * Step 3: GET /datasets/{dataset_id}/versions/{version_id}/status
+ * Step 3: GET /datasets/{dataset_id}/files/{file_id}/status
  * Fetch approval review status and administrator notes.
  */
-export async function getVersionStatus(datasetId, versionId) {
-  const response = await apiClient.get(`/datasets/${datasetId}/versions/${versionId}/status`)
+export async function getFileStatus(datasetId, fileId) {
+  const response = await apiClient.get(`/datasets/${datasetId}/files/${fileId}/status`)
   return response.data
 }
 
 /**
- * Step 3 (Optional): GET /datasets/{dataset_id}/versions/{version_id}/report
- * Query processing history report for a version.
+ * Step 3 (Optional): GET /datasets/{dataset_id}/files/{file_id}/report
+ * Query processing history report for a dataset_file.
  */
-export async function getProcessingReport(datasetId, versionId) {
-  const response = await apiClient.get(`/datasets/${datasetId}/versions/${versionId}/report`)
+export async function getProcessingReport(datasetId, fileId) {
+  const response = await apiClient.get(`/datasets/${datasetId}/files/${fileId}/report`)
   return response.data
 }
 
@@ -552,10 +549,10 @@ export const pipelineService = {
   validateNormalization,
   getNormalizedPreview,
   exportNormalizedDataset,
-  submitVersionForReview,
-  resubmitVersionForReview,
-  getDatasetVersionsByDatasetId,
-  getVersionStatus,
+  submitFileForReview,
+  resubmitFileForReview,
+  getDatasetFilesByDatasetId,
+  getFileStatus,
   getProcessingReport,
 }
 

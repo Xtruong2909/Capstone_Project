@@ -37,7 +37,7 @@ from app.services.ai_scope_service import (
     retrieve_knowledge,
 )
 from app.services.dataset_access_service import (
-    check_dataset_version_access,
+    check_dataset_file_access,
     list_accessible_groups,
     list_approved_groups,
 )
@@ -63,7 +63,7 @@ def _group_context(db: Session, group_id: UUID, user: User) -> dict:
         if remaining <= 0:
             break
         page = list_recording_sessions(
-            db, item.dataset_id, item.version_id, page=1, page_size=remaining,
+            db, item.dataset_id, item.file_id, page=1, page_size=remaining,
         )
         sessions.extend(page.sessions)
     return {
@@ -73,8 +73,8 @@ def _group_context(db: Session, group_id: UUID, user: User) -> dict:
             {
                 "dataset_id": str(item.dataset_id), "name": item.name,
                 "recording_date": item.recording_date.isoformat(),
-                "drone_id": item.drone_id, "version_id": str(item.version_id),
-                "version": item.version, "total_sessions": item.total_sessions,
+                "drone_id": item.drone_id, "file_id": str(item.file_id),
+                "dataset_file": item.dataset_file, "total_sessions": item.total_sessions,
                 "approval_status": item.approval_status,
             }
             for item in datasets
@@ -167,8 +167,8 @@ def _resolve_chat_action(db: Session, request: AssistantRequest, user: User) -> 
         if forecast_id is not None:
             return request.model_copy(update={"action": action, "forecast_id": forecast_id})
         prediction_id = prediction_id_from_question(request.message)
-        if prediction_id is None and request.dataset_version_id is not None:
-            latest = repo.get_latest_forecast_for_version(db, request.dataset_version_id)
+        if prediction_id is None and request.dataset_file_id is not None:
+            latest = repo.get_latest_forecast_for_file(db, request.dataset_file_id)
             prediction_id = latest.id if latest else None
         return (request.model_copy(update={"action": action, "prediction_id": prediction_id})
                 if prediction_id is not None else request)
@@ -179,9 +179,9 @@ def _resolve_chat_action(db: Session, request: AssistantRequest, user: User) -> 
         experiments = repo.list_recent_aggregation_experiments(
             db, request.aggregation_id, limit=lookup_limit,
         )
-    elif request.dataset_version_id is not None:
+    elif request.dataset_file_id is not None:
         experiments = repo.list_recent_experiments(
-            db, request.dataset_version_id, limit=lookup_limit,
+            db, request.dataset_file_id, limit=lookup_limit,
         )
     else:
         return request
@@ -228,7 +228,7 @@ def _experiment_fact(db: Session, experiment_id: UUID, user: User) -> dict:
     split = repo.get_split(db, experiment.split_id)
     if split is None:
         raise HTTPException(409, "Bộ chia Train/Test của thí nghiệm không còn tồn tại")
-    check_dataset_version_access(user, split.dataset_version_id, db)
+    check_dataset_file_access(user, split.dataset_file_id, db)
     if experiment.status != "COMPLETED":
         raise HTTPException(409, f"Thí nghiệm {experiment.name} chưa hoàn thành")
     if experiment.configuration.get("model") != "RANDOM_FOREST":
@@ -265,7 +265,7 @@ def _experiment_fact(db: Session, experiment_id: UUID, user: User) -> dict:
     )
     return {
         "experiment_id": str(experiment.id), "experiment_name": experiment.name,
-        "dataset_version_id": str(split.dataset_version_id), "split_id": str(split.id),
+        "dataset_file_id": str(split.dataset_file_id), "split_id": str(split.id),
         "status": experiment.status, "forecast_horizons": experiment.configuration.get("forecast_horizons"),
         "hyperparameters": experiment.configuration.get("hyperparameters", {}),
         "evaluation_mode": experiment.evaluation.get("evaluation_mode"),
@@ -322,7 +322,7 @@ def _lag_experiment_fact(db: Session, experiment: object, user: User) -> dict:
     evaluation = experiment.evaluation or {}
     return {
         "experiment_id": str(experiment.id), "experiment_name": experiment.name,
-        "dataset_version_id": None, "split_id": str(split.id),
+        "dataset_file_id": None, "split_id": str(split.id),
         "feature_generation_id": str(generation.id),
         "aggregation_id": str(generation.aggregation_id),
         "group_id": metadata.get("group_id"), "status": experiment.status,
@@ -348,14 +348,14 @@ def _forecast_fact(db: Session, prediction_id: int, user: User) -> dict:
     model = repo.get_final_model(db, anchor.model_id)
     if model is None:
         raise HTTPException(409, "Final Model của dự báo không còn tồn tại")
-    check_dataset_version_access(user, model.dataset_version_id, db)
+    check_dataset_file_access(user, model.dataset_file_id, db)
     points = repo.get_forecast_group(db, model.id, anchor.last_observed_time)
     if len(points) != 3 or {point.horizon_minutes for point in points} != {1, 3, 5}:
         raise HTTPException(409, "Dự báo chưa đủ các mốc +1, +3, +5 phút")
     return {
         "prediction_id": prediction_id, "model_id": str(model.id),
         "experiment_id": str(model.experiment_id),
-        "dataset_version_id": str(model.dataset_version_id),
+        "dataset_file_id": str(model.dataset_file_id),
         "last_observed_time": anchor.last_observed_time.isoformat(),
         "forecasts": [
             {"horizon_minutes": point.horizon_minutes,
@@ -383,7 +383,7 @@ def _forecast_run_fact(db: Session, forecast_id: UUID, user: User) -> dict:
     return {
         "forecast_id": str(run.id), "experiment_id": str(run.experiment_id),
         "aggregation_id": experiment["aggregation_id"], "group_id": experiment["group_id"],
-        "dataset_version_id": None, "status": run.status,
+        "dataset_file_id": None, "status": run.status,
         "session_count": run.session_count, "timezone": "Europe/Athens",
         "session_errors": run.session_errors,
         "forecasts": [
@@ -413,16 +413,16 @@ def _model_fact(db: Session, model_id: UUID, user: User) -> dict:
         experiment = _experiment_fact(db, trained.experiment_id, user)
         return {
             "model_id": str(trained.model_id), "experiment_id": str(trained.experiment_id),
-            "dataset_version_id": None, "aggregation_id": experiment["aggregation_id"],
+            "dataset_file_id": None, "aggregation_id": experiment["aggregation_id"],
             "group_id": experiment["group_id"], "split_id": experiment["split_id"],
             "forecast_horizons": [trained.horizon],
             "hyperparameters": trained.hyperparameters,
             "status": trained.status,
         }
-    check_dataset_version_access(user, model.dataset_version_id, db)
+    check_dataset_file_access(user, model.dataset_file_id, db)
     return {
         "model_id": str(model.id), "experiment_id": str(model.experiment_id),
-        "dataset_version_id": str(model.dataset_version_id),
+        "dataset_file_id": str(model.dataset_file_id),
         "split_id": str(model.split_id),
         "forecast_horizons": model.forecast_horizons,
         "hyperparameters": model.hyperparameters,
@@ -445,7 +445,7 @@ def _quality_warnings(facts: list[dict]) -> list[str]:
 
 def _comparable(facts: list[dict]) -> bool:
     first = facts[0]
-    keys = ("dataset_version_id", "split_id", "evaluation_policy", "evaluation_mode",
+    keys = ("dataset_file_id", "split_id", "evaluation_policy", "evaluation_mode",
             "forecast_horizons", "_test_signature")
     return bool(first["_test_signature"]) and all(fact["_complete_test"] for fact in facts) and all(
         all(fact[key] == first[key] for key in keys) for fact in facts[1:]
@@ -486,15 +486,15 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
             prior_user_questions=[
                 turn.content for turn in request.conversation if turn.role == "user"
             ],
-            has_project_context=bool(request.group_id or request.dataset_version_id),
+            has_project_context=bool(request.group_id or request.dataset_file_id),
         )
         if scope == "out_of_scope":
             return _scope_response(request.action, OUT_OF_SCOPE_MESSAGE)
         if scope == "unclear":
             return _scope_response(request.action, CLARIFICATION_MESSAGE)
 
-    if request.dataset_version_id is not None:
-        check_dataset_version_access(user, request.dataset_version_id, db)
+    if request.dataset_file_id is not None:
+        check_dataset_file_access(user, request.dataset_file_id, db)
     if request.group_id is not None:
         group_context = _group_context(db, request.group_id, user)
         if request.aggregation_id is None:
@@ -525,16 +525,16 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
     }[request.action]
     knowledge = retrieve_knowledge(knowledge_query)
     facts = [_experiment_fact(db, experiment_id, user) for experiment_id in request.experiment_ids]
-    if request.dataset_version_id is not None and any(
-        fact["dataset_version_id"] != str(request.dataset_version_id) for fact in facts
+    if request.dataset_file_id is not None and any(
+        fact["dataset_file_id"] != str(request.dataset_file_id) for fact in facts
     ):
-        raise HTTPException(422, "Thí nghiệm không thuộc dataset_version_id được chọn")
+        raise HTTPException(422, "Thí nghiệm không thuộc dataset_file_id được chọn")
     if request.group_id is not None:
-        visible_versions = {item["version_id"] for item in group_context.get("datasets", [])}
+        visible_files = {item["file_id"] for item in group_context.get("datasets", [])}
         if any(
             fact.get("group_id") != str(request.group_id)
             if fact.get("group_id") is not None
-            else fact.get("dataset_version_id") not in visible_versions
+            else fact.get("dataset_file_id") not in visible_files
             for fact in facts
         ):
             raise HTTPException(422, "Thí nghiệm không thuộc batch được chọn")
@@ -547,15 +547,15 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
     if request.group_id is not None and any(
         item.get("group_id") != str(request.group_id)
         if item.get("group_id") is not None
-        else item.get("dataset_version_id") not in visible_versions
+        else item.get("dataset_file_id") not in visible_files
         for item in (forecast, model) if item is not None
     ):
         raise HTTPException(422, "Mô hình hoặc dự báo không thuộc batch được chọn")
-    if request.dataset_version_id is not None and any(
-        item is not None and item["dataset_version_id"] != str(request.dataset_version_id)
+    if request.dataset_file_id is not None and any(
+        item is not None and item["dataset_file_id"] != str(request.dataset_file_id)
         for item in (forecast, model)
     ):
-        raise HTTPException(422, "Model hoặc dự báo không thuộc dataset_version_id được chọn")
+        raise HTTPException(422, "Model hoặc dự báo không thuộc dataset_file_id được chọn")
     if request.aggregation_id is not None and any(
         item.get("aggregation_id") != str(request.aggregation_id)
         for item in (*facts, *[value for value in (forecast, model) if value is not None])
@@ -592,7 +592,7 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                     for item in repo.list_recent_aggregation_experiments(db, request.aggregation_id)
                 ],
             }
-        elif request.dataset_version_id is None:
+        elif request.dataset_file_id is None:
             context = {"note": "Chưa chọn dữ liệu dự án. Có thể giới thiệu các batch được cấp quyền; "
                                "số liệu chi tiết cần chọn một batch hoặc dataset."}
             if db is not None:
@@ -608,21 +608,20 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                     for item in groups
                 ]
         else:
-            version = repo.get_dataset_version(db, request.dataset_version_id)
-            if version is None:
-                raise HTTPException(404, "Không tìm thấy phiên bản dataset")
-            recent = repo.list_recent_experiments(db, request.dataset_version_id)
-            models = repo.list_final_models(db, request.dataset_version_id)
-            dataset = getattr(version, "dataset", None)
-            context = {"dataset_version_id": str(request.dataset_version_id),
-                       "dataset": {"dataset_id": str(version.dataset_id),
+            dataset_file = repo.get_dataset_file(db, request.dataset_file_id)
+            if dataset_file is None:
+                raise HTTPException(404, "Không tìm thấy dữ liệu dataset")
+            recent = repo.list_recent_experiments(db, request.dataset_file_id)
+            models = repo.list_final_models(db, request.dataset_file_id)
+            dataset = getattr(dataset_file, "dataset", None)
+            context = {"dataset_file_id": str(request.dataset_file_id),
+                       "dataset": {"dataset_id": str(dataset_file.dataset_id),
                                    "name": dataset.name if dataset else None,
                                    "description": (dataset.description or "")[:400] if dataset else None,
                                    "location_name": dataset.location_name if dataset else None,
-                                   "version_tag": version.version_tag,
-                                   "file_format": version.file_format,
-                                   "total_records": version.total_records,
-                                   "approval_status": version.approval_status},
+                                   "file_format": dataset_file.file_format,
+                                   "total_records": dataset_file.total_records,
+                                   "approval_status": dataset_file.approval_status},
                        "recent_experiments": [{"experiment_id": str(item.id),
                                                "name": item.name, "status": item.status}
                                               for item in recent],
@@ -630,24 +629,24 @@ def run_assistant(db: Session, request: AssistantRequest, user: User) -> Assista
                                          "experiment_id": str(item.experiment_id)}
                                         for item in models],
                        "note": "Các thí nghiệm và dự báo chỉ được phân tích chi tiết khi có dữ liệu đã lưu."}
-            if db is not None and version.approval_status == "APPROVED":
+            if db is not None and dataset_file.approval_status == "APPROVED":
                 context["sessions"] = [
                     {"session_id": str(item.session_id), "filename": item.original_filename,
                      "scheduled_start": item.scheduled_start.isoformat(),
                      "scheduled_end": item.scheduled_end.isoformat()}
                     for item in list_recording_sessions(
-                        db, version.dataset_id, request.dataset_version_id, page=1, page_size=50,
+                        db, dataset_file.dataset_id, request.dataset_file_id, page=1, page_size=50,
                     ).sessions
                 ]
             if request.message and asks_for_dataset_analysis(request.message):
                 context["quality_check"] = _quality_context(
-                    repo.get_latest_quality_check(db, request.dataset_version_id)
+                    repo.get_latest_quality_check(db, request.dataset_file_id)
                 )
                 context["traffic_overview"] = repo.get_traffic_overview(
-                    db, request.dataset_version_id
+                    db, request.dataset_file_id
                 )
                 context["analysis_scope"] = (
-                    "Phân tích phiên bản dataset hiện tại dựa trên metadata, báo cáo chất lượng "
+                    "Phân tích dữ liệu dataset hiện tại dựa trên metadata, báo cáo chất lượng "
                     "và dữ liệu tổng hợp đã lưu. Nếu phần nào chưa có, nói rõ; không suy diễn "
                     "kết quả của toàn bộ file từ thông tin thiếu."
                 )

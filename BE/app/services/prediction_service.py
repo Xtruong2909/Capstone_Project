@@ -39,9 +39,13 @@ from app.schemas.prediction import (
     PredictionSessionsResponse,
 )
 from app.services.dataset_access_service import check_dataset_access
-from app.services.ds_temporal_aggregation_service import get_accessible_temporal_jobs
+from app.services.ds_temporal_aggregation_service import (
+    get_accessible_temporal_jobs,
+    temporal_job_visible,
+)
 from app.services.lag_feature_model_service import _load_forest
 from app.services.lag_window_service import MINUTE, VehicleObservation, latest_lags
+from app.services.scientist_ownership_service import require_scientist_owner
 from app.services.train_test_splits_service import get_accessible_split
 
 HORIZONS = (1, 3, 5)
@@ -79,6 +83,7 @@ def _experiment_scope(
     experiment = repo.experiment(db, experiment_id)
     if experiment is None:
         raise _error("EXPERIMENT_NOT_FOUND", "Không tìm thấy thí nghiệm", 404)
+    require_scientist_owner(user, experiment.created_by)
     if experiment.status != "COMPLETED" or experiment.lag_feature_split_id is None:
         raise _error("EXPERIMENT_NOT_COMPLETED", "Thí nghiệm Lag Features chưa hoàn thành")
     split, generation = get_accessible_split(db, user, experiment.lag_feature_split_id)
@@ -149,7 +154,7 @@ def list_experiments(db: Session, user: User) -> PredictionExperimentsResponse:
                        for key, value in (experiment.performance_by_horizon or {}).items()}
         items.append(PredictionExperiment(
             experiment_id=experiment.id, experiment_name=experiment.name,
-            dataset_version_ids=sorted({job.dataset_version_id for job in jobs}, key=str),
+            dataset_file_ids=sorted({job.dataset_file_id for job in jobs}, key=str),
             status=experiment.status,
             hyperparameters=(experiment.configuration or {}).get("hyperparameters", {}),
             model_ids={str(h): models[h].model_id for h in HORIZONS},
@@ -167,8 +172,10 @@ def _visible_candidates(
     seen: set[UUID] = set()
     allowed_datasets: set[UUID] = set()
     denied_datasets: set[UUID] = set()
-    for result, job, session, version in rows:
+    for result, job, session, dataset_file in rows:
         if (job.job_metadata or {}).get("workflow") != "ds_temporal_v1":
+            continue
+        if not temporal_job_visible(db, user, job):
             continue
         if job.dataset_id not in allowed_datasets | denied_datasets:
             try:
@@ -179,7 +186,7 @@ def _visible_candidates(
         if job.dataset_id in denied_datasets or session.id in seen:
             continue
         seen.add(session.id)
-        visible.append((result, job, session, version))
+        visible.append((result, job, session, dataset_file))
     return visible
 
 
@@ -211,16 +218,16 @@ def _latest_streak(observations: list[VehicleObservation]) -> int:
 
 def list_sessions(
     db: Session, user: User, *, dataset_id: UUID | None,
-    dataset_version_id: UUID | None, experiment_id: UUID | None,
+    dataset_file_id: UUID | None, experiment_id: UUID | None,
     eligible_only: bool, page: int, page_size: int,
 ) -> PredictionSessionsResponse:
     jobs = _experiment_scope(db, user, experiment_id)[1] if experiment_id else None
     rows = _visible_candidates(db, user, jobs)
     sessions = []
-    for _result, job, session, version in rows:
+    for _result, job, session, dataset_file in rows:
         if dataset_id and job.dataset_id != dataset_id:
             continue
-        if dataset_version_id and job.dataset_version_id != dataset_version_id:
+        if dataset_file_id and job.dataset_file_id != dataset_file_id:
             continue
         bins, observations = _observations(db, job, session)
         streak = _latest_streak(observations)
@@ -237,7 +244,7 @@ def list_sessions(
         )
         sessions.append(PredictionSession(
             session_id=session.id, aggregation_id=job.id, dataset_id=job.dataset_id,
-            dataset_version_id=version.id,
+            dataset_file_id=dataset_file.id,
             start_time=_display_time(bins[0].time_bucket) if bins else None,
             end_time=_display_time(bins[-1].time_bucket) if bins else None,
             aggregation_interval=job.aggregation_interval,
@@ -259,7 +266,7 @@ def _run_response(db: Session, run: PredictionRun, experiment: ModelTrainingExpe
         by_session[snapshot["session_id"]] = ForecastSessionResult(
             session_id=snapshot["session_id"], original_filename=snapshot.get("original_filename"),
             dataset_id=snapshot["dataset_id"],
-            dataset_version_id=snapshot["dataset_version_id"],
+            dataset_file_id=snapshot["dataset_file_id"],
             forecast_origin_time=_display_time(datetime.fromisoformat(snapshot["forecast_origin_time"])),
             lag_features=snapshot["lag_features"], predictions=[],
         )
@@ -286,7 +293,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
         raise _error("INVALID_FORECAST_ORIGIN", "Chỉ hỗ trợ thời điểm quan sát mới nhất (LATEST_AVAILABLE)", 422)
     experiment, jobs = _experiment_scope(db, user, payload.experiment_id)
     models, forest, bundle = _validated_models(db, experiment)
-    candidates = {session.id: (job, session, version) for _, job, session, version
+    candidates = {session.id: (job, session, dataset_file) for _, job, session, dataset_file
                   in _visible_candidates(db, user, jobs)}
     prepared = []
     errors = []
@@ -296,7 +303,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
             errors.append({"session_id": str(session_id), "code": "SESSION_NOT_FOUND",
                            "message": "Phiên ghi hình không thuộc dữ liệu tổng hợp của thí nghiệm"})
             continue
-        job, session, version = candidate
+        job, session, dataset_file = candidate
         bins, observations = _observations(db, job, session)
         try:
             origin, lags = latest_lags(observations)
@@ -309,7 +316,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
             )
             errors.append({"session_id": str(session_id), "code": code, "message": message})
             continue
-        prepared.append((job, session, version, origin, lags))
+        prepared.append((job, session, dataset_file, origin, lags))
     if not prepared:
         code = errors[0]["code"] if len({item["code"] for item in errors}) == 1 else "SESSION_NOT_ELIGIBLE"
         raise HTTPException(404 if code == "SESSION_NOT_FOUND" else 422,
@@ -339,7 +346,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
     )
     snapshots = []
     results = []
-    for job, session, version, origin, lags in prepared:
+    for job, session, dataset_file, origin, lags in prepared:
         lag_features = {key: value for key, value in zip(FEATURE_ORDER, lags, strict=True)}
         historical = [{"timestamp": (origin - timedelta(minutes=4 - index)).isoformat(),
                        "traffic_flow": value}
@@ -363,7 +370,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
                 session_results.append(PredictionResult(
                     id=uuid4(), prediction_run_id=run.id, experiment_id=experiment.id,
                     model_id=models[horizon].model_id, dataset_id=job.dataset_id,
-                    dataset_version_id=version.id, session_id=session.id,
+                    dataset_file_id=dataset_file.id, session_id=session.id,
                     horizon=horizon, forecast_origin_time=origin,
                     forecast_timestamp=origin + timedelta(minutes=horizon),
                     predicted_vehicle_count=predicted, actual_vehicle_count=None,
@@ -376,7 +383,7 @@ def create_forecast(db: Session, user: User, payload: ForecastRequest) -> Foreca
             continue
         snapshots.append({
             "session_id": str(session.id), "dataset_id": str(job.dataset_id),
-            "dataset_version_id": str(version.id),
+            "dataset_file_id": str(dataset_file.id),
             "original_filename": session.original_filename,
             "forecast_origin_time": origin.isoformat(),
             "lag_features": lag_features, "historical": historical,

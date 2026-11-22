@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import crud_admin_portal as repo
 from app.schemas.admin_portal import (
+    AdminBatchGrantItem,
     AdminDatasetGroupItem,
     AdminDatasetItem,
     AdminGrantItem,
@@ -23,11 +24,11 @@ def users_page(
                                    total=total, page=page, page_size=page_size)
 
 
-def versions_page(
+def files_page(
     db: Session, page: int, page_size: int, search: str | None, approval_status: str | None,
     group_id: UUID | None = None, ungrouped: bool = False,
 ) -> AdminPage[AdminDatasetItem]:
-    total, rows = repo.versions_page(db, page, page_size, search, approval_status, group_id, ungrouped)
+    total, rows = repo.files_page(db, page, page_size, search, approval_status, group_id, ungrouped)
     return AdminPage[AdminDatasetItem](items=rows, total=total, page=page, page_size=page_size)
 
 
@@ -41,6 +42,13 @@ def dataset_groups_page(
 def grants_page(db: Session, page: int, page_size: int, search: str | None) -> AdminPage[AdminGrantItem]:
     total, rows = repo.grants_page(db, page, page_size, search)
     return AdminPage[AdminGrantItem](items=rows, total=total, page=page, page_size=page_size)
+
+
+def batch_grants_page(
+    db: Session, page: int, page_size: int, search: str | None,
+) -> AdminPage[AdminBatchGrantItem]:
+    total, rows = repo.batch_grants_page(db, page, page_size, search)
+    return AdminPage[AdminBatchGrantItem](items=rows, total=total, page=page, page_size=page_size)
 
 
 def summary(db: Session) -> AdminSummary:

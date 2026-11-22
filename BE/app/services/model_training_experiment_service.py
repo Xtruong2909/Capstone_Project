@@ -21,9 +21,11 @@ from app.models.model_training import (
 )
 from app.models.user import User
 from app.schemas.model_training import (
+    BestOverallSelection,
     ExperimentComparisonRequest,
     ExperimentComparisonResponse,
     Hyperparameters,
+    OverallExperimentScore,
     TrainingExperimentResponse,
 )
 from app.schemas.model_training_experiment import (
@@ -39,6 +41,7 @@ from app.services.lag_feature_model_service import (
     fit_saved_split,
     remove_forest_artifact,
 )
+from app.services.scientist_ownership_service import require_scientist_owner
 from app.services.train_test_splits_service import get_accessible_split
 
 logger = logging.getLogger(__name__)
@@ -85,7 +88,7 @@ def _new_experiment_response(
         experiment_id=experiment.id,
         experiment_name=experiment.name,
         name=experiment.name,
-        dataset_version_id=configuration.get("dataset_version_id"),
+        dataset_file_id=configuration.get("dataset_file_id"),
         group_id=group_id,
         split_id=split_id,
         train_samples=configuration.get("train_samples"),
@@ -118,6 +121,7 @@ def _new_experiment_response(
         warnings=evaluation.get("warnings", [])
         if experiment.lag_feature_split_id is not None
         else [],
+        best_overall_selection=evaluation.get("best_overall_selection"),
     )
 
 
@@ -362,7 +366,7 @@ def list_experiments(
     *,
     split_id: UUID | None,
     status: str | None,
-    dataset_version_id: UUID | None,
+    dataset_file_id: UUID | None,
     page: int,
     page_size: int,
     offset: int | None = None,
@@ -371,9 +375,10 @@ def list_experiments(
         db,
         split_id=split_id,
         status=status,
-        dataset_version_id=dataset_version_id,
+        dataset_file_id=dataset_file_id,
         offset=0,
         limit=None,
+        owner_id=user.id if user.role_id == "data_scientist" else None,
     )
     visible = []
     for item in rows:
@@ -400,11 +405,14 @@ def get_experiment(
     experiment = repository.get_experiment(db, experiment_id)
     if experiment is None:
         raise HTTPException(404, "Experiment not found")
+    require_scientist_owner(user, experiment.created_by)
     if experiment.lag_feature_split_id is not None:
         get_accessible_split(db, user, experiment.lag_feature_split_id)
         return _new_experiment_response(experiment, repository.get_experiment_group_id(db, experiment))
     response = legacy_service.get_detail(db, experiment_id, user)
     response.group_id = repository.get_experiment_group_id(db, experiment)
+    selection = (experiment.evaluation or {}).get("best_overall_selection")
+    response.best_overall_selection = BestOverallSelection.model_validate(selection) if selection else None
     return response
 
 
@@ -492,11 +500,18 @@ def compare_experiments(
     payload: ExperimentComparisonRequest,
 ) -> ExperimentComparisonResponse:
     results = [get_experiment(db, user, experiment_id) for experiment_id in payload.experiment_ids]
+    return _compare_results(results, payload.forecast_horizons)
+
+
+def _compare_results(
+    results: list[TrainingExperimentResponse], forecast_horizons: list[int],
+) -> ExperimentComparisonResponse:
     if any(result.status != "COMPLETED" for result in results):
         raise HTTPException(409, "Only completed experiments can be compared")
     signatures = {
         (
             result.split_id,
+            getattr(result, "dataset_file_id", None),
             tuple(result.forecast_horizons),
             result.evaluation_policy,
             result.evaluation_mode,
@@ -516,7 +531,7 @@ def compare_experiments(
         predictions = result.prediction_rows
         performance = result.performance_by_model_and_horizon
         model_metrics = {model_type: {} for model_type in model_types}
-        for horizon in payload.forecast_horizons:
+        for horizon in forecast_horizons:
             horizon_rows = [row for row in predictions if row.horizon_minutes == horizon]
             rf_rows = [row for row in horizon_rows if row.model == "RANDOM_FOREST"]
             signature = sorted(
@@ -576,7 +591,7 @@ def compare_experiments(
         improvements = {}
         for baseline in ("PERSISTENCE", "HISTORICAL_AVERAGE"):
             improvements[baseline] = {}
-            for horizon in payload.forecast_horizons:
+            for horizon in forecast_horizons:
                 rf_metric = model_metrics["RANDOM_FOREST"][str(horizon)]
                 baseline_metric = model_metrics[baseline][str(horizon)]
                 improvements[baseline][str(horizon)] = {
@@ -594,6 +609,107 @@ def compare_experiments(
         )
 
     return ExperimentComparisonResponse(
-        forecast_horizons=payload.forecast_horizons,
+        forecast_horizons=forecast_horizons,
         experiments=compared,
+        best_overall=_rank_overall(results) if set(forecast_horizons) == set(SUPPORTED_HORIZONS) else None,
     )
+
+
+def _rank_overall(results: list[TrainingExperimentResponse]) -> BestOverallSelection:
+    """Equal horizon weights; use unrounded Test RMSE, then MAE, then prediction time."""
+    ranking: list[OverallExperimentScore] = []
+    for result in results:
+        metrics = result.performance_by_model_and_horizon["RANDOM_FOREST"]
+        milliseconds = getattr(result, "prediction_time_ms", None)
+        seconds = getattr(result, "prediction_time_sec", None)
+        if milliseconds is None and seconds is not None:
+            milliseconds = seconds * 1000
+        if milliseconds is not None and (not math.isfinite(milliseconds) or milliseconds < 0):
+            milliseconds = None
+        ranking.append(OverallExperimentScore(
+            experiment_id=result.experiment_id, experiment_name=result.experiment_name,
+            average_rmse=math.fsum(metrics[str(h)].rmse for h in SUPPORTED_HORIZONS) / 3,
+            average_mae=math.fsum(metrics[str(h)].mae for h in SUPPORTED_HORIZONS) / 3,
+            prediction_time_ms=milliseconds, model_ids=getattr(result, "model_ids", {}),
+        ))
+    ranking.sort(key=lambda item: (
+        item.average_rmse, item.average_mae,
+        item.prediction_time_ms if item.prediction_time_ms is not None else math.inf,
+        str(item.experiment_id),
+    ))
+    winner = ranking[0]
+    return BestOverallSelection(
+        split_id=results[0].split_id, selected_experiment_id=winner.experiment_id,
+        selected_model_ids=winner.model_ids, average_rmse=winner.average_rmse,
+        average_mae=winner.average_mae, ranking=ranking,
+    )
+
+
+def select_best_overall(
+    db: Session, user: User, split_id: UUID, *, experiment_ids: list[UUID] | None = None,
+) -> ExperimentComparisonResponse:
+    """Rank the explicit selection, or all owned completed forests when no IDs are supplied."""
+    if user.role_id not in ("admin", "data_scientist"):
+        raise HTTPException(403, "Chỉ Data Scientist hoặc Admin được chọn Best Overall")
+    if experiment_ids is not None:
+        if not 2 <= len(experiment_ids) <= 20 or len(set(experiment_ids)) != len(experiment_ids):
+            raise HTTPException(422, "Chọn từ 2 đến 20 thí nghiệm khác nhau")
+        candidate_ids = experiment_ids
+    else:
+        rows = repository.list_experiments(
+            db, split_id=split_id, status="COMPLETED", offset=0, limit=None,
+            owner_id=user.id if user.role_id == "data_scientist" else None,
+        )
+        candidate_ids = [row.id for row in rows]
+    results: list[TrainingExperimentResponse] = []
+    excluded: list[UUID] = []
+    for experiment_id in candidate_ids:
+        result = get_experiment(db, user, experiment_id)
+        if result.split_id != split_id:
+            raise HTTPException(422, "Các thí nghiệm đã chọn phải thuộc cùng Split")
+        if result.status != "COMPLETED":
+            raise HTTPException(409, "Chỉ chọn các thí nghiệm đã hoàn thành")
+        if result.model != "RANDOM_FOREST" or set(result.forecast_horizons) != set(SUPPORTED_HORIZONS):
+            if experiment_ids is not None:
+                raise HTTPException(422, "Các thí nghiệm đã chọn phải là Random Forest với đủ horizon +1, +3, +5 phút")
+            excluded.append(experiment_id)
+            continue
+        metrics = result.performance_by_model_and_horizon.get("RANDOM_FOREST", {})
+        if not all(
+            str(h) in metrics and metrics[str(h)].sample_count > 0
+            and math.isfinite(metrics[str(h)].rmse) and metrics[str(h)].rmse >= 0
+            and math.isfinite(metrics[str(h)].mae) and metrics[str(h)].mae >= 0
+            for h in SUPPORTED_HORIZONS
+        ):
+            if experiment_ids is not None:
+                raise HTTPException(422, "Thí nghiệm đã chọn chưa có đủ chỉ số đánh giá hợp lệ")
+            excluded.append(experiment_id)
+            continue
+        models = repository.list_trained_models(db, experiment_id)
+        model_ids = {str(model.horizon): model.model_id for model in models
+                     if model.status == "COMPLETED" and model.model_type == "RANDOM_FOREST"
+                     and model.artifact_reference}
+        if set(model_ids) != {"1", "3", "5"} or model_ids != result.model_ids:
+            if experiment_ids is not None:
+                raise HTTPException(422, "Thí nghiệm đã chọn chưa có đủ 3 mô hình Random Forest hợp lệ")
+            excluded.append(experiment_id)
+            continue
+        results.append(result)
+    if not results:
+        raise HTTPException(409, "Chưa có thí nghiệm Random Forest hợp lệ với đủ kết quả và mô hình +1, +3, +5 phút trong Split này")
+    comparison = _compare_results(results, list(SUPPORTED_HORIZONS))
+    selection = comparison.best_overall
+    assert selection is not None
+    selection.scope = "compared_experiments" if experiment_ids is not None else "completed_experiments_in_split"
+    selection.excluded_experiment_ids = excluded
+    selection.selection_saved = True
+    selection.selected_at = datetime.now(UTC)
+    try:
+        repository.save_best_overall_selection(
+            db, selection.selected_experiment_id,
+            {**selection.model_dump(mode="json"), "selected_by": str(user.id)},
+        )
+    except (SQLAlchemyError, LookupError) as exc:
+        db.rollback()
+        raise HTTPException(503, "Không lưu được lựa chọn Best Overall. Vui lòng thử lại.") from exc
+    return comparison

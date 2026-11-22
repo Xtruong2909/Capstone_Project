@@ -70,9 +70,9 @@ class SharedReportItem(Base):
     share_id = Column(UUID(as_uuid=True), ForeignKey("shared_reports.id", ondelete="CASCADE"), nullable=False, index=True)
     resource_type = Column(String(32), nullable=False)
     resource_id = Column(UUID(as_uuid=True), nullable=False)
-    # Pin an approved Dataset version so later uploads cannot silently change a published result.
-    resource_version_id = Column(
-        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT"), nullable=True,
+    # Pin an approved Dataset dataset_file so later uploads cannot silently change a published result.
+    resource_file_id = Column(
+        UUID(as_uuid=True), ForeignKey("dataset_files.id", ondelete="RESTRICT"), nullable=True,
     )
     visible_sections = Column(JSONB, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))

@@ -1,3 +1,4 @@
+from app.models import sharing as sharing
 from app.models.audit import AuditLog
 from app.models.data_quality import DataQualityCheck, DataQualityIssue
 from app.models.dataset import (
@@ -5,10 +6,10 @@ from app.models.dataset import (
     Dataset,
     DatasetAccessGrant,
     DatasetColumnMapping,
+    DatasetFile,
+    DatasetFileSession,
     DatasetGroupProcessingJob,
     DatasetUploadJob,
-    DatasetVersion,
-    DatasetVersionSession,
     RecordingSession,
 )
 from app.models.experiment import EvaluationMetric, Experiment, ForecastResult
@@ -25,8 +26,8 @@ from app.models.model_training import (
     FinalModel,
     ModelTrainingExperiment,
     ModelTrainingForecastResult,
-    ModelTrainingSplitExperimentCounter,
     ModelTrainingSplit,
+    ModelTrainingSplitExperimentCounter,
     ModelValidationResult,
 )
 from app.models.prediction import PredictionResult, PredictionRun
@@ -35,7 +36,6 @@ from app.models.traffic import (
     TrafficAggregationSessionResult,
     TrafficTimeSeries,
 )
-from app.models import sharing as sharing  # noqa: F401
 from app.models.user import Role, User
 
 __all__ = [
@@ -46,10 +46,10 @@ __all__ = [
     "Dataset",
     "DatasetAccessGrant",
     "DatasetColumnMapping",
+    "DatasetFile",
+    "DatasetFileSession",
     "DatasetGroupProcessingJob",
     "DatasetUploadJob",
-    "DatasetVersion",
-    "DatasetVersionSession",
     "EvaluationMetric",
     "Experiment",
     "ExperimentBatch",
@@ -63,8 +63,8 @@ __all__ = [
     "LagFeatureSplitSample",
     "ModelTrainingExperiment",
     "ModelTrainingForecastResult",
-    "ModelTrainingSplitExperimentCounter",
     "ModelTrainingSplit",
+    "ModelTrainingSplitExperimentCounter",
     "ModelValidationResult",
     "PredictionResult",
     "PredictionRun",

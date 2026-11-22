@@ -29,7 +29,7 @@ def split_training(
         module="Model Training",
         description="Train/test split prepared",
         user=user,
-        resource_id=payload.dataset_version_id,
+        resource_id=payload.dataset_file_id,
         ip_address=request.client.host if request and request.client else None,
         details={
             "operation": "train_test_split",

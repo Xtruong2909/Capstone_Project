@@ -73,21 +73,21 @@ def test_latest_lags_use_only_five_observed_minutes_from_one_session() -> None:
 
 
 def test_prediction_session_preview_uses_the_same_five_lags_as_forecast(monkeypatch: pytest.MonkeyPatch) -> None:
-    dataset_id, version_id, session_id, aggregation_id = (uuid4() for _ in range(4))
+    dataset_id, file_id, session_id, aggregation_id = (uuid4() for _ in range(4))
     start = datetime(2018, 10, 24, 6, 10, tzinfo=UTC)
     observations = [VehicleObservation(dataset_id, session_id, start + timedelta(minutes=i), 120 + i)
                     for i in range(5)]
     bins = [SimpleNamespace(time_bucket=observation.timestamp) for observation in observations]
     job = SimpleNamespace(id=aggregation_id, dataset_id=dataset_id,
-                          dataset_version_id=version_id, aggregation_interval=60)
+                          dataset_file_id=file_id, aggregation_interval=60)
     session = SimpleNamespace(id=session_id)
-    version = SimpleNamespace(id=version_id)
-    monkeypatch.setattr(service, "_visible_candidates", lambda *_args: [(None, job, session, version)])
+    dataset_file = SimpleNamespace(id=file_id)
+    monkeypatch.setattr(service, "_visible_candidates", lambda *_args: [(None, job, session, dataset_file)])
     monkeypatch.setattr(service, "_observations", lambda *_args: (bins, observations))
 
     response = service.list_sessions(
         SimpleNamespace(), SimpleNamespace(role_id="data_scientist"),
-        dataset_id=None, dataset_version_id=None, experiment_id=None,
+        dataset_id=None, dataset_file_id=None, experiment_id=None,
         eligible_only=True, page=1, page_size=20,
     )
 
@@ -102,7 +102,7 @@ def test_prediction_session_preview_uses_the_same_five_lags_as_forecast(monkeypa
     monkeypatch.setattr(service, "_observations", lambda *_args: (interrupted_bins, interrupted))
     invalid = service.list_sessions(
         SimpleNamespace(), SimpleNamespace(role_id="data_scientist"),
-        dataset_id=None, dataset_version_id=None, experiment_id=None,
+        dataset_id=None, dataset_file_id=None, experiment_id=None,
         eligible_only=False, page=1, page_size=20,
     ).sessions[0]
     assert not invalid.prediction_eligible

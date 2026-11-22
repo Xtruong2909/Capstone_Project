@@ -47,7 +47,7 @@ def _ordered(
 
 
 def _scope(row: TrafficObservation) -> tuple:
-    return row.dataset_version_id, row.roi_identifier, row.recording_session_id
+    return row.dataset_file_id, row.roi_identifier, row.recording_session_id
 
 
 def _observed(row: TrafficObservation) -> bool:
@@ -88,7 +88,7 @@ def build_training_features(
             future = [window[4 + h] for h in HORIZONS]
             y = [float(point.traffic_flow) for point in future]
             samples.append(TrainingSample(
-                dataset_version_id=current.dataset_version_id,
+                dataset_file_id=current.dataset_file_id,
                 roi_identifier=current.roi_identifier,
                 recording_session_id=current.recording_session_id,
                 history_start_time=window[0].time_bucket, time_bucket=current.time_bucket,
@@ -110,7 +110,7 @@ def build_prediction_features(
     if not rows:
         raise ValueError("Need five observed consecutive minutes for prediction")
     if len({_scope(row) for row in rows}) != 1:
-        raise ValueError("Prediction requires exactly one version, ROI and recording session")
+        raise ValueError("Prediction requires exactly one dataset_file, ROI and recording session")
     history = rows[-5:]
     if len(history) != 5 or not all(_observed(row) for row in history):
         raise ValueError("Need five observed consecutive minutes for prediction")
@@ -122,7 +122,7 @@ def build_prediction_features(
     current = history[-1]
     features, x = _lags(history)
     return PredictionFeatureResponse(
-        dataset_version_id=current.dataset_version_id, roi_identifier=current.roi_identifier,
+        dataset_file_id=current.dataset_file_id, roi_identifier=current.roi_identifier,
         recording_session_id=current.recording_session_id,
         history_start_time=history[0].time_bucket, latest_time_bucket=current.time_bucket,
         features=features, x=x,
@@ -133,24 +133,24 @@ def build_prediction_features(
 def prepare_features(
     db: Session, payload: FeatureRequest, user: User, *, prediction: bool,
 ) -> TrainingFeatureResponse | PredictionFeatureResponse:
-    version = crud_dataset_access.get_version(db, payload.dataset_version_id)
-    if version is None:
-        raise HTTPException(404, "Dataset version not found")
-    require_dataset_scientist(dataset_id=version.dataset_id, current_user=user, db=db)
+    dataset_file = crud_dataset_access.get_file(db, payload.dataset_file_id)
+    if dataset_file is None:
+        raise HTTPException(404, "Dataset dataset_file not found")
+    require_dataset_scientist(dataset_id=dataset_file.dataset_id, current_user=user, db=db)
     filename = resolve_original_filename(
-        db, dataset_id=version.dataset_id, version_id=version.id,
-        original_filename=version.original_filename,
+        db, dataset_id=dataset_file.dataset_id, file_id=dataset_file.id,
+        original_filename=dataset_file.original_filename,
     )
     start = recording_start_from_filename(filename)
     records = crud_feature_engineering.read_feature_series(
-        db, version_id=version.id, roi_identifier=payload.roi_identifier,
+        db, file_id=dataset_file.id, roi_identifier=payload.roi_identifier,
         recording_start=start, latest_only=prediction,
     )
-    # Current storage has one source file per version, no per-row session column.
-    # Do not merge versions or infer a session from a different version's file.
+    # Current storage has one source file per dataset_file, no per-row session column.
+    # Do not merge dataset_files or infer a session from a different dataset_file's file.
     observations = [TrafficObservation(
-        dataset_version_id=record.dataset_version_id, roi_identifier=record.roi_identifier,
-        recording_session_id=str(version.id),
+        dataset_file_id=record.dataset_file_id, roi_identifier=record.roi_identifier,
+        recording_session_id=str(dataset_file.id),
         time_bucket=recording_timestamp(record.time_bucket, start),
         traffic_flow=record.traffic_flow, aggregation_interval=record.aggregation_interval,
     ) for record in records]
@@ -161,6 +161,6 @@ def prepare_features(
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return TrainingFeatureResponse(
-        dataset_version_id=version.id, roi_identifier=payload.roi_identifier,
+        dataset_file_id=dataset_file.id, roi_identifier=payload.roi_identifier,
         sample_count=len(samples), samples=samples,
     )

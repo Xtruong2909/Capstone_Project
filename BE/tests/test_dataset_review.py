@@ -14,13 +14,13 @@ from app.api.v1.endpoints import datasets as endpoints
 from app.core import dataset_access
 from app.core.deps import get_current_user
 from app.database.database import get_db
-from app.models.dataset import Dataset, DatasetGroup, DatasetVersion, RecordingSession
+from app.models.dataset import Dataset, DatasetFile, DatasetGroup, RecordingSession
 from app.services import dataset_consumer_service, dataset_preview_service, dataset_review_service
 
 
 @pytest.fixture
 def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    dataset_id, version_id, session_id = uuid4(), uuid4(), uuid4()
+    dataset_id, file_id, session_id = uuid4(), uuid4(), uuid4()
     group_id = uuid4()
     dataset = Dataset(
         id=dataset_id, name="20181024-d1", source="pNEUMA",
@@ -28,8 +28,8 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         recording_date=date(2018, 10, 24), group_id=group_id,
     )
     dataset.group = DatasetGroup(id=group_id, name="Batch 01", source="pneuma", drone_id="d1")
-    version = DatasetVersion(
-        id=version_id, dataset_id=dataset_id, version_tag="v1.0",
+    dataset_file = DatasetFile(
+        id=file_id, dataset_id=dataset_id, 
         approval_status="PENDING",
     )
     session = RecordingSession(
@@ -47,33 +47,36 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(dataset_preview_service, "DATASET_UPLOAD_DIR", tmp_path)
     repo = dataset_review_service.crud_dataset
     monkeypatch.setattr(repo, "list_uploaded_datasets", lambda db, **kwargs: ([dataset], 1))
-    monkeypatch.setattr(repo, "get_latest_versions_for_datasets",
-                        lambda db, ids: {dataset_id: version})
-    monkeypatch.setattr(repo, "get_version_session_counts", lambda db, ids: {version_id: 1})
+    monkeypatch.setattr(repo, "get_latest_files_for_datasets",
+                        lambda db, ids: {dataset_id: dataset_file})
+    monkeypatch.setattr(repo, "get_file_session_counts", lambda db, ids: {file_id: 1})
     monkeypatch.setattr(repo, "get_dataset_by_id",
                         lambda db, key: dataset if key == dataset_id else None)
     monkeypatch.setattr(repo, "list_group_datasets",
-                        lambda db, key, visible_user_id: [dataset] if key == group_id else [])
+                        lambda db, key, visible_user_id, **kwargs: [dataset] if key == group_id else [])
     monkeypatch.setattr(repo, "get_dataset_group_by_id",
                         lambda db, key: dataset.group if key == group_id else None)
-    monkeypatch.setattr(repo, "get_dataset_latest_version",
-                        lambda db, key: (dataset, version) if key == dataset_id else None)
-    monkeypatch.setattr(repo, "get_dataset_latest_approved_version",
-                        lambda db, key: (dataset, version)
-                        if key == dataset_id and version.approval_status == "APPROVED" else None)
-    monkeypatch.setattr(repo, "get_dataset_version",
-                        lambda db, did, vid: (dataset, version)
-                        if (did, vid) == (dataset_id, version_id) else None)
-    monkeypatch.setattr(repo, "list_version_sessions",
+    monkeypatch.setattr(repo, "get_dataset_latest_file",
+                        lambda db, key: (dataset, dataset_file) if key == dataset_id else None)
+    monkeypatch.setattr(repo, "get_dataset_latest_approved_file",
+                        lambda db, key: (dataset, dataset_file)
+                        if key == dataset_id and dataset_file.approval_status == "APPROVED" else None)
+    monkeypatch.setattr(repo, "get_dataset_file",
+                        lambda db, did, vid: (dataset, dataset_file)
+                        if (did, vid) == (dataset_id, file_id) else None)
+    monkeypatch.setattr(repo, "list_file_sessions",
                         lambda db, vid, page, page_size: ([session], 1)
-                        if vid == version_id else ([], 0))
-    monkeypatch.setattr(repo, "get_version_session",
+                        if vid == file_id else ([], 0))
+    monkeypatch.setattr(repo, "get_file_session",
                         lambda db, vid, sid: session
-                        if (vid, sid) == (version_id, session_id) else None)
+                        if (vid, sid) == (file_id, session_id) else None)
     monkeypatch.setattr(repo, "get_dataset_column_mapping", lambda db, did, vid: None)
     monkeypatch.setattr(repo, "get_latest_dataset_column_mapping", lambda db, did: None)
-    monkeypatch.setattr(repo, "get_cleaning_history_by_version", lambda db, vid: None)
+    monkeypatch.setattr(repo, "get_cleaning_history_by_file", lambda db, vid: None)
+    monkeypatch.setattr(repo, "get_group_approval_counts", lambda db, ids, **kwargs:
+        {group_id: {dataset_file.approval_status: 1}} if group_id in ids else {})
     engineer = SimpleNamespace(id=uuid4(), role_id="data_engineer")
+    dataset.created_by = engineer.id
     app = FastAPI()
     app.include_router(endpoints.router, prefix="/api/v1/datasets")
     app.include_router(
@@ -89,9 +92,9 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     app.dependency_overrides[get_db] = lambda: object()
     app.dependency_overrides[get_current_user] = lambda: engineer
     return SimpleNamespace(
-        app=app, dataset=dataset, version=version, session=session,
+        app=app, dataset=dataset, dataset_file=dataset_file, session=session,
         path=path, engineer=engineer,
-        base=f"/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions",
+        base=f"/api/v1/datasets/{dataset_id}/files/{file_id}/sessions",
     )
 
 
@@ -107,6 +110,7 @@ def test_dataset_list_detail_and_sessions(review: SimpleNamespace) -> None:
         "group_id": str(review.dataset.group_id), "group_name": "Batch 01",
         "source": "pneuma", "drone_id": "d1",
         "dataset_count": 1, "total_sessions": 1,
+        "approval_status": "PENDING", "approval_counts": {"PENDING": 1},
     }]
     assert detail.status_code == 200, detail.text
     assert detail.json()["approval_status"] == "PENDING"
@@ -157,7 +161,7 @@ def test_group_review_three_step_flow(review: SimpleNamespace) -> None:
     }
 
 
-def test_group_review_consumer_requires_approved_version(
+def test_group_review_consumer_requires_approved_file(
     review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     scientist = SimpleNamespace(id=uuid4(), role_id="data_scientist")
@@ -166,13 +170,13 @@ def test_group_review_consumer_requires_approved_version(
                         lambda user, dataset_id, db: review.dataset)
     monkeypatch.setattr(dataset_consumer_service, "check_dataset_access",
                         lambda user, dataset_id, db: review.dataset)
-    monkeypatch.setattr(dataset_consumer_service.repo, "get_version",
-                        lambda db, version_id: review.version)
+    monkeypatch.setattr(dataset_consumer_service.repo, "get_file",
+                        lambda db, file_id: review.dataset_file)
     base = f"/api/v1/datasets/groups/{review.dataset.group_id}/datasets"
     with TestClient(review.app) as client:
         assert client.get(base).status_code == 404
         assert client.get(f"{base}/{review.dataset.id}/sessions").status_code == 404
-        review.version.approval_status = "APPROVED"
+        review.dataset_file.approval_status = "APPROVED"
         assert client.get(base).status_code == 200
         assert client.get(f"{base}/{review.dataset.id}/sessions").status_code == 200
         assert client.get(
@@ -191,14 +195,14 @@ def test_consumer_routes_check_approval_when_review_route_matches_first(
                         lambda user, dataset_id, db: review.dataset)
     monkeypatch.setattr(dataset_consumer_service, "check_dataset_access",
                         lambda user, dataset_id, db: review.dataset)
-    monkeypatch.setattr(dataset_consumer_service.repo, "get_version",
-                        lambda db, version_id: review.version)
+    monkeypatch.setattr(dataset_consumer_service.repo, "get_file",
+                        lambda db, file_id: review.dataset_file)
 
     with TestClient(review.app) as client:
         assert client.get(review.base).status_code == 403
         assert client.get(f"{review.base}/{review.session.id}").status_code == 403
         assert client.get(f"{review.base}/{review.session.id}/preview").status_code == 403
-        review.version.approval_status = "APPROVED"
+        review.dataset_file.approval_status = "APPROVED"
         assert client.get(review.base).status_code == 200
         assert client.get(f"{review.base}/{review.session.id}").status_code == 200
         assert client.get(f"{review.base}/{review.session.id}/preview",
@@ -239,26 +243,26 @@ def test_dataset_list_filters_same_drone_across_recording_dates(
 def test_dataset_list_shows_one_group_for_multiple_dates(
     review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    other_id, other_version_id = uuid4(), uuid4()
+    other_id, other_file_id = uuid4(), uuid4()
     other = Dataset(
         id=other_id, name="20181029-d1", source="pNEUMA",
         location_name="Athens, Greece", drone_id="d1",
         recording_date=date(2018, 10, 29), group_id=review.dataset.group_id,
     )
     other.group = review.dataset.group
-    other_version = DatasetVersion(
-        id=other_version_id, dataset_id=other_id, version_tag="v1.0",
+    other_file = DatasetFile(
+        id=other_file_id, dataset_id=other_id, 
         approval_status="PENDING",
     )
     repo = dataset_review_service.crud_dataset
     monkeypatch.setattr(repo, "list_uploaded_datasets",
                         lambda db, **kwargs: ([review.dataset, other], 1))
-    monkeypatch.setattr(repo, "get_latest_versions_for_datasets",
+    monkeypatch.setattr(repo, "get_latest_files_for_datasets",
                         lambda db, ids: {
-                            review.dataset.id: review.version, other_id: other_version,
+                            review.dataset.id: review.dataset_file, other_id: other_file,
                         })
-    monkeypatch.setattr(repo, "get_version_session_counts",
-                        lambda db, ids: {review.version.id: 1, other_version_id: 2})
+    monkeypatch.setattr(repo, "get_file_session_counts",
+                        lambda db, ids: {review.dataset_file.id: 1, other_file_id: 2})
 
     with TestClient(review.app) as client:
         default = client.get("/api/v1/datasets")
@@ -276,16 +280,16 @@ def test_dataset_list_shows_one_group_for_multiple_dates(
     ]
 
 
-def test_dataset_list_preserves_session_count_for_derived_version(
+def test_dataset_list_preserves_session_count_for_derived_file(
     review: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        dataset_review_service.crud_dataset, "get_version_session_counts",
+        dataset_review_service.crud_dataset, "get_file_session_counts",
         lambda db, ids: {},
     )
     monkeypatch.setattr(
-        dataset_review_service.crud_dataset, "get_cleaning_history_by_version",
-        lambda db, version_id: SimpleNamespace(parameters={
+        dataset_review_service.crud_dataset, "get_cleaning_history_by_file",
+        lambda db, file_id: SimpleNamespace(parameters={
             "source_session_ids": [str(review.session.id)],
         }),
     )
@@ -308,7 +312,7 @@ def test_session_preview_reads_raw_csv_with_pagination(review: SimpleNamespace) 
         invalid_limit = client.get(url, params={"limit": 101})
     assert first.status_code == 200, first.text
     assert first.json()["session_id"] == str(review.session.id)
-    assert first.json()["dataset_version_id"] == str(review.version.id)
+    assert first.json()["dataset_file_id"] == str(review.dataset_file.id)
     assert first.json()["dataset_name"] == "20181024-d1"
     assert first.json()["original_filename"] == review.session.original_filename
     assert first.json()["file_format"] == "csv"
@@ -354,10 +358,12 @@ def test_session_preview_normalizes_pneuma_points_as_typed_rows(
     assert payload["rows"][0]["track_id"] == 1
     assert payload["rows"][0]["lat"] == 37.977149
     assert payload["rows"][1]["time"] == 0.04
-    assert payload["pagination"]["total_rows"] == 3
+    # A cold bounded preview returns before the background index has counted all rows.
+    assert payload["pagination"]["total_rows"] in (None, 3)
     assert payload["pagination"]["has_more"] is True
     assert second.json()["rows"][0]["track_id"] == 2
     assert second.json()["pagination"]["has_more"] is False
+    assert second.json()["pagination"]["total_rows"] == 3
     assert invalid_columns.status_code == 422
     assert raw.status_code == 200, raw.text
     assert raw.json()["representation"] == "raw"
@@ -445,5 +451,5 @@ def test_swagger_exposes_dataset_review_contracts(review: SimpleNamespace) -> No
     for path in de_paths:
         assert paths[path]["get"]["tags"] == ["Dataset Preview & Review B\u01b0\u1edbc 2"]
     assert "/api/v1/datasets/{dataset_id}" not in paths
-    assert "/api/v1/datasets/{dataset_id}/versions/{version_id}/sessions/{session_id}" not in paths
+    assert "/api/v1/datasets/{dataset_id}/files/{file_id}/sessions/{session_id}" not in paths
     assert "/api/v1/datasets/{dataset_id}/preview" not in paths

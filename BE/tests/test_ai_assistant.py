@@ -49,16 +49,16 @@ def _experiment(experiment_id, split_id, *, mae=12.0, eligible=False, test_origi
 
 @pytest.fixture
 def facts(monkeypatch):
-    version_id, split_id, first_id, second_id = (uuid4() for _ in range(4))
+    file_id, split_id, first_id, second_id = (uuid4() for _ in range(4))
     experiments = {first_id: _experiment(first_id, split_id),
                    second_id: _experiment(second_id, split_id, mae=10.0)}
     monkeypatch.setattr(service.repo, "get_experiment", lambda db, key: experiments.get(key))
     monkeypatch.setattr(service.repo, "get_split", lambda db, key: SimpleNamespace(
-        id=split_id, dataset_version_id=version_id,
+        id=split_id, dataset_file_id=file_id,
     ))
-    monkeypatch.setattr(service, "check_dataset_version_access", lambda user, version, db: None)
+    monkeypatch.setattr(service, "check_dataset_file_access", lambda user, dataset_file, db: None)
     user = SimpleNamespace(id=uuid4(), role_id="data_scientist")
-    return version_id, first_id, second_id, experiments, user
+    return file_id, first_id, second_id, experiments, user
 
 
 @pytest.mark.parametrize("action", [
@@ -67,7 +67,7 @@ def facts(monkeypatch):
     AssistantAction.CHAT,
 ])
 def test_five_actions_use_saved_context(facts, monkeypatch, action):
-    version_id, first_id, second_id, _, user = facts
+    file_id, first_id, second_id, _, user = facts
     captured = {}
 
     def fake_gemini(chosen_action, context, message):
@@ -101,7 +101,7 @@ def test_five_actions_use_saved_context(facts, monkeypatch, action):
         payload["prediction_id"] = 7
         origin = datetime(2018, 10, 24, 6, 41, tzinfo=UTC)
         model = SimpleNamespace(id=uuid4(), experiment_id=first_id,
-                                dataset_version_id=version_id)
+                                dataset_file_id=file_id)
         rows = [SimpleNamespace(horizon_minutes=h, timestamp=origin + timedelta(minutes=h),
                                 predicted_value=100 + h, actual_value=None) for h in (1, 3, 5)]
         monkeypatch.setattr(service.repo, "get_forecast", lambda db, key: SimpleNamespace(
@@ -163,16 +163,16 @@ def test_incomparable_experiments_have_no_best(facts, monkeypatch):
 
 
 def test_chat_automatically_analyzes_current_dataset(facts, monkeypatch):
-    version_id, _, _, _, user = facts
+    file_id, _, _, _, user = facts
     dataset = SimpleNamespace(
         name="pNEUMA Athens", description="Dữ liệu quỹ đạo UAV",
         location_name="Athens",
     )
-    version = SimpleNamespace(
-        dataset_id=uuid4(), dataset=dataset, version_tag="v1", file_format="CSV",
+    dataset_file = SimpleNamespace(
+        dataset_id=uuid4(), dataset=dataset,  file_format="CSV",
         total_records=1200, approval_status="APPROVED",
     )
-    monkeypatch.setattr(service.repo, "get_dataset_version", lambda db, key: version)
+    monkeypatch.setattr(service.repo, "get_dataset_file", lambda db, key: dataset_file)
     monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key, limit=5: [])
     monkeypatch.setattr(service.repo, "list_final_models", lambda db, key: [])
     monkeypatch.setattr(service.repo, "get_latest_quality_check", lambda db, key: SimpleNamespace(
@@ -190,7 +190,7 @@ def test_chat_automatically_analyzes_current_dataset(facts, monkeypatch):
 
     monkeypatch.setattr(service, "generate_analysis", fake_gemini)
     response = service.run_assistant(None, AssistantRequest(
-        message="Phân tích dataset này", dataset_version_id=version_id,
+        message="Phân tích dataset này", dataset_file_id=file_id,
     ), user)
 
     assert response.action == AssistantAction.CHAT
@@ -206,7 +206,7 @@ def test_chat_automatically_analyzes_current_dataset(facts, monkeypatch):
 def test_chat_automatically_selects_experiment_action(
     facts, monkeypatch, question, expected_action, expected_count,
 ):
-    version_id, first_id, second_id, _, user = facts
+    file_id, first_id, second_id, _, user = facts
     monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key, limit=5: [
         SimpleNamespace(id=first_id), SimpleNamespace(id=second_id),
     ])
@@ -218,7 +218,7 @@ def test_chat_automatically_selects_experiment_action(
 
     monkeypatch.setattr(service, "generate_analysis", fake_gemini)
     response = service.run_assistant(None, AssistantRequest(
-        message=question, dataset_version_id=version_id,
+        message=question, dataset_file_id=file_id,
     ), user)
 
     assert response.action == expected_action
@@ -366,11 +366,11 @@ def test_group_id_resolves_latest_completed_aggregation(monkeypatch):
 
 
 def test_group_chat_works_before_aggregation(monkeypatch):
-    group_id, dataset_id, version_id, session_id = (uuid4() for _ in range(4))
+    group_id, dataset_id, file_id, session_id = (uuid4() for _ in range(4))
     user = SimpleNamespace(id=uuid4(), role_id="data_scientist")
     dataset = SimpleNamespace(
         dataset_id=dataset_id, name="20181024-d1", recording_date=datetime(2018, 10, 24, tzinfo=UTC).date(),
-        drone_id="d1", version_id=version_id, version="v1", total_sessions=1,
+        drone_id="d1", file_id=file_id, dataset_file="v1", total_sessions=1,
         approval_status="APPROVED",
     )
     session = SimpleNamespace(
@@ -417,7 +417,7 @@ def test_follow_up_lists_sessions_in_current_batch(monkeypatch):
     monkeypatch.setattr(service, "_group_context", lambda db, key, user: {
         "group_name": "Batch 01",
         "datasets": [{"dataset_id": str(dataset_id), "name": "20181024-d1",
-                      "total_sessions": 2, "version_id": str(uuid4())}],
+                      "total_sessions": 2, "file_id": str(uuid4())}],
         "sessions": [
             {"dataset_id": str(dataset_id), "filename": "20181024_d1_0830_0900.csv"},
             {"dataset_id": str(dataset_id), "filename": "20181024_d1_0900_0930.csv"},
@@ -437,7 +437,7 @@ def test_follow_up_lists_sessions_in_current_batch(monkeypatch):
 
 
 def test_comparison_question_selects_named_experiments(facts, monkeypatch):
-    version_id, first_id, second_id, experiments, user = facts
+    file_id, first_id, second_id, experiments, user = facts
     experiments[first_id].name = "Ex-01"
     experiments[second_id].name = "Ex-02"
     monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key, limit=5: [
@@ -447,7 +447,7 @@ def test_comparison_question_selects_named_experiments(facts, monkeypatch):
                         AssistantResult(summary="Hai thí nghiệm có cùng tập Test."))
 
     response = service.run_assistant(None, AssistantRequest(
-        message="So sánh Ex-01 và Ex-02", dataset_version_id=version_id,
+        message="So sánh Ex-01 và Ex-02", dataset_file_id=file_id,
     ), user)
 
     assert response.action == AssistantAction.EXPERIMENT_COMPARISON
@@ -467,7 +467,7 @@ def test_detects_question_intent_automatically(question, expected):
 
 
 def test_analysis_question_selects_named_experiment_instead_of_latest(facts, monkeypatch):
-    version_id, first_id, second_id, experiments, user = facts
+    file_id, first_id, second_id, experiments, user = facts
     experiments[first_id].name = "Ex-01"
     experiments[second_id].name = "Ex-02"
     monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key, limit=5: [
@@ -475,7 +475,7 @@ def test_analysis_question_selects_named_experiment_instead_of_latest(facts, mon
     ])
 
     request = service._resolve_chat_action(None, AssistantRequest(
-        message="Ex-01 thế nào?", dataset_version_id=version_id,
+        message="Ex-01 thế nào?", dataset_file_id=file_id,
     ), user)
 
     assert request.action == AssistantAction.EXPERIMENT_ANALYSIS
@@ -483,7 +483,7 @@ def test_analysis_question_selects_named_experiment_instead_of_latest(facts, mon
 
 
 def test_chat_automatically_recommends_from_latest_experiment(facts, monkeypatch):
-    version_id, first_id, _, _, user = facts
+    file_id, first_id, _, _, user = facts
     monkeypatch.setattr(service.repo, "list_recent_experiments", lambda db, key, limit=5: [
         SimpleNamespace(id=first_id),
     ])
@@ -495,7 +495,7 @@ def test_chat_automatically_recommends_from_latest_experiment(facts, monkeypatch
                                         suggested_configuration=config, reason="MAE đã lưu"))
 
     response = service.run_assistant(None, AssistantRequest(
-        message="Gợi ý cấu hình Random Forest", dataset_version_id=version_id,
+        message="Gợi ý cấu hình Random Forest", dataset_file_id=file_id,
     ), user)
 
     assert response.action == AssistantAction.MODEL_RECOMMENDATION
@@ -503,13 +503,13 @@ def test_chat_automatically_recommends_from_latest_experiment(facts, monkeypatch
 
 
 def test_chat_automatically_explains_latest_forecast(facts, monkeypatch):
-    version_id, first_id, _, _, user = facts
+    file_id, first_id, _, _, user = facts
     origin = datetime(2018, 10, 24, 6, 41, tzinfo=UTC)
     model = SimpleNamespace(id=uuid4(), experiment_id=first_id,
-                            dataset_version_id=version_id)
+                            dataset_file_id=file_id)
     rows = [SimpleNamespace(horizon_minutes=h, timestamp=origin + timedelta(minutes=h),
                             predicted_value=100 + h, actual_value=None) for h in (1, 3, 5)]
-    monkeypatch.setattr(service.repo, "get_latest_forecast_for_version", lambda db, key:
+    monkeypatch.setattr(service.repo, "get_latest_forecast_for_file", lambda db, key:
                         SimpleNamespace(id=7))
     monkeypatch.setattr(service.repo, "get_forecast", lambda db, key: SimpleNamespace(
         model_id=model.id, last_observed_time=origin,
@@ -521,7 +521,7 @@ def test_chat_automatically_explains_latest_forecast(facts, monkeypatch):
                                         explanation="Dự báo đã lưu tăng theo thời gian."))
 
     response = service.run_assistant(None, AssistantRequest(
-        message="Giải thích dự báo này", dataset_version_id=version_id,
+        message="Giải thích dự báo này", dataset_file_id=file_id,
     ), user)
 
     assert response.action == AssistantAction.FORECAST_EXPLANATION
@@ -752,7 +752,7 @@ def test_http_endpoint_has_one_post_route_and_requires_data_scientist(monkeypatc
     try:
         assert list(app.openapi()["paths"]["/api/ai/assistant"]) == ["post"]
         response = TestClient(app).post("/api/ai/assistant", json={
-            "action": "CHAT", "message": "Hãy phân tích", "dataset_version_id": str(uuid4()),
+            "action": "CHAT", "message": "Hãy phân tích", "dataset_file_id": str(uuid4()),
         })
         assert response.status_code == 403
     finally:

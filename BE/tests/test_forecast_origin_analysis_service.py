@@ -9,7 +9,7 @@ from app.services import forecast_origin_analysis_service as service
 
 
 def _window():
-    dataset_id, version_id, session_id, job_id = (uuid4() for _ in range(4))
+    dataset_id, file_id, session_id, job_id = (uuid4() for _ in range(4))
     origin = datetime(2018, 11, 1, 6, 10, tzinfo=UTC)
     sample = SimpleNamespace(
         dataset_id=dataset_id, session_id=session_id, timestamp=origin,
@@ -17,11 +17,11 @@ def _window():
         **{f"lag_{index}": 100 + index for index in range(1, 6)},
         **{f"target_h{horizon}": 120 + horizon for horizon in (1, 3, 5)},
     )
-    job = SimpleNamespace(id=job_id, dataset_id=dataset_id, dataset_version_id=version_id)
+    job = SimpleNamespace(id=job_id, dataset_id=dataset_id, dataset_file_id=file_id)
     bins = {}
     for index in range(5):
         bins[session_id, origin - timedelta(minutes=index)] = SimpleNamespace(
-            dataset_version_id=version_id, aggregation_id=job_id,
+            dataset_file_id=file_id, aggregation_id=job_id,
             aggregation_interval=60, bin_status="UNKNOWN", eligible_for_training=None,
             vehicle_count=100 + index + 1,
         )
@@ -30,7 +30,7 @@ def _window():
         target = origin + timedelta(minutes=horizon)
         actual = 120 + horizon
         bins[session_id, target] = SimpleNamespace(
-            dataset_version_id=version_id, aggregation_id=job_id,
+            dataset_file_id=file_id, aggregation_id=job_id,
             aggregation_interval=60, bin_status="UNKNOWN", eligible_for_training=None,
             vehicle_count=actual,
         )
@@ -70,7 +70,7 @@ def test_aggregate_metrics_use_all_complete_origins() -> None:
     assert [metric.rmse for metric in metrics] == [1, 3, 5]
 
 
-def test_analysis_uses_completed_aggregation_sessions_without_version_link(monkeypatch) -> None:
+def test_analysis_uses_completed_aggregation_sessions_without_file_link(monkeypatch) -> None:
     sample, rows, bins, job = _window()
     experiment_id, split_id, generation_id, root_id = (uuid4() for _ in range(4))
     sample.generation_id = generation_id
@@ -78,7 +78,7 @@ def test_analysis_uses_completed_aggregation_sessions_without_version_link(monke
     job.status = "COMPLETED"
     job.aggregation_interval = 60
     experiment = SimpleNamespace(
-        id=experiment_id, status="COMPLETED", lag_feature_split_id=split_id,
+        id=experiment_id, status="COMPLETED", lag_feature_split_id=split_id, created_by="owner",
         performance_by_model_and_horizon={"RANDOM_FOREST": {
             str(horizon): {"mae": float(horizon), "rmse": float(horizon), "sample_count": 1}
             for horizon in (1, 3, 5)
@@ -105,7 +105,7 @@ def test_analysis_uses_completed_aggregation_sessions_without_version_link(monke
     monkeypatch.setattr(service.repo, "list_random_forest_predictions", lambda *_: list(rows.values()))
 
     result = service.get_forecast_origin_analysis(
-        None, SimpleNamespace(role_id="data_scientist"), experiment_id,
+        None, SimpleNamespace(role_id="data_scientist", id="owner"), experiment_id,
     )
     assert len(result.sessions) == 1
     assert result.selected_session_id == sample.session_id
@@ -114,7 +114,7 @@ def test_analysis_uses_completed_aggregation_sessions_without_version_link(monke
     assert [row.sample_count for row in result.overall_metrics] == [1, 1, 1]
     with pytest.raises(HTTPException) as invalid:
         service.get_forecast_origin_analysis(
-            None, SimpleNamespace(role_id="data_scientist"), experiment_id,
+            None, SimpleNamespace(role_id="data_scientist", id="owner"), experiment_id,
             session_id=sample.session_id, origin_time=sample.timestamp + timedelta(minutes=1),
         )
     assert invalid.value.status_code == 422

@@ -35,7 +35,7 @@ MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 @pytest.fixture
 def storage() -> tuple:
     schema = "training_test_" + uuid4().hex
-    dataset_id, version_id, user_id = uuid4(), uuid4(), uuid4()
+    dataset_id, file_id, user_id = uuid4(), uuid4(), uuid4()
     schema_created = False
     try:
         with engine.connect() as connection:
@@ -45,7 +45,7 @@ def storage() -> tuple:
             connection.execute(text("CREATE TABLE datasets (id UUID PRIMARY KEY)"))
             connection.execute(
                 text(
-                    "CREATE TABLE dataset_versions (id UUID PRIMARY KEY, "
+                    "CREATE TABLE dataset_files (id UUID PRIMARY KEY, "
                     "dataset_id UUID NOT NULL REFERENCES datasets(id))"
                 )
             )
@@ -57,8 +57,8 @@ def storage() -> tuple:
             ))
             connection.execute(text("INSERT INTO datasets VALUES (:id)"), {"id": dataset_id})
             connection.execute(
-                text("INSERT INTO dataset_versions (id, dataset_id) VALUES (:id, :dataset_id)"),
-                {"id": version_id, "dataset_id": dataset_id},
+                text("INSERT INTO dataset_files (id, dataset_id) VALUES (:id, :dataset_id)"),
+                {"id": file_id, "dataset_id": dataset_id},
             )
             connection.execute(text("INSERT INTO users (id) VALUES (:id)"), {"id": user_id})
             connection.commit()
@@ -137,7 +137,7 @@ def storage() -> tuple:
                 connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         raise
     try:
-        yield schema, version_id, user_id, dataset_id
+        yield schema, file_id, user_id, dataset_id
     finally:
         with engine.begin() as connection:
             connection.execute(text("SET search_path TO public"))
@@ -147,11 +147,11 @@ def storage() -> tuple:
 def test_persist_reload_compare_and_concurrent_names(
     storage: tuple, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    schema, version_id, user_id, _ = storage
-    monkeypatch.setattr(service, "require_version", lambda *args, **kwargs: None)
+    schema, file_id, user_id, _ = storage
+    monkeypatch.setattr(service, "require_file", lambda *args, **kwargs: None)
     user = SimpleNamespace(id=user_id, role_id="admin")
     split = make_split()
-    split.dataset_version_id = version_id
+    split.dataset_file_id = file_id
 
     def run(n_estimators: int) -> object:
         with engine.connect() as connection:
@@ -162,7 +162,7 @@ def test_persist_reload_compare_and_concurrent_names(
                 with Session(bind=connection) as db:
                     split_id = repository.save_split(
                         db,
-                        version_id,
+                        file_id,
                         service.split_fingerprint(split),
                         split.model_dump(mode="json"),
                     ).id
@@ -215,7 +215,7 @@ def test_persist_reload_compare_and_concurrent_names(
                 reused = service.create_and_run(
                     db,
                     TrainingExperimentRequest(
-                        dataset_version_id=version_id,
+                        dataset_file_id=file_id,
                         split_id=results[0].split_id,
                         hyperparameters={"n_estimators": 3},
                     ),
@@ -227,18 +227,18 @@ def test_persist_reload_compare_and_concurrent_names(
                     mode="json"
                 )
 
-                new_dataset_id, new_version_id = uuid4(), uuid4()
+                new_dataset_id, new_file_id = uuid4(), uuid4()
                 db.execute(text("INSERT INTO datasets (id) VALUES (:id)"), {"id": new_dataset_id})
                 db.execute(
-                    text("INSERT INTO dataset_versions (id, dataset_id) VALUES (:id, :dataset_id)"),
-                    {"id": new_version_id, "dataset_id": new_dataset_id},
+                    text("INSERT INTO dataset_files (id, dataset_id) VALUES (:id, :dataset_id)"),
+                    {"id": new_file_id, "dataset_id": new_dataset_id},
                 )
                 new_split = make_split()
-                new_split.dataset_version_id = new_version_id
+                new_split.dataset_file_id = new_file_id
                 first_for_new_dataset = service.create_and_run(
                     db,
                     TrainingExperimentRequest(
-                        dataset_version_id=new_version_id,
+                        dataset_file_id=new_file_id,
                         split_result=new_split,
                         hyperparameters={"n_estimators": 3},
                     ),
@@ -254,16 +254,16 @@ def test_persist_reload_compare_and_concurrent_names(
 def test_split_api_saves_id_before_first_experiment(
     storage: tuple, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    schema, version_id, user_id, _ = storage
+    schema, file_id, user_id, _ = storage
     monkeypatch.setattr(
-        splitting.crud_dataset_access, "get_version", lambda *a: SimpleNamespace(dataset_id=uuid4())
+        splitting.crud_dataset_access, "get_file", lambda *a: SimpleNamespace(dataset_id=uuid4())
     )
     monkeypatch.setattr(splitting, "require_dataset_scientist", lambda **kw: None)
-    monkeypatch.setattr(service, "require_version", lambda *a, **kw: None)
+    monkeypatch.setattr(service, "require_file", lambda *a, **kw: None)
     data = request_data(10)
-    data["dataset_version_id"] = str(version_id)
+    data["dataset_file_id"] = str(file_id)
     for sample in data["samples"]:
-        sample["dataset_version_id"] = str(version_id)
+        sample["dataset_file_id"] = str(file_id)
     user = SimpleNamespace(id=user_id, role_id="admin")
     with engine.connect() as connection:
         connection.execute(text(f'SET search_path TO "{schema}"'))
@@ -287,7 +287,7 @@ def test_split_api_saves_id_before_first_experiment(
                 )
                 assert result.status == "COMPLETED"
                 assert result.split_id == first.split_id
-                assert result.dataset_version_id == version_id
+                assert result.dataset_file_id == file_id
         finally:
             connection.rollback()
             connection.execute(text("SET search_path TO public"))
@@ -301,9 +301,9 @@ def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
 
     from app.models.model_training import FinalModel, ModelTrainingExperiment, ModelValidationResult
 
-    schema, version_id, user_id, dataset_id = storage
+    schema, file_id, user_id, dataset_id = storage
     split = make_split()
-    split.dataset_version_id = version_id
+    split.dataset_file_id = file_id
     origin = datetime(2018, 10, 24, 6, 48, tzinfo=UTC)
     with engine.connect() as connection:
         connection.execute(text(f'SET search_path TO "{schema}"'))
@@ -332,7 +332,7 @@ def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
             connection.commit()
             with Session(bind=connection) as db:
                 saved_split = repository.save_split(
-                    db, version_id, uuid4().hex, split.model_dump(mode="json")
+                    db, file_id, uuid4().hex, split.model_dump(mode="json")
                 )
                 experiment = ModelTrainingExperiment(
                     dataset_id=dataset_id,
@@ -353,10 +353,10 @@ def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
                 )
                 final = FinalModel(
                     experiment_id=experiment.id,
-                    dataset_version_id=version_id,
+                    dataset_file_id=file_id,
                     split_id=saved_split.id,
                     roi_identifier="MAIN_ROI",
-                    recording_session_id=str(version_id),
+                    recording_session_id=str(file_id),
                     artifact_path="final.joblib",
                     artifact_sha256="b" * 64,
                     trained_through=origin,
@@ -366,7 +366,7 @@ def test_prediction_migration_and_forecast_persistence(storage: tuple) -> None:
                 )
                 db.add_all([validation, final])
                 db.commit()
-                assert repository.list_completed_forests(db, version_id)[0].id == experiment.id
+                assert repository.list_completed_forests(db, file_id)[0].id == experiment.id
                 assert repository.get_validation_result(db, experiment.id).sample_count == 3
                 assert repository.get_final_model(db, experiment.id).id == final.id
                 forecasts = [

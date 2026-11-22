@@ -136,7 +136,7 @@ def admin_dataset_catalog(
     db: Session = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> list[AccessibleDataset]:
-    """List all datasets for Admin, regardless of version approval status."""
+    """List all datasets for Admin, regardless of dataset_file approval status."""
     return service.list_accessible(db, admin, search, skip, limit)
 
 
@@ -166,7 +166,7 @@ def eligible_users(
     include_in_schema=False,
     status_code=201,
     summary="Cấp quyền truy cập dataset cho người dùng",
-    responses={409: {"description": "Dataset chưa có phiên bản APPROVED hoặc quyền đã tồn tại"}},
+    responses={409: {"description": "Dataset chưa có dữ liệu APPROVED hoặc quyền đã tồn tại"}},
 )
 def grant_access(
     dataset_id: UUID,
@@ -176,7 +176,7 @@ def grant_access(
 ) -> DatasetAccessResponse:
     """Admin cấp quyền toàn dataset cho Data Scientist hoặc Business User.
 
-    Dataset phải có ít nhất một phiên bản APPROVED trước khi cấp quyền.
+    Dataset phải có ít nhất một dữ liệu APPROVED trước khi cấp quyền.
     Trả về 409 nếu chưa được duyệt hoặc quyền đã tồn tại.
     Ghi nhận người cấp và thời gian cấp quyền.
     Quyền truy cập dataset không thay thế quyền thực hiện từng chức năng theo vai trò.
@@ -316,48 +316,48 @@ def approved_group_session_preview(
 
 
 @approved_router.get(
-    "/{dataset_id}/versions/{version_id}/sessions",
+    "/{dataset_id}/files/{file_id}/sessions",
     response_model=RecordingSessionListResponse,
     include_in_schema=False,
-    summary="Data Scientist xem Recording Sessions của Dataset Version đã duyệt",
+    summary="Data Scientist xem Recording Sessions của Dataset File đã duyệt",
     responses={
-        403: {"description": "Sai vai trò, chưa có quyền hoặc phiên bản chưa duyệt"},
-        404: {"description": "Không tìm thấy dataset, phiên bản hoặc file"},
+        403: {"description": "Sai vai trò, chưa có quyền hoặc dữ liệu chưa duyệt"},
+        404: {"description": "Không tìm thấy dataset, dữ liệu hoặc file"},
     },
 )
 def list_consumer_dataset_sessions(
     dataset_id: UUID,
-    version_id: UUID,
+    file_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> RecordingSessionListResponse:
-    """Lấy dataset_id và version_id từ GET /datasets/approved.
+    """Lấy dataset_id và file_id từ GET /datasets/approved.
 
-    Chỉ DS/BU có grant được xem đúng phiên bản APPROVED đã chọn.
+    Chỉ DS/BU có grant được xem đúng dữ liệu APPROVED đã chọn.
     Trả metadata, columns, rows và pagination; không chỉnh sửa file.
     """
     return list_approved_recording_sessions(
-        db, current_user, dataset_id, version_id, page, page_size,
+        db, current_user, dataset_id, file_id, page, page_size,
     )
 
 
 @approved_router.get(
-    "/{dataset_id}/versions/{version_id}/sessions/{session_id}/preview",
+    "/{dataset_id}/files/{file_id}/sessions/{session_id}/preview",
     response_model=RecordingSessionPreviewResponse,
     include_in_schema=False,
     summary="Data Scientist xem trước CSV của một Recording Session",
     responses={
-        403: {"description": "Không có quyền hoặc Version chưa được duyệt"},
-        404: {"description": "Không tìm thấy Dataset, Version, Session hoặc file"},
+        403: {"description": "Không có quyền hoặc File chưa được duyệt"},
+        404: {"description": "Không tìm thấy Dataset, File, Session hoặc file"},
         415: {"description": "Định dạng không được hỗ trợ"},
         422: {"description": "Không đọc được nội dung Session"},
     },
 )
 def preview_consumer_recording_session(
     dataset_id: UUID,
-    version_id: UUID,
+    file_id: UUID,
     session_id: UUID,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -366,9 +366,9 @@ def preview_consumer_recording_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> RecordingSessionPreviewResponse:
-    """Preview paginated CSV rows for one session in an approved version."""
+    """Preview paginated CSV rows for one session in an approved dataset_file."""
     return preview_approved_recording_session(
-        db, current_user, dataset_id, version_id, session_id,
+        db, current_user, dataset_id, file_id, session_id,
         page=page, limit=limit, column_offset=column_offset,
         representation=representation,
     )

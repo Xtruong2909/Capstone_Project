@@ -12,14 +12,14 @@ from app.main import app
 from app.schemas.feature_engineering import FeatureRequest, TrafficObservation
 from app.services import feature_engineering_service as service
 
-VERSION = uuid4()
+FILE = uuid4()
 START = datetime(2018, 10, 24, 10, tzinfo=UTC)
 
 
 def series(count: int = 15) -> list[TrafficObservation]:
     flows = [189, 175, 203, 197, 190, 192, 180, 170, 181, 178, 172, 195, 208, 195, 197]
     return [TrafficObservation(
-        dataset_version_id=VERSION, recording_session_id="session-a",
+        dataset_file_id=FILE, recording_session_id="session-a",
         time_bucket=START + timedelta(minutes=i), traffic_flow=flows[i % len(flows)],
     ) for i in range(count)]
 
@@ -85,7 +85,7 @@ def test_resume_after_gap_without_filling_zero() -> None:
 
 
 @pytest.mark.parametrize("field,value", [
-    ("recording_session_id", "session-b"), ("dataset_version_id", uuid4()),
+    ("recording_session_id", "session-b"), ("dataset_file_id", uuid4()),
     ("roi_identifier", "OTHER_ROI"),
 ])
 def test_never_cross_scope(field: str, value: object) -> None:
@@ -135,13 +135,13 @@ def test_reject_duplicates_and_nonfixed_config() -> None:
 
 
 def test_service_and_repository_integration(monkeypatch: pytest.MonkeyPatch) -> None:
-    version = SimpleNamespace(id=VERSION, dataset_id=uuid4(), original_filename="20181024_d1_0830_0900.csv")
-    monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: version)
+    dataset_file = SimpleNamespace(id=FILE, dataset_id=uuid4(), original_filename="20181024_d1_0830_0900.csv")
+    monkeypatch.setattr(service.crud_dataset_access, "get_file", lambda *_: dataset_file)
     access = MagicMock()
     monkeypatch.setattr(service, "require_dataset_scientist", access)
     read = MagicMock(return_value=series())
     monkeypatch.setattr(service.crud_feature_engineering, "read_feature_series", read)
-    request = FeatureRequest(dataset_version_id=VERSION)
+    request = FeatureRequest(dataset_file_id=FILE)
     db, user = MagicMock(), SimpleNamespace(role_id="data_scientist")
     training = service.prepare_features(db, request, user, prediction=False)
     assert training.sample_count == 6
@@ -149,13 +149,13 @@ def test_service_and_repository_integration(monkeypatch: pytest.MonkeyPatch) -> 
     prediction = service.prepare_features(db, request, user, prediction=True)
     assert prediction.x == [197, 195, 208, 195, 172]
     assert read.call_args.kwargs["latest_only"] is True
-    assert access.call_args.kwargs["dataset_id"] == version.dataset_id
+    assert access.call_args.kwargs["dataset_id"] == dataset_file.dataset_id
     read.return_value = []
     with pytest.raises(HTTPException) as error:
         service.prepare_features(db, request, user, prediction=True)
     assert error.value.status_code == 422
     with pytest.raises(ValidationError):
-        FeatureRequest(dataset_version_id=VERSION, lag_count=6)
+        FeatureRequest(dataset_file_id=FILE, lag_count=6)
     access.side_effect = HTTPException(403, "Dataset access has not been granted")
     read.reset_mock()
     with pytest.raises(HTTPException) as error:
@@ -172,17 +172,17 @@ def test_openapi_does_not_expose_removed_routes() -> None:
 
 def test_roi_hidden_in_request_schema_but_defaults_and_compatibility_remain() -> None:
     schema = FeatureRequest.model_json_schema()
-    assert set(schema["properties"]) == {"dataset_version_id"}
-    assert FeatureRequest(dataset_version_id=VERSION).roi_identifier == "MAIN_ROI"
-    assert FeatureRequest(dataset_version_id=VERSION, roi_identifier="ROI-A").roi_identifier == "ROI-A"
+    assert set(schema["properties"]) == {"dataset_file_id"}
+    assert FeatureRequest(dataset_file_id=FILE).roi_identifier == "MAIN_ROI"
+    assert FeatureRequest(dataset_file_id=FILE, roi_identifier="ROI-A").roi_identifier == "ROI-A"
     with pytest.raises(ValidationError):
-        FeatureRequest(dataset_version_id=VERSION, roi_identifier="")
+        FeatureRequest(dataset_file_id=FILE, roi_identifier="")
 
 
-def test_missing_version_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: None)
+def test_missing_file_returns_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(service.crud_dataset_access, "get_file", lambda *_: None)
     with pytest.raises(HTTPException) as error:
-        service.prepare_features(MagicMock(), FeatureRequest(dataset_version_id=VERSION), MagicMock(), prediction=False)
+        service.prepare_features(MagicMock(), FeatureRequest(dataset_file_id=FILE), MagicMock(), prediction=False)
     assert error.value.status_code == 404
 
 
@@ -197,15 +197,15 @@ def test_repository_scope_and_latest_limit(monkeypatch: pytest.MonkeyPatch, pred
     factory = MagicMock(return_value=query)
     monkeypatch.setattr(repo, "traffic_time_query", factory)
     repo.read_feature_series(
-        MagicMock(), version_id=VERSION, roi_identifier="ROI-A",
+        MagicMock(), file_id=FILE, roi_identifier="ROI-A",
         recording_start=START, latest_only=prediction,
     )
     assert factory.call_args.kwargs["descending"] is prediction
     conditions = query.filter.call_args.args
     assert [condition.left.name for condition in conditions] == [
-        "dataset_version_id", "roi_identifier", "aggregation_interval",
+        "dataset_file_id", "roi_identifier", "aggregation_interval",
     ]
-    assert [condition.right.value for condition in conditions] == [VERSION, "ROI-A", 60]
+    assert [condition.right.value for condition in conditions] == [FILE, "ROI-A", 60]
     if prediction:
         query.limit.assert_called_once_with(5)
     else:
@@ -222,24 +222,24 @@ def test_independent_sessions_with_overlapping_times() -> None:
 
 
 def test_adapter_rebases_legacy_minutes(monkeypatch: pytest.MonkeyPatch) -> None:
-    version = SimpleNamespace(id=VERSION, dataset_id=uuid4(), original_filename="20181024_d1_0830_0900.csv")
-    monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: version)
+    dataset_file = SimpleNamespace(id=FILE, dataset_id=uuid4(), original_filename="20181024_d1_0830_0900.csv")
+    monkeypatch.setattr(service.crud_dataset_access, "get_file", lambda *_: dataset_file)
     monkeypatch.setattr(service, "require_dataset_scientist", MagicMock())
     rows = [row.model_copy(update={"time_bucket": datetime(1970, 1, 1, tzinfo=UTC) + timedelta(minutes=i)}) for i, row in enumerate(series(5))]
     monkeypatch.setattr(service.crud_feature_engineering, "read_feature_series", lambda *args, **kwargs: rows)
     result = service.prepare_features(
-        MagicMock(), FeatureRequest(dataset_version_id=VERSION), MagicMock(), prediction=True,
+        MagicMock(), FeatureRequest(dataset_file_id=FILE), MagicMock(), prediction=True,
     )
     assert result.latest_time_bucket == datetime(2018, 10, 24, 5, 34, tzinfo=UTC)
     assert result.latest_time_bucket.isoformat() == "2018-10-24T08:34:00+03:00"
 
 
 def test_non_scientist_cannot_read_features(monkeypatch: pytest.MonkeyPatch) -> None:
-    version = SimpleNamespace(id=VERSION, dataset_id=uuid4())
-    monkeypatch.setattr(service.crud_dataset_access, "get_version", lambda *_: version)
+    dataset_file = SimpleNamespace(id=FILE, dataset_id=uuid4())
+    monkeypatch.setattr(service.crud_dataset_access, "get_file", lambda *_: dataset_file)
     with pytest.raises(HTTPException) as error:
         service.prepare_features(
-            MagicMock(), FeatureRequest(dataset_version_id=VERSION),
+            MagicMock(), FeatureRequest(dataset_file_id=FILE),
             SimpleNamespace(role_id="business_user"), prediction=False,
         )
     assert error.value.status_code == 403

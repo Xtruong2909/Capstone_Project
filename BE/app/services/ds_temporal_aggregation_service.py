@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import crud_dataset
 from app.crud import crud_traffic_aggregation as repo
-from app.models.dataset import DataCleaningHistory, DatasetVersion, RecordingSession
+from app.models.dataset import DataCleaningHistory, DatasetFile, RecordingSession
 from app.models.traffic import (
     TrafficAggregationJob,
     TrafficAggregationSessionResult,
@@ -32,8 +32,8 @@ from app.schemas.traffic_aggregation import (
     AggregationSessionRunStatus,
     CombinedTemporalAggregationDataPoint,
     CombinedTemporalAggregationResults,
-    DatasetVersionAggregationResults,
-    DatasetVersionAggregationStarted,
+    DatasetFileAggregationResults,
+    DatasetFileAggregationStarted,
     GroupDatasetTemporalAggregationRequest,
     GroupTemporalAggregationRequest,
     TemporalAggregationDataPoint,
@@ -74,7 +74,7 @@ def _saved_traffic_flow(row: Any, aggregation_interval: int) -> float:
 
 
 def _source_sessions(
-    db: Session, dataset_id: UUID, version_id: UUID, history: DataCleaningHistory,
+    db: Session, dataset_id: UUID, file_id: UUID, history: DataCleaningHistory,
 ) -> list[RecordingSession]:
     raw_ids = (history.parameters or {}).get("source_session_ids") or []
     if raw_ids:
@@ -88,16 +88,16 @@ def _source_sessions(
             raise HTTPException(409, "A source Recording Session is missing")
         return [by_id[session_id] for session_id in source_ids]
     return [
-        session for session in repo.get_version_sessions(db, version_id)
+        session for session in repo.get_file_sessions(db, file_id)
         if session.dataset_id == dataset_id
     ]
 
 
-def _normalized_path(version: DatasetVersion) -> Path:
-    if version.file_format.upper() != "PARQUET":
-        raise HTTPException(409, "Dataset Version must be exported as normalized Parquet")
+def _normalized_path(dataset_file: DatasetFile) -> Path:
+    if dataset_file.file_format.upper() != "PARQUET":
+        raise HTTPException(409, "Dataset File must be exported as normalized Parquet")
     try:
-        return resolve_stored_file_path(version.parquet_file_path or version.data_file_path)
+        return resolve_stored_file_path(dataset_file.parquet_file_path or dataset_file.data_file_path)
     except DatasetPreviewNotFoundError as exc:
         raise HTTPException(409, "Normalized Parquet file is missing") from exc
 
@@ -112,18 +112,18 @@ def create_temporal_aggregation(
     if dataset is None or dataset.group_id != payload.group_id:
         raise HTTPException(404, "Dataset is not part of the selected group")
     check_dataset_access(user, dataset.id, db)
-    pair = crud_dataset.get_dataset_latest_approved_version(db, dataset.id)
+    pair = crud_dataset.get_dataset_latest_approved_file(db, dataset.id)
     if pair is None:
-        raise HTTPException(403, "Dataset has no approved version")
-    dataset, version = pair
-    history = repo.get_cleaning_history(db, version.id)
+        raise HTTPException(403, "Dataset has no approved dataset_file")
+    dataset, dataset_file = pair
+    history = repo.get_cleaning_history(db, dataset_file.id)
     if history is None or not (history.parameters or {}).get("is_pneuma"):
-        raise HTTPException(409, "Dataset Version has no normalized pNEUMA provenance")
-    _normalized_path(version)
-    sessions = _source_sessions(db, dataset.id, version.id, history)
+        raise HTTPException(409, "Dataset File has no normalized pNEUMA provenance")
+    _normalized_path(dataset_file)
+    sessions = _source_sessions(db, dataset.id, dataset_file.id, history)
     if not sessions:
-        raise HTTPException(409, "Dataset Version has no Recording Sessions")
-    active = repo.get_active_temporal_run(db, version.id)
+        raise HTTPException(409, "Dataset File has no Recording Sessions")
+    active = repo.get_active_temporal_run(db, dataset_file.id, owner_id=user.id)
     if active is not None:
         raise HTTPException(409, f"Aggregation is already processing: {active.id}")
 
@@ -131,7 +131,7 @@ def create_temporal_aggregation(
     job = TrafficAggregationJob(
         id=aggregation_id,
         dataset_id=dataset.id,
-        dataset_version_id=version.id,
+        dataset_file_id=dataset_file.id,
         aggregation_interval=payload.aggregation_interval,
         roi_identifier="ALL_TRAJECTORY_POINTS",
         replace_existing=False,
@@ -143,6 +143,7 @@ def create_temporal_aggregation(
         failed_sessions=0,
         job_metadata={
             "workflow": WORKFLOW_KEY,
+            "created_by": str(user.id),
             "group_id": str(payload.group_id),
             "session_ids": [str(session.id) for session in sessions],
             "source": "normalized_parquet",
@@ -174,7 +175,9 @@ def create_group_temporal_aggregation(
         raise HTTPException(403, "Data Scientist role required")
     if crud_dataset.get_dataset_group_by_id(db, payload.group_id) is None:
         raise HTTPException(404, "Dataset group not found")
-    datasets = crud_dataset.list_group_datasets(db, payload.group_id, None)
+    datasets = crud_dataset.list_group_datasets(
+        db, payload.group_id, user.id if user.role_id == "data_scientist" else None,
+    )
     if not datasets:
         raise HTTPException(404, "No Dataset found in this group")
     jobs: list[TrafficAggregationJob] = []
@@ -205,15 +208,15 @@ def create_group_temporal_aggregation(
 def serialize_group_aggregation_run(
     jobs: list[TrafficAggregationJob],
     results: list[TrafficAggregationSessionResult],
-) -> DatasetVersionAggregationStarted:
+) -> DatasetFileAggregationStarted:
     root = jobs[0]
     dataset_ids = {job.id: job.dataset_id for job in jobs}
-    version_ids = {job.id: job.dataset_version_id for job in jobs}
-    return DatasetVersionAggregationStarted(
+    file_ids = {job.id: job.dataset_file_id for job in jobs}
+    return DatasetFileAggregationStarted(
         aggregation_id=root.id,
         group_id=UUID(root.job_metadata["group_id"]),
         dataset_id=root.dataset_id if len(jobs) == 1 else None,
-        dataset_version_id=root.dataset_version_id if len(jobs) == 1 else None,
+        dataset_file_id=root.dataset_file_id if len(jobs) == 1 else None,
         total_datasets=len(jobs),
         aggregation_interval=root.aggregation_interval,
         status=_group_status(jobs),
@@ -222,21 +225,26 @@ def serialize_group_aggregation_run(
         failed_sessions=sum(job.failed_sessions for job in jobs),
         total_time_bins=sum(result.time_bins for result in results),
         sessions=[_group_session_status(
-            result, dataset_ids[result.aggregation_id], version_ids[result.aggregation_id],
+            result, dataset_ids[result.aggregation_id], file_ids[result.aggregation_id],
         ) for result in results],
     )
 
 
 def get_latest_group_temporal_aggregation(
     db: Session, user: User, group_id: UUID,
-) -> DatasetVersionAggregationStarted | None:
+) -> DatasetFileAggregationStarted | None:
     """Restore the most recent completed batch run, or the latest run if none completed."""
     if user.role_id not in ("admin", "data_scientist"):
         raise HTTPException(403, "Data Scientist role required")
     if crud_dataset.get_dataset_group_by_id(db, group_id) is None:
         raise HTTPException(404, "Dataset group not found")
-    datasets = crud_dataset.list_group_datasets(db, group_id, None)
+    datasets = crud_dataset.list_group_datasets(
+        db, group_id, user.id if user.role_id == "data_scientist" else None,
+    )
+    if not datasets:
+        raise HTTPException(404, "No accessible Dataset found in this group")
     roots = repo.list_group_temporal_roots(db, group_id, [dataset.id for dataset in datasets])
+    roots = [root for root in roots if temporal_job_visible(db, user, root)]
     if not roots:
         return None
     selected_root = roots[0]
@@ -261,13 +269,13 @@ def _group_status(jobs: list[TrafficAggregationJob]) -> str:
 
 
 def _group_session_status(
-    result: TrafficAggregationSessionResult, dataset_id: UUID, version_id: UUID,
+    result: TrafficAggregationSessionResult, dataset_id: UUID, file_id: UUID,
 ) -> AggregationSessionRunStatus:
     return AggregationSessionRunStatus(
         **{
             **_session_status(result).model_dump(),
             "dataset_id": dataset_id,
-            "dataset_version_id": version_id,
+            "dataset_file_id": file_id,
         },
     )
 
@@ -325,7 +333,7 @@ def _session_row_counts(
         counts = [int(cached[str(session.id)]) for session in sessions]
     else:
         historical = repo.get_historical_session_row_counts(
-            db, history.dataset_version_id, [session.id for session in sessions],
+            db, history.dataset_file_id, [session.id for session in sessions],
         )
         if historical is not None:
             counts = [historical[str(session.id)] for session in sessions]
@@ -456,12 +464,12 @@ def _session_status(result: TrafficAggregationSessionResult) -> AggregationSessi
 
 def serialize_aggregation_run(
     job: TrafficAggregationJob, results: list[TrafficAggregationSessionResult],
-) -> DatasetVersionAggregationStarted:
-    return DatasetVersionAggregationStarted(
+) -> DatasetFileAggregationStarted:
+    return DatasetFileAggregationStarted(
         aggregation_id=job.id,
         group_id=(job.job_metadata or {}).get("group_id"),
         dataset_id=job.dataset_id,
-        dataset_version_id=job.dataset_version_id,
+        dataset_file_id=job.dataset_file_id,
         aggregation_interval=job.aggregation_interval,
         status=job.status,
         total_sessions=job.total_sessions,
@@ -503,14 +511,14 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
         job.status = "RUNNING"
         job.started_at = job.started_at or datetime.now(UTC)
         db.commit()
-        pair = repo.get_dataset_version(db, job.dataset_version_id)
+        pair = repo.get_dataset_file(db, job.dataset_file_id)
         if pair is None:
-            raise SessionAggregationError("Dataset Version no longer exists")
-        dataset, version = pair
-        history = repo.get_cleaning_history(db, version.id)
+            raise SessionAggregationError("Dataset File no longer exists")
+        dataset, dataset_file = pair
+        history = repo.get_cleaning_history(db, dataset_file.id)
         if history is None:
             raise SessionAggregationError("Normalized dataset provenance is missing")
-        sessions = _source_sessions(db, dataset.id, version.id, history)
+        sessions = _source_sessions(db, dataset.id, dataset_file.id, history)
         by_id = {session.id: session for session in sessions}
         ordered_ids = [UUID(value) for value in job.job_metadata["session_ids"]]
         selected_sessions = [by_id[session_id] for session_id in ordered_ids]
@@ -522,7 +530,7 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
         job.completed_sessions = sum(result.status == "COMPLETED" for result in results_by_id.values())
         job.failed_sessions = sum(result.status == "FAILED" for result in results_by_id.values())
         job.records_created = sum(result.time_bins for result in results_by_id.values() if result.status == "COMPLETED")
-        path = _normalized_path(version)
+        path = _normalized_path(dataset_file)
         with pq.ParquetFile(path) as parquet_file:
             counts = _session_row_counts(
                 db, history, selected_sessions, parquet_file.metadata.num_rows,
@@ -549,7 +557,7 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
                         raise SessionAggregationError("Normalized Parquet ended before this Session")
                     rows = [
                         TrafficTimeSeries(
-                            dataset_version_id=job.dataset_version_id,
+                            dataset_file_id=job.dataset_file_id,
                             aggregation_id=job.id,
                             recording_session_id=str(session.id),
                             time_bucket=bucket["time_bucket"],
@@ -606,16 +614,29 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
         db.close()
 
 
+def temporal_job_visible(db: Session, user: User, job: TrafficAggregationJob) -> bool:
+    if user.role_id == "admin":
+        return True
+    metadata = job.job_metadata or {}
+    owner_id = metadata.get("created_by")
+    if owner_id is not None:
+        return owner_id == str(user.id)
+    root_id = UUID(metadata["group_root_id"]) if metadata.get("group_root_id") else job.id
+    return user.id in repo.legacy_temporal_owner_ids(db, root_id)
+
+
 def _accessible_run(db: Session, user: User, aggregation_id: UUID) -> TrafficAggregationJob:
     if user.role_id not in ("admin", "data_scientist"):
         raise HTTPException(403, "Data Scientist role required")
     job = repo.get_aggregation_job(db, aggregation_id)
     if job is None or (job.job_metadata or {}).get("workflow") != WORKFLOW_KEY:
         raise HTTPException(404, "Temporal aggregation run not found")
+    if not temporal_job_visible(db, user, job):
+        raise HTTPException(404, "Temporal aggregation run not found")
     check_dataset_access(user, job.dataset_id, db)
-    pair = repo.get_dataset_version(db, job.dataset_version_id)
+    pair = repo.get_dataset_file(db, job.dataset_file_id)
     if pair is None or pair[1].approval_status != "APPROVED":
-        raise HTTPException(403, "Dataset Version is not approved")
+        raise HTTPException(403, "Dataset File is not approved")
     return job
 
 
@@ -629,12 +650,14 @@ def _accessible_group_jobs(
     by_id = {job.id: job for job in jobs}
     ordered = [by_id[job_id] for job_id in ids]
     for job in ordered:
+        if not temporal_job_visible(db, user, job):
+            raise HTTPException(404, "Temporal aggregation run not found")
         if (job.job_metadata or {}).get("group_root_id") != str(root.id):
             raise HTTPException(409, "Aggregation group is inconsistent")
         check_dataset_access(user, job.dataset_id, db)
-        pair = repo.get_dataset_version(db, job.dataset_version_id)
+        pair = repo.get_dataset_file(db, job.dataset_file_id)
         if pair is None or pair[1].approval_status != "APPROVED":
-            raise HTTPException(403, "Dataset Version is not approved")
+            raise HTTPException(403, "Dataset File is not approved")
     return ordered
 
 
@@ -673,7 +696,7 @@ def _group_recording_starts(
 def _group_results(
     db: Session, user: User, root: TrafficAggregationJob,
     session_id: UUID | None, page: int, page_size: int,
-) -> DatasetVersionAggregationResults:
+) -> DatasetFileAggregationResults:
     jobs = _accessible_group_jobs(db, user, root)
     results = _group_session_results(db, jobs)
     selected = [result for result in results if result.session_id == session_id]
@@ -685,11 +708,11 @@ def _group_results(
     rows = repo.page_group_temporal_series(db, ids, session_id, page, page_size)
     starts = _group_recording_starts(db, jobs, relevant)
     job_by_id = {job.id: job for job in jobs}
-    return DatasetVersionAggregationResults(
+    return DatasetFileAggregationResults(
         aggregation_id=root.id,
         group_id=UUID(root.job_metadata["group_id"]),
         dataset_id=jobs[0].dataset_id if len(jobs) == 1 else None,
-        dataset_version_id=jobs[0].dataset_version_id if len(jobs) == 1 else None,
+        dataset_file_id=jobs[0].dataset_file_id if len(jobs) == 1 else None,
         total_datasets=len({job_by_id[result.aggregation_id].dataset_id for result in relevant}),
         aggregation_interval=root.aggregation_interval,
         status=selected[0].status if session_id is not None else _group_status(jobs),
@@ -703,7 +726,7 @@ def _group_results(
         sessions=[_group_session_status(
             result,
             job_by_id[result.aggregation_id].dataset_id,
-            job_by_id[result.aggregation_id].dataset_version_id,
+            job_by_id[result.aggregation_id].dataset_file_id,
         ) for result in relevant],
         data=[TemporalAggregationDataPoint(
             dataset_id=job.dataset_id,
@@ -740,7 +763,7 @@ def _group_combined_results(
         aggregation_id=root.id,
         group_id=UUID(root.job_metadata["group_id"]),
         dataset_id=jobs[0].dataset_id if len(jobs) == 1 else None,
-        dataset_version_id=jobs[0].dataset_version_id if len(jobs) == 1 else None,
+        dataset_file_id=jobs[0].dataset_file_id if len(jobs) == 1 else None,
         total_datasets=len(jobs),
         aggregation_interval=root.aggregation_interval,
         status=_group_status(jobs),
@@ -752,7 +775,7 @@ def _group_combined_results(
         sessions=[_group_session_status(
             result,
             by_id[result.aggregation_id].dataset_id,
-            by_id[result.aggregation_id].dataset_version_id,
+            by_id[result.aggregation_id].dataset_file_id,
         ) for result in results],
         data=[CombinedTemporalAggregationDataPoint(
             dataset_id=job.dataset_id,
@@ -769,7 +792,7 @@ def _group_combined_results(
 def get_temporal_aggregation_results(
     db: Session, user: User, aggregation_id: UUID,
     session_id: UUID | None, page: int, page_size: int,
-) -> DatasetVersionAggregationResults:
+) -> DatasetFileAggregationResults:
     job = _accessible_run(db, user, aggregation_id)
     if (job.job_metadata or {}).get("group_job_ids"):
         return _group_results(db, user, job, session_id, page, page_size)
@@ -784,11 +807,11 @@ def get_temporal_aggregation_results(
         session.id: recording_start_from_filename(session.original_filename)
         for session in repo.get_sessions_by_ids(db, job.dataset_id, page_session_ids)
     }
-    return DatasetVersionAggregationResults(
+    return DatasetFileAggregationResults(
         aggregation_id=job.id,
         group_id=(job.job_metadata or {}).get("group_id"),
         dataset_id=job.dataset_id,
-        dataset_version_id=job.dataset_version_id,
+        dataset_file_id=job.dataset_file_id,
         aggregation_interval=job.aggregation_interval,
         status=selected.status if selected is not None else job.status,
         session_id=session_id,
@@ -858,7 +881,7 @@ def get_combined_temporal_aggregation_results(
         aggregation_id=job.id,
         group_id=(job.job_metadata or {}).get("group_id"),
         dataset_id=job.dataset_id,
-        dataset_version_id=job.dataset_version_id,
+        dataset_file_id=job.dataset_file_id,
         aggregation_interval=job.aggregation_interval,
         status=job.status,
         timezone=timezone_name,

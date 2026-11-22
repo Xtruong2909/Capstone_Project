@@ -9,33 +9,33 @@ from app.services import dataset_consumer_service as consumer
 from app.services.dataset_preview_service import DatasetPreviewNotFoundError
 
 
-def test_group_sessions_select_latest_approved_version(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_group_sessions_select_latest_approved_file(monkeypatch: pytest.MonkeyPatch) -> None:
     db, user = object(), SimpleNamespace(id=uuid4(), role_id="data_scientist")
-    group_id, dataset_id, version_id = uuid4(), uuid4(), uuid4()
+    group_id, dataset_id, file_id = uuid4(), uuid4(), uuid4()
     access = Mock()
     approved = Mock()
     sessions = Mock(return_value="sessions")
     monkeypatch.setattr(consumer, "check_dataset_access", access)
     monkeypatch.setattr(
-        consumer, "resolve_group_dataset_version",
-        lambda *_: SimpleNamespace(id=version_id),
+        consumer, "resolve_group_dataset_file",
+        lambda *_: SimpleNamespace(id=file_id),
     )
-    monkeypatch.setattr(consumer, "require_approved_version", approved)
+    monkeypatch.setattr(consumer, "require_approved_file", approved)
     monkeypatch.setattr(consumer, "list_approved_recording_sessions", sessions)
 
     result = consumer.list_approved_group_sessions(db, user, group_id, dataset_id, 2, 20)
 
     assert result == "sessions"
     access.assert_called_once_with(user, dataset_id, db)
-    approved.assert_called_once_with(db, user, dataset_id, version_id)
-    sessions.assert_called_once_with(db, user, dataset_id, version_id, 2, 20)
+    approved.assert_called_once_with(db, user, dataset_id, file_id)
+    sessions.assert_called_once_with(db, user, dataset_id, file_id, 2, 20)
 
 
 def test_group_preview_rejects_dataset_from_other_group(monkeypatch: pytest.MonkeyPatch) -> None:
     db, user = object(), SimpleNamespace(id=uuid4(), role_id="business_user")
     monkeypatch.setattr(consumer, "check_dataset_access", lambda *_: None)
     monkeypatch.setattr(
-        consumer, "resolve_group_dataset_version",
+        consumer, "resolve_group_dataset_file",
         Mock(side_effect=DatasetPreviewNotFoundError("Dataset không thuộc nhóm")),
     )
     preview = Mock()
@@ -58,7 +58,7 @@ def test_group_sessions_reject_missing_grant(monkeypatch: pytest.MonkeyPatch) ->
         Mock(side_effect=HTTPException(403, "Dataset access has not been granted")),
     )
     resolve = Mock()
-    monkeypatch.setattr(consumer, "resolve_group_dataset_version", resolve)
+    monkeypatch.setattr(consumer, "resolve_group_dataset_file", resolve)
 
     with pytest.raises(HTTPException) as exc:
         consumer.list_approved_group_sessions(object(), user, uuid4(), uuid4(), 1, 20)
@@ -69,7 +69,7 @@ def test_group_sessions_reject_missing_grant(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_group_sessions_reject_non_consumer_role(monkeypatch: pytest.MonkeyPatch) -> None:
     resolve = Mock()
-    monkeypatch.setattr(consumer, "resolve_group_dataset_version", resolve)
+    monkeypatch.setattr(consumer, "resolve_group_dataset_file", resolve)
     with pytest.raises(HTTPException) as exc:
         consumer.list_approved_group_sessions(
             object(), SimpleNamespace(role_id="data_engineer"), uuid4(), uuid4(), 1, 20,

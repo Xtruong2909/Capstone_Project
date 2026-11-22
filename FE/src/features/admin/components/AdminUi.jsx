@@ -61,7 +61,7 @@ export function AdminState({ resource, children, empty = 'No results found.' }) 
       </div>
     )
   }
-  if (resource.error) {
+  if (resource.error && resource.data == null) {
     return (
       <div className="empty-state" role="alert">
         <div className="empty-state__icon-box empty-state__icon-box--error">
@@ -84,7 +84,7 @@ export function AdminState({ resource, children, empty = 'No results found.' }) 
       </div>
     )
   }
-  return children
+  return <>{resource.error && <p className="admin-notice admin-notice--error" role="alert">{resource.error}</p>}{children}</>
 }
 
 export function AdminFeedback({ mutation }) {

@@ -2,51 +2,51 @@ import { authStorage } from './authStorage'
 
 // Remember only the successful extraction's ROI; reload samples through the API.
 // This avoids storing potentially large sample matrices in browser storage.
-function storageKey(datasetId, versionId) {
+function storageKey(datasetId, fileId) {
   const { user } = authStorage.read()
-  if (!user?.id || !datasetId || !versionId) return null
-  return `training-features:v1:${user.id}:${datasetId}:${versionId}`
+  if (!user?.id || !datasetId || !fileId) return null
+  return `training-features:v1:${user.id}:${datasetId}:${fileId}`
 }
 
-function splitStorageKey(datasetId, versionId) {
+function splitStorageKey(datasetId, fileId) {
   const { user } = authStorage.read()
-  if (!user?.id || !datasetId || !versionId) return null
-  return `training-split:v1:${user.id}:${datasetId}:${versionId}`
+  if (!user?.id || !datasetId || !fileId) return null
+  return `training-split:v1:${user.id}:${datasetId}:${fileId}`
 }
 
-function predictionRoiStorageKey(datasetId, versionId) {
+function predictionRoiStorageKey(datasetId, fileId) {
   const { user } = authStorage.read()
-  if (!user?.id || !datasetId || !versionId) return null
-  return `prediction-features:v1:${user.id}:${datasetId}:${versionId}`
+  if (!user?.id || !datasetId || !fileId) return null
+  return `prediction-features:v1:${user.id}:${datasetId}:${fileId}`
 }
 
-function forecastStorageKey(datasetId, versionId) {
+function forecastStorageKey(datasetId, fileId) {
   const { user } = authStorage.read()
-  if (!user?.id || !datasetId || !versionId) return null
-  return `prediction-forecast:v1:${user.id}:${datasetId}:${versionId}`
+  if (!user?.id || !datasetId || !fileId) return null
+  return `prediction-forecast:v1:${user.id}:${datasetId}:${fileId}`
 }
 
 export const trainingFeatureState = {
-  read(datasetId, versionId) {
+  read(datasetId, fileId) {
     try {
-      const key = storageKey(datasetId, versionId)
+      const key = storageKey(datasetId, fileId)
       const roi = key && localStorage.getItem(key)
       return typeof roi === 'string' && roi.trim() && roi.length <= 64 ? roi : null
     } catch {
       return null
     }
   },
-  save(datasetId, versionId, roiIdentifier) {
+  save(datasetId, fileId, roiIdentifier) {
     try {
-      const key = storageKey(datasetId, versionId)
+      const key = storageKey(datasetId, fileId)
       if (key) localStorage.setItem(key, roiIdentifier)
     } catch {
       // Storage may be unavailable; the current extraction remains usable.
     }
   },
-  readSplit(datasetId, versionId) {
+  readSplit(datasetId, fileId) {
     try {
-      const key = splitStorageKey(datasetId, versionId)
+      const key = splitStorageKey(datasetId, fileId)
       const raw = key && sessionStorage.getItem(key)
       if (!raw) return null
       const parsed = JSON.parse(raw)
@@ -55,9 +55,9 @@ export const trainingFeatureState = {
       return null
     }
   },
-  saveSplit(datasetId, versionId, splitData) {
+  saveSplit(datasetId, fileId, splitData) {
     try {
-      const key = splitStorageKey(datasetId, versionId)
+      const key = splitStorageKey(datasetId, fileId)
       if (!key) return
       if (!splitData) {
         sessionStorage.removeItem(key)
@@ -68,26 +68,26 @@ export const trainingFeatureState = {
       // Ignore storage quota or private browsing errors.
     }
   },
-  readPredictionRoi(datasetId, versionId) {
+  readPredictionRoi(datasetId, fileId) {
     try {
-      const key = predictionRoiStorageKey(datasetId, versionId)
+      const key = predictionRoiStorageKey(datasetId, fileId)
       const roi = key && localStorage.getItem(key)
       return typeof roi === 'string' && roi.trim() && roi.length <= 64 ? roi : null
     } catch {
       return null
     }
   },
-  savePredictionRoi(datasetId, versionId, roiIdentifier) {
+  savePredictionRoi(datasetId, fileId, roiIdentifier) {
     try {
-      const key = predictionRoiStorageKey(datasetId, versionId)
+      const key = predictionRoiStorageKey(datasetId, fileId)
       if (key) localStorage.setItem(key, roiIdentifier)
     } catch {
       // Ignore storage errors.
     }
   },
-  readForecast(datasetId, versionId) {
+  readForecast(datasetId, fileId) {
     try {
-      const key = forecastStorageKey(datasetId, versionId)
+      const key = forecastStorageKey(datasetId, fileId)
       const raw = key && sessionStorage.getItem(key)
       if (!raw) return null
       const parsed = JSON.parse(raw)
@@ -96,9 +96,9 @@ export const trainingFeatureState = {
       return null
     }
   },
-  saveForecast(datasetId, versionId, forecastData) {
+  saveForecast(datasetId, fileId, forecastData) {
     try {
-      const key = forecastStorageKey(datasetId, versionId)
+      const key = forecastStorageKey(datasetId, fileId)
       if (!key) return
       if (!forecastData) {
         sessionStorage.removeItem(key)

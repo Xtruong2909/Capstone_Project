@@ -66,7 +66,7 @@ ACTION_INSTRUCTIONS = {
         "khi chúng cùng split và tập Test; nếu chưa xác minh được thì nói rõ. "
         "Các danh sách trong context có thể bị giới hạn số phần tử; không coi phần hiển thị là toàn bộ. "
         "Khi có aggregation_id, dùng số dataset, session, time bin và thí nghiệm "
-        "đã lưu trong context. Khi có dataset_version_id cũ, dùng metadata, "
+        "đã lưu trong context. Khi có dataset_file_id cũ, dùng metadata, "
         "quality_check và traffic_overview nếu chúng hiện diện. Phân biệt số bản ghi "
         "file với số điểm tổng hợp theo thời gian. "
         "Nếu không có dữ liệu dự án, có thể giải thích khái niệm liên quan nhưng không bịa số liệu."

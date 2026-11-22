@@ -16,7 +16,7 @@ function SessionPreview({ dataset, session, onBack, cache }) {
   const [page, setPage] = useState(1)
   const [columnOffset, setColumnOffset] = useState(0)
   const preview = useAdminSessionPreview({
-    dataset_id: dataset.dataset_id, version_id: dataset.id, session_id: session.session_id,
+    dataset_id: dataset.dataset_id, file_id: dataset.id, session_id: session.session_id,
     page, page_size: 20, representation: 'normalized', column_offset: columnOffset,
   }, cache)
   return <>
@@ -38,8 +38,8 @@ function DatasetSessions({ dataset, onClose }) {
   const { t } = useLanguage()
   const [session, setSession] = useState(null)
   const [previewCache] = useState(() => new Map())
-  const sessions = useAdminPage(adminService.getDatasetSessions, { dataset_id: dataset.dataset_id, version_id: dataset.id })
-  return <AdminModal title={`${dataset.dataset_name} · ${dataset.version_tag}`} onClose={onClose} className="admin-dataset-dialog">
+  const sessions = useAdminPage(adminService.getDatasetSessions, { dataset_id: dataset.dataset_id, file_id: dataset.id })
+  return <AdminModal title={dataset.dataset_name} onClose={onClose} className="admin-dataset-dialog">
     {session ? <SessionPreview key={session.session_id} dataset={dataset} session={session} cache={previewCache} onBack={() => setSession(null)} /> : <>
       <h4>{t('Recording Sessions')}</h4><AdminState resource={sessions}><div className="admin-table-scroll"><table className="admin-table"><thead><tr>{['Session', 'Start (Athens)', 'End (Athens)', 'Status', 'Action'].map((label) => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{sessions.items.map((item) => <tr key={item.session_id}>
         <td><strong>{item.original_filename}</strong></td><td>{formatAthensRecordingDateTime(item.scheduled_start)}</td><td>{formatAthensRecordingDateTime(item.scheduled_end)}</td><td>{item.validation_status || item.upload_status}</td><td><button className="btn-secondary" onClick={() => setSession(item)}>{t('Preview')}</button></td>
@@ -61,7 +61,7 @@ export default function AdminDatasetCatalog({ approvedOnly = false }) {
   const [batchRevoke, setBatchRevoke] = useState(null)
   const approvalStatus = approvedOnly ? 'APPROVED' : status || undefined
   const groups = useAdminPage(adminService.getDatasetGroups, { search: batchSearch || undefined, approval_status: approvalStatus }, !batch)
-  const datasets = useAdminPage(adminService.getDatasets, {
+  const datasets = useAdminPage(adminService.getDatasetFilesPage, {
     search: search || undefined, approval_status: approvalStatus,
     group_id: batch?.group_id || undefined, ungrouped: batch ? !batch.group_id : undefined,
   }, Boolean(batch))

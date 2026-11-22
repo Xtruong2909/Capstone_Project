@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { authStorage } from './authStorage'
+import { invalidateAdminResourceCache } from './adminResourceCache'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
 
@@ -24,7 +25,13 @@ apiClient.interceptors.request.use(
 
 // Response Interceptor: Xử lý khi Token hết hạn (401 Unauthorized)
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config?.method?.toLowerCase()
+    if (['post', 'put', 'patch', 'delete'].includes(method) && /(^|\/)admin(\/|$)/.test(response.config?.url || '')) {
+      invalidateAdminResourceCache()
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 401) {
       authStorage.clear()

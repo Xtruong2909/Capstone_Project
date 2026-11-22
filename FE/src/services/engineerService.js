@@ -11,37 +11,42 @@ const optionalGet = async (url, signal) => {
   }
 }
 
-const submittedVersions = async (signal) => (await get('/datasets/versions', {}, signal))
+const submittedFiles = async (signal) => (await get('/datasets/files', {}, signal))
   .filter((item) => ['SUBMITTED', 'APPROVED', 'REJECTED'].includes(item.approval_status))
   .sort((a, b) => (Date.parse(b.submitted_at || b.created_at) || 0) - (Date.parse(a.submitted_at || a.created_at) || 0))
 const pageItems = (items, page, page_size) => ({ items: items.slice((page - 1) * page_size, page * page_size), total: items.length, page, page_size })
 
 export const engineerService = {
+  getPipelineState: ({ group_id }, signal) => get(groupPath(group_id) + '/workflow', {}, signal),
+  async listPipelineGroups(params, signal) {
+    const data = await get('/datasets/pipeline/groups', params, signal)
+    return { ...data, items: data.groups }
+  },
   async listSubmissionBatches({ page = 1, page_size = 20, search, status }, signal) {
-    const versions = await submittedVersions(signal)
+    const dataset_files = await submittedFiles(signal)
     const batches = new Map()
-    for (const version of versions) {
-      const key = version.group_id || 'ungrouped'
-      if (!batches.has(key)) batches.set(key, { group_id: version.group_id || null, group_name: version.group_name, versions: [] })
-      batches.get(key).versions.push(version)
+    for (const dataset_file of dataset_files) {
+      const key = dataset_file.group_id || 'ungrouped'
+      if (!batches.has(key)) batches.set(key, { group_id: dataset_file.group_id || null, group_name: dataset_file.group_name, dataset_files: [] })
+      batches.get(key).dataset_files.push(dataset_file)
     }
-    const items = [...batches.values()].filter((batch) => (!search || [batch.group_name, ...batch.versions.map((item) => item.dataset_name)].some((value) => value?.toLowerCase().includes(search.toLowerCase())))
-      && (!status || batch.versions.some((item) => item.approval_status === status)))
+    const items = [...batches.values()].filter((batch) => (!search || [batch.group_name, ...batch.dataset_files.map((item) => item.dataset_name)].some((value) => value?.toLowerCase().includes(search.toLowerCase())))
+      && (!status || batch.dataset_files.some((item) => item.approval_status === status)))
       .map((batch) => {
-        const statuses = new Set(batch.versions.map((item) => item.approval_status))
-        return { ...batch, dataset_count: new Set(batch.versions.map((item) => item.dataset_id)).size,
+        const statuses = new Set(batch.dataset_files.map((item) => item.approval_status))
+        return { ...batch, dataset_count: new Set(batch.dataset_files.map((item) => item.dataset_id)).size,
           approval_status: statuses.size === 1 ? [...statuses][0] : 'MIXED',
-          approval_notes: [...new Set(batch.versions.map((item) => item.approval_note).filter(Boolean))],
-          submitted_at: batch.versions.find((item) => item.submitted_at)?.submitted_at || null }
+          approval_notes: [...new Set(batch.dataset_files.map((item) => item.approval_note).filter(Boolean))],
+          submitted_at: batch.dataset_files.find((item) => item.submitted_at)?.submitted_at || null }
       })
     return pageItems(items, page, page_size)
   },
-  async listSubmittedVersions({ page = 1, page_size = 20, search, status, group_id, ungrouped }, signal) {
-    // The versions API returns the complete list; filter before paginating it.
-    const data = await submittedVersions(signal)
+  async listSubmittedFiles({ page = 1, page_size = 20, search, status, group_id, ungrouped }, signal) {
+    // The dataset_files API returns the complete list; filter before paginating it.
+    const data = await submittedFiles(signal)
     const items = data.filter((item) => (!status || item.approval_status === status)
       && (!group_id || item.group_id === group_id) && (!ungrouped || !item.group_id)
-      && (!search || [item.dataset_name, item.version_tag].some((value) => value?.toLowerCase().includes(search.toLowerCase()))))
+      && (!search || [item.dataset_name].some((value) => value?.toLowerCase().includes(search.toLowerCase()))))
     return pageItems(items, page, page_size)
   },
   async listGroups(params, signal) {
@@ -59,6 +64,12 @@ export const engineerService = {
       items: filtered.slice((page - 1) * page_size, page * page_size) }
   },
   getDataset: ({ dataset_id }, signal) => get('/datasets/' + dataset_id, {}, signal),
+  async getDatasetFileDetail({ dataset_id }, signal) {
+    const files = await get('/datasets/' + dataset_id + '/files', {}, signal)
+    const file = files.find((item) => item.dataset_id === dataset_id)
+    if (!file) throw new Error('Không tìm thấy thông tin tập dữ liệu.')
+    return { ...file, name: file.dataset_name }
+  },
   async listSessions({ group_id, dataset_id, ...params }, signal) {
     const data = await get(groupPath(group_id) + '/datasets/' + dataset_id + '/sessions', params, signal)
     return { ...data, items: data.sessions }
@@ -76,12 +87,14 @@ export const engineerService = {
   async normalize(groupId) { return (await apiClient.post(groupPath(groupId) + '/normalize')).data },
   async exportGroup(groupId) { return (await apiClient.post(groupPath(groupId) + '/export')).data },
   getProcessingJob: ({ group_id, job_id }, signal) => get(groupPath(group_id) + '/processing-jobs/' + job_id, {}, signal),
+  getNormalizationPreview: ({ group_id, job_id, dataset_id }, signal) =>
+    get(groupPath(group_id) + '/processing-jobs/' + job_id + '/datasets/' + dataset_id + '/preview', {}, signal),
   getUploadJob: ({ job_id }, signal) => get('/datasets/upload/jobs/' + job_id, {}, signal),
   getReport: ({ group_id }, signal) => optionalGet(groupPath(group_id) + '/report', signal),
   getStatus: ({ group_id }, signal) => optionalGet(groupPath(group_id) + '/status', signal),
-  async getVersions({ group_id }, signal) {
-    const data = await get(groupPath(group_id) + '/versions', {}, signal)
-    return { ...data, items: data.versions }
+  async getFiles({ group_id }, signal) {
+    const data = await get(groupPath(group_id) + '/files', {}, signal)
+    return { ...data, items: data.dataset_files }
   },
   async submit(groupId, comment) { return (await apiClient.post(groupPath(groupId) + '/submit', { comment: comment.trim() || null })).data },
   async resubmit(groupId) { return (await apiClient.post(groupPath(groupId) + '/resubmit')).data },

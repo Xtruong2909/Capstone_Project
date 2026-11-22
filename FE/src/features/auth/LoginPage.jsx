@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import {
   Eye,
   EyeOff,
@@ -13,13 +13,14 @@ import {
 
 import { useAuth } from "../../hooks/useAuth";
 import { useLanguage } from "../../hooks/useLanguage";
+import { authenticatedPath } from '../../services/authSession';
 import "./LoginPage.css";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  const { login, isLoading, error, setError, isAuthenticated, role } = useAuth();
+  const { login, isLoading, error, setError, isAuthenticated, user, token } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,15 +34,11 @@ export default function LoginPage() {
     const result = await login(email, password, rememberMe);
 
     if (result.success) {
-      const roleRoutes = {
-        admin: "/admin",
-        data_engineer: "/engineer",
-        data_scientist: "/scientist",
-        business_user: "/business",
-      };
-      navigate(roleRoutes[result.user?.role] || "/admin");
+      navigate(authenticatedPath(result.user), { replace: true });
     }
   };
+
+  if (isAuthenticated) return <Navigate to={authenticatedPath(user, token)} replace />;
 
   return (
     <div className="login-page">
@@ -129,7 +126,7 @@ export default function LoginPage() {
               {t("Sign in to access the Urban Traffic Analytics system.")}
             </p>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} noValidate>
               <div className="form-group">
                 <label htmlFor="auth-email">{t("Email")}</label>
 
@@ -198,7 +195,7 @@ export default function LoginPage() {
 
               {error && (
                 <p className="login-error" role="alert">
-                  {error}
+                  {t(error)}
                 </p>
               )}
 

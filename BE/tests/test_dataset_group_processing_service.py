@@ -3,9 +3,17 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from app.services import dataset_group_processing_service as service
+
+
+@pytest.fixture(autouse=True)
+def processing_state(monkeypatch):
+    state = SimpleNamespace(normalized=False, exported=False)
+    monkeypatch.setattr(service, "build_group_pipeline_state", lambda *args: state)
+    return state
 
 
 def test_group_normalization_starts_with_every_dataset() -> None:
@@ -41,13 +49,14 @@ def test_group_job_keeps_successful_dataset_when_another_fails() -> None:
     db = MagicMock()
     db.get.return_value = SimpleNamespace(id=job.created_by)
     normalized = SimpleNamespace(
-        source_session_count=5, staging_id=uuid4(), source_version_id=uuid4(),
+        source_session_count=5, staging_id=uuid4(), source_file_id=uuid4(),
         records_before=100, records_after=500,
     )
     with (
         patch.object(service, "SessionLocal", return_value=db),
         patch.object(service.crud_dataset, "get_group_processing_job", return_value=job),
         patch.object(service.crud_dataset, "save_group_processing_job"),
+        patch.object(service, "require_owned_dataset"),
         patch.object(service, "normalize_dataset_structure_service",
                      side_effect=[normalized, HTTPException(422, "CSV rỗng")]),
     ):
@@ -83,7 +92,8 @@ def test_export_requires_completed_group_normalization() -> None:
             raise AssertionError("Export must require a group normalization job")
 
 
-def test_repeated_export_returns_completed_job_without_new_work() -> None:
+def test_repeated_export_is_rejected_without_new_work(processing_state) -> None:
+    processing_state.exported = True
     group_id, dataset_id, staging_id = uuid4(), uuid4(), uuid4()
     datasets = [SimpleNamespace(id=dataset_id, name="day-1")]
     normalized_at = datetime.now(UTC)
@@ -102,7 +112,7 @@ def test_repeated_export_returns_completed_job_without_new_work() -> None:
         created_at=normalized_at + timedelta(seconds=1),
         results=[{"dataset_id": str(dataset_id), "dataset_name": "day-1",
                   "status": "COMPLETED", "session_count": 5,
-                  "staging_id": str(staging_id), "version_id": str(uuid4())}],
+                  "staging_id": str(staging_id), "file_id": str(uuid4())}],
     )
     with (
         patch.object(service.crud_dataset, "get_dataset_group_by_id", return_value=object()),
@@ -111,16 +121,35 @@ def test_repeated_export_returns_completed_job_without_new_work() -> None:
         patch.object(service.crud_dataset, "get_latest_group_normalize_job", return_value=normalized),
         patch.object(service.crud_dataset, "get_latest_completed_group_export_job", return_value=exported),
         patch.object(service.crud_dataset, "create_group_processing_job") as create_job,
+        pytest.raises(HTTPException) as error,
     ):
-        result = service.start_group_processing(
+        service.start_group_processing(
             MagicMock(), group_id=group_id, operation="EXPORT",
             user=SimpleNamespace(id=uuid4()),
         )
 
-    assert result.job_id == exported.id
-    assert result.staging_id == normalized.staging_id
-    assert result.status == "COMPLETED"
-    assert "staging_id" not in result.model_dump(mode="json")["results"][0]
+    assert error.value.status_code == 409
+    assert "đã xuất tệp" in error.value.detail
+    create_job.assert_not_called()
+
+
+@pytest.mark.parametrize("already_exported", [False, True])
+def test_completed_normalization_cannot_start_again(processing_state, already_exported) -> None:
+    processing_state.normalized = True
+    processing_state.exported = already_exported
+    group_id, user_id = uuid4(), uuid4()
+    db = MagicMock()
+    with (
+        patch.object(service.crud_dataset, "get_dataset_group_by_id", return_value=object()) as group,
+        patch.object(service.crud_dataset, "list_group_datasets", return_value=[SimpleNamespace(id=uuid4())]),
+        patch.object(service.crud_dataset, "get_active_group_processing_job", return_value=None),
+        patch.object(service.crud_dataset, "create_group_processing_job") as create_job,
+        pytest.raises(HTTPException) as error,
+    ):
+        service.start_group_processing(db, group_id=group_id, operation="NORMALIZE",
+            user=SimpleNamespace(id=user_id))
+    assert error.value.status_code == 409
+    group.assert_called_once_with(db, group_id, for_update=True)
     create_job.assert_not_called()
 
 

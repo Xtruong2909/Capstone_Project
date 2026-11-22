@@ -38,8 +38,8 @@ class Experiment(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
-    dataset_version_id = Column(
-        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT"), nullable=False
+    dataset_file_id = Column(
+        UUID(as_uuid=True), ForeignKey("dataset_files.id", ondelete="RESTRICT"), nullable=False
     )
     model_type = Column(String(32), nullable=False)
     target_variable = Column(String(32), nullable=False, default="traffic_flow")
@@ -60,7 +60,7 @@ class Experiment(Base):
     )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    dataset_version = relationship("DatasetVersion")
+    dataset_file = relationship("DatasetFile")
     creator = relationship("User", foreign_keys=[created_by])
     evaluation_metric = relationship(
         "EvaluationMetric", back_populates="experiment", uselist=False, cascade="all, delete-orphan"
@@ -108,5 +108,3 @@ class ForecastResult(Base):
     horizon_minutes = Column(Integer, nullable=False)
     predicted_value = Column(Numeric(10, 2), nullable=False)
     actual_value = Column(Numeric(10, 2))
-    lower_bound = Column(Numeric(10, 2))
-    upper_bound = Column(Numeric(10, 2))

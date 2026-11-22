@@ -20,6 +20,8 @@ from app.services.dataset_normalization_service import (
     export_normalized_dataset_service,
     normalize_dataset_structure_service,
 )
+from app.services.dataset_ownership_service import require_owned_dataset
+from app.services.dataset_pipeline_service import build_group_pipeline_state
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +42,24 @@ def _response(job: DatasetGroupProcessingJob) -> GroupProcessingJobResponse:
 def start_group_processing(
     db: Session, *, group_id: UUID, operation: str, user: User,
 ) -> GroupProcessingJobResponse:
-    if crud_dataset.get_dataset_group_by_id(db, group_id) is None:
+    # Serialize creation so concurrent clicks cannot queue two jobs for this batch.
+    if crud_dataset.get_dataset_group_by_id(db, group_id, for_update=True) is None:
         raise HTTPException(404, "Không tìm thấy nhóm Dataset")
-    datasets = crud_dataset.list_group_datasets(db, group_id, None)
+    datasets = crud_dataset.list_group_datasets(db, group_id, None, owner_id=user.id)
     if not datasets:
         raise HTTPException(404, "Nhóm Dataset chưa có dữ liệu")
-    if crud_dataset.get_active_group_processing_job(db, group_id) is not None:
+    if crud_dataset.get_active_group_processing_job(db, group_id, owner_id=user.id) is not None:
         raise HTTPException(409, "Nhóm Dataset đang được xử lý; hãy xem tiến độ job hiện tại")
+
+    state = build_group_pipeline_state(db, group_id, user.id, datasets)
+    if operation == "NORMALIZE" and state.normalized:
+        raise HTTPException(409, "Batch đã được chuẩn hóa. Hãy tiếp tục xuất tệp hoặc gửi phê duyệt.")
+    if operation == "EXPORT" and state.exported:
+        raise HTTPException(409, "Batch đã xuất tệp thành công. Hãy tiếp tục gửi phê duyệt.")
 
     source_results: dict[UUID, dict] = {}
     if operation == "EXPORT":
-        normalize_job = crud_dataset.get_latest_group_normalize_job(db, group_id)
+        normalize_job = crud_dataset.get_latest_group_normalize_job(db, group_id, owner_id=user.id)
         if normalize_job is None:
             raise HTTPException(409, "Hãy chuẩn hóa nhóm Dataset trước khi xuất")
         source_results = {
@@ -61,18 +70,6 @@ def start_group_processing(
             for item in source_results.values()
         ) or set(source_results) != {dataset.id for dataset in datasets}:
             raise HTTPException(409, "Chưa chuẩn hóa thành công tất cả Dataset trong nhóm")
-
-        completed_export = crud_dataset.get_latest_completed_group_export_job(db, group_id)
-        if (completed_export is not None
-                and completed_export.staging_id == normalize_job.staging_id
-                and completed_export.created_at >= normalize_job.updated_at):
-            exported_results = completed_export.results
-            if {UUID(item["dataset_id"]) for item in exported_results} == set(source_results) and all(
-                item["status"] == "COMPLETED"
-                and item.get("staging_id") == source_results[UUID(item["dataset_id"])]["staging_id"]
-                for item in exported_results
-            ):
-                return _response(completed_export)
 
         staging_dir = DATASET_UPLOAD_DIR.resolve() / "staging"
         missing = [dataset.name for dataset in datasets if not (
@@ -114,6 +111,11 @@ def get_group_processing_result(
     job = crud_dataset.get_group_processing_job(db, job_id)
     if job is None or job.group_id != group_id or job.created_by != user_id:
         raise HTTPException(404, "Không tìm thấy job chuẩn hóa/xuất dữ liệu")
+    owned_ids = {dataset.id for dataset in crud_dataset.list_group_datasets(
+        db, group_id, None, owner_id=user_id,
+    )}
+    if any(UUID(item["dataset_id"]) not in owned_ids for item in job.results):
+        raise HTTPException(404, "Job chứa Dataset không thuộc tài khoản của bạn")
     return _response(job)
 
 
@@ -138,6 +140,7 @@ def run_group_processing_job(job_id: UUID) -> None:
             job.results = results
             crud_dataset.save_group_processing_job(db, job)
             try:
+                require_owned_dataset(db, dataset_id, user)
                 if job.operation == "NORMALIZE":
                     normalized = normalize_dataset_structure_service(
                         db, dataset_id=dataset_id, user=user,
@@ -146,7 +149,7 @@ def run_group_processing_job(job_id: UUID) -> None:
                         status="COMPLETED",
                         session_count=normalized.source_session_count,
                         staging_id=str(normalized.staging_id),
-                        source_version_id=str(normalized.source_version_id),
+                        source_file_id=str(normalized.source_file_id),
                         records_before=normalized.records_before,
                         records_after=normalized.records_after,
                     )
@@ -159,8 +162,8 @@ def run_group_processing_job(job_id: UUID) -> None:
                     item.update(
                         status="COMPLETED",
                         session_count=exported.source_session_count,
-                        source_version_id=str(exported.source_version_id),
-                        version_id=str(exported.version_id),
+                        source_file_id=str(exported.source_file_id),
+                        file_id=str(exported.file_id),
                         records_after=exported.total_records,
                     )
             except Exception as exc:

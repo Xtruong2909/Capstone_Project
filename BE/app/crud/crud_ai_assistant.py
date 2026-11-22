@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.data_quality import DataQualityCheck
-from app.models.dataset import DatasetVersion
+from app.models.dataset import DatasetFile
 from app.models.experiment import ForecastResult
 from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
 from app.models.model_training import (
@@ -131,20 +131,20 @@ def get_final_model(db: Session, model_id: UUID) -> FinalModel | None:
     return db.get(FinalModel, model_id)
 
 
-def get_dataset_version(db: Session, version_id: UUID) -> DatasetVersion | None:
-    return db.get(DatasetVersion, version_id)
+def get_dataset_file(db: Session, file_id: UUID) -> DatasetFile | None:
+    return db.get(DatasetFile, file_id)
 
 
-def get_latest_quality_check(db: Session, version_id: UUID) -> DataQualityCheck | None:
+def get_latest_quality_check(db: Session, file_id: UUID) -> DataQualityCheck | None:
     return db.scalars(
         select(DataQualityCheck).where(
-            DataQualityCheck.dataset_version_id == version_id,
+            DataQualityCheck.dataset_file_id == file_id,
             DataQualityCheck.status == "completed",
         ).order_by(DataQualityCheck.completed_at.desc()).limit(1)
     ).first()
 
 
-def get_traffic_overview(db: Session, version_id: UUID) -> dict | None:
+def get_traffic_overview(db: Session, file_id: UUID) -> dict | None:
     row = db.execute(
         select(
             func.count(TrafficTimeSeries.id),
@@ -152,7 +152,7 @@ def get_traffic_overview(db: Session, version_id: UUID) -> dict | None:
             func.max(TrafficTimeSeries.time_bucket),
             func.avg(TrafficTimeSeries.traffic_flow),
             func.avg(TrafficTimeSeries.mean_speed),
-        ).where(TrafficTimeSeries.dataset_version_id == version_id)
+        ).where(TrafficTimeSeries.dataset_file_id == file_id)
     ).one()
     if not row[0]:
         return None
@@ -165,29 +165,29 @@ def get_traffic_overview(db: Session, version_id: UUID) -> dict | None:
     }
 
 
-def get_latest_forecast_for_version(db: Session, version_id: UUID) -> ForecastResult | None:
+def get_latest_forecast_for_file(db: Session, file_id: UUID) -> ForecastResult | None:
     return db.scalars(
         select(ForecastResult).join(FinalModel, ForecastResult.model_id == FinalModel.id).where(
-            FinalModel.dataset_version_id == version_id,
+            FinalModel.dataset_file_id == file_id,
             ForecastResult.horizon_minutes == 1,
         ).order_by(ForecastResult.last_observed_time.desc(), ForecastResult.id.desc()).limit(1)
     ).first()
 
 
 def list_recent_experiments(
-    db: Session, version_id: UUID, limit: int = 5,
+    db: Session, file_id: UUID, limit: int = 5,
 ) -> list[ModelTrainingExperiment]:
     return list(db.scalars(
         select(ModelTrainingExperiment).join(ModelTrainingSplit).where(
-            ModelTrainingSplit.dataset_version_id == version_id,
+            ModelTrainingSplit.dataset_file_id == file_id,
             ModelTrainingExperiment.status == "COMPLETED",
         ).order_by(ModelTrainingExperiment.number.desc()).limit(limit)
     ))
 
 
-def list_final_models(db: Session, version_id: UUID) -> list[FinalModel]:
+def list_final_models(db: Session, file_id: UUID) -> list[FinalModel]:
     return list(db.scalars(
-        select(FinalModel).where(FinalModel.dataset_version_id == version_id)
+        select(FinalModel).where(FinalModel.dataset_file_id == file_id)
         .order_by(FinalModel.created_at.desc()).limit(5)
     ))
 

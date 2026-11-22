@@ -20,16 +20,16 @@ def test_shared_traffic_uses_latest_observation_before_paging() -> None:
         for column in TrafficTimeSeries.__table__.columns
     ])
     metadata.create_all(engine)
-    version_id, session_id = uuid4(), str(uuid4())
+    file_id, session_id = uuid4(), str(uuid4())
     timestamp = datetime(2018, 10, 24, 8, 30, tzinfo=UTC)
     created = datetime(2026, 11, 19, tzinfo=UTC)
 
     def observation(
         row_id: int, *, minute: int = 0, session: str = session_id,
-        version: UUID = version_id, count: int = 156, age: int = 0,
+        dataset_file: UUID = file_id, count: int = 156, age: int = 0,
     ) -> TrafficTimeSeries:
         return TrafficTimeSeries(
-            id=row_id, dataset_version_id=version, aggregation_id=uuid4(),
+            id=row_id, dataset_file_id=dataset_file, aggregation_id=uuid4(),
             recording_session_id=session, time_bucket=timestamp + timedelta(minutes=minute),
             vehicle_count=count, created_at=created + timedelta(seconds=age),
         )
@@ -38,11 +38,11 @@ def test_shared_traffic_uses_latest_observation_before_paging() -> None:
         db.add_all([
             observation(1), observation(2, count=160, age=1),
             observation(3, minute=1), observation(4, session=str(uuid4())),
-            observation(5, version=uuid4()),
+            observation(5, dataset_file=uuid4()),
         ])
         db.commit()
-        total, first_page = page_traffic_bins(db, version_id, 1, 2)
-        second_total, second_page = page_traffic_bins(db, version_id, 2, 2)
+        total, first_page = page_traffic_bins(db, file_id, 1, 2)
+        second_total, second_page = page_traffic_bins(db, file_id, 2, 2)
         rows = first_page + second_page
         assert total == second_total == 3
         assert len(first_page) == 2

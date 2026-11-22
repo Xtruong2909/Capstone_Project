@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.api.v1.endpoints import datasets
 from app.schemas.data_quality import DataQualityCheckRequest
-from app.schemas.dataset_normalization import DatasetVersionSubmitRequest
+from app.schemas.dataset_normalization import DatasetFileSubmitRequest
 
 
 class FakeQuery:
@@ -21,13 +21,13 @@ class FakeQuery:
 
 
 class SubmitWithoutQualityCheckDb:
-    def __init__(self, version: SimpleNamespace, export_history: object) -> None:
-        self.version = version
+    def __init__(self, dataset_file: SimpleNamespace, export_history: object) -> None:
+        self.dataset_file = dataset_file
         self.export_history = export_history
 
     def query(self, model: object) -> FakeQuery:
-        if model is datasets.DatasetVersion:
-            return FakeQuery(self.version)
+        if model is datasets.DatasetFile:
+            return FakeQuery(self.dataset_file)
         if model is datasets.DataCleaningHistory:
             return FakeQuery(self.export_history)
         raise AssertionError(f"Unexpected database query: {model}")
@@ -42,47 +42,47 @@ class SubmitWithoutQualityCheckDb:
         pass
 
 
-def test_submit_dataset_version_route_is_registered() -> None:
+def test_submit_dataset_file_route_is_registered() -> None:
     routes = {
         (route.path, method)
         for route in datasets.router.routes
         for method in route.methods
     }
 
-    assert ("/{dataset_id}/versions/{version_id}/submit", "POST") in routes
+    assert ("/{dataset_id}/files/{file_id}/submit", "POST") in routes
 
 
 def test_submit_does_not_require_separate_quality_check(monkeypatch: pytest.MonkeyPatch) -> None:
     dataset_id = uuid4()
-    version_id = uuid4()
+    file_id = uuid4()
     user_id = uuid4()
-    version = SimpleNamespace(
-        id=version_id,
+    dataset_file = SimpleNamespace(
+        id=file_id,
         dataset_id=dataset_id,
-        version_tag="v1.1",
+        
         approval_status="PENDING",
         submitted_by=None,
         submitted_at=None,
         approved_by=None,
         approval_note=None,
     )
-    db = SubmitWithoutQualityCheckDb(version, export_history=object())
+    db = SubmitWithoutQualityCheckDb(dataset_file, export_history=object())
     monkeypatch.setattr(
         datasets,
-        "get_version_source_context",
-        lambda *_args, **_kwargs: (version_id, "v1.0", []),
+        "get_file_source_context",
+        lambda *_args, **_kwargs: (file_id, []),
     )
 
-    response = datasets.submit_dataset_version_for_admin(
+    response = datasets.submit_dataset_file_for_admin(
         dataset_id=dataset_id,
-        version_id=version_id,
-        payload=DatasetVersionSubmitRequest(note="Đã kiểm tra dữ liệu chuẩn hóa"),
+        file_id=file_id,
+        payload=DatasetFileSubmitRequest(note="Đã kiểm tra dữ liệu chuẩn hóa"),
         db=db,
         current_user=SimpleNamespace(id=user_id),
     )
 
     assert response.approval_status == "SUBMITTED"
-    assert version.submitted_at is not None
+    assert dataset_file.submitted_at is not None
 
 
 def test_data_quality_routes_are_not_exposed() -> None:
