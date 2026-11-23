@@ -1,4 +1,4 @@
-"""Queries and atomic row deletion for privately owned, unsubmitted batches."""
+"""Queries and atomic row deletion for owned draft or fully rejected batches."""
 from uuid import UUID
 
 from sqlalchemy import delete, exists, or_, select
@@ -27,9 +27,20 @@ def deletable_group_ids(db: Session, group_ids: list[UUID], owner_id: UUID) -> s
         or_(DatasetFile.approval_status != 'PENDING', DatasetFile.submitted_at.is_not(None),
             DatasetFile.submitted_by.is_not(None), DatasetFile.approved_by.is_not(None)),
     ))
+    non_rejected_or_missing = exists(
+        select(Dataset.id)
+        .outerjoin(DatasetFile, DatasetFile.dataset_id == Dataset.id)
+        .where(
+            Dataset.group_id == DatasetGroup.id,
+            or_(DatasetFile.id.is_(None), DatasetFile.approval_status != 'REJECTED'),
+        )
+    )
     return set(db.scalars(select(DatasetGroup.id).where(
-        DatasetGroup.id.in_(group_ids), DatasetGroup.first_submitted_at.is_(None),
-        own_dataset, ~other_owner, ~submitted,
+        DatasetGroup.id.in_(group_ids), own_dataset, ~other_owner,
+        or_(
+            DatasetGroup.first_submitted_at.is_(None) & ~submitted,
+            ~non_rejected_or_missing,
+        ),
     )).all())
 
 

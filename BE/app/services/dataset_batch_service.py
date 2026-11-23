@@ -1,4 +1,4 @@
-"""Delete unsubmitted batches after validating ownership, submission and active work."""
+"""Delete owned draft or fully rejected batches after checking active work."""
 import logging
 from uuid import UUID
 
@@ -27,11 +27,15 @@ def delete_batch(db: Session, group_id: UUID, user: User) -> BatchDeleteResponse
             raise HTTPException(404, 'Không tìm thấy batch thuộc tài khoản của bạn.')
         dataset_ids = [dataset.id for dataset in datasets]
         files = crud.lock_group_files(db, dataset_ids)
-        if (group.first_submitted_at is not None or any(
+        fully_rejected = len(files) == len(datasets) and all(
+            file.approval_status == 'REJECTED' for file in files
+        )
+        submitted_before = group.first_submitted_at is not None or any(
             file.approval_status != 'PENDING' or file.submitted_at is not None
             or file.submitted_by is not None or file.approved_by is not None for file in files
-        )):
-            raise HTTPException(409, 'Batch đã từng gửi phê duyệt nên không thể xóa.')
+        )
+        if submitted_before and not fully_rejected:
+            raise HTTPException(409, 'Chỉ có thể xóa batch chưa gửi phê duyệt hoặc đã bị từ chối toàn bộ.')
         jobs = crud.group_processing_jobs(db, group_id)
         if any(job.status in {'PENDING', 'RUNNING', 'QUEUED', 'PROCESSING'} for job in jobs) or crud.has_active_upload(db, user.id):
             raise HTTPException(409, 'Đang tải lên hoặc xử lý dữ liệu. Hãy đợi hoàn tất trước khi xóa batch.')
@@ -71,7 +75,7 @@ def delete_batch(db: Session, group_id: UUID, user: User) -> BatchDeleteResponse
             logger.warning('Batch storage cleanup deferred for group %s', group_id)
             pending.append(path)
     record_audit_event(user=user, action='DELETE_DATASET_GROUP', module='Dataset', status='SUCCESS',
-        description='Unsubmitted dataset batch deleted', resource_id=group_id,
+        description='Rejected dataset batch deleted' if fully_rejected else 'Unsubmitted dataset batch deleted', resource_id=group_id,
         details={'group_name': name, 'deleted_datasets': dataset_count, 'deleted_sessions': session_count,
                  'pending_storage_cleanup': pending})
     return BatchDeleteResponse(group_id=group_id, deleted_datasets=dataset_count,

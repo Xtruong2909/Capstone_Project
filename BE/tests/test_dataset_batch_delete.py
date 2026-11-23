@@ -54,7 +54,40 @@ def test_unsubmitted_batch_deletes_rows_then_unique_storage_files(batch: SimpleN
     batch.delete.assert_called_once_with(batch.db, batch.group.id, [batch.datasets[0].id], batch.user.id)
 
 
-@pytest.mark.parametrize('status', ['SUBMITTED', 'APPROVED', 'REJECTED', 'UNKNOWN'])
+def test_fully_rejected_batch_can_be_deleted_despite_submission_history(batch: SimpleNamespace) -> None:
+    batch.group.first_submitted_at = datetime.now(UTC)
+    batch.files[0].approval_status = 'REJECTED'
+    batch.files[0].submitted_at = datetime.now(UTC)
+    batch.files[0].submitted_by = batch.user.id
+    batch.files[0].approved_by = uuid4()
+    result = service.delete_batch(batch.db, batch.group.id, batch.user)
+    assert result.deleted_datasets == result.deleted_sessions == 1
+    batch.delete.assert_called_once()
+    assert batch.removed == ['draft/export.parquet', 'draft/raw.csv']
+
+
+@pytest.mark.parametrize('status', ['PENDING', 'SUBMITTED', 'APPROVED', 'UNKNOWN'])
+def test_partially_rejected_batch_cannot_be_deleted(batch: SimpleNamespace, status: str) -> None:
+    batch.files[0].approval_status = 'REJECTED'
+    batch.datasets.append(SimpleNamespace(id=uuid4(), created_by=batch.user.id))
+    batch.files.append(SimpleNamespace(approval_status=status))
+    with pytest.raises(HTTPException) as raised:
+        service.delete_batch(batch.db, batch.group.id, batch.user)
+    assert raised.value.status_code == 409
+    batch.delete.assert_not_called()
+    assert not batch.removed
+
+
+def test_rejected_batch_with_missing_dataset_file_cannot_be_deleted(batch: SimpleNamespace) -> None:
+    batch.files[0].approval_status = 'REJECTED'
+    batch.datasets.append(SimpleNamespace(id=uuid4(), created_by=batch.user.id))
+    with pytest.raises(HTTPException) as raised:
+        service.delete_batch(batch.db, batch.group.id, batch.user)
+    assert raised.value.status_code == 409
+    batch.delete.assert_not_called()
+
+
+@pytest.mark.parametrize('status', ['SUBMITTED', 'APPROVED', 'UNKNOWN'])
 def test_sent_and_unknown_statuses_are_not_deletable(batch: SimpleNamespace, status: str) -> None:
     batch.files[0].approval_status = status
     with pytest.raises(HTTPException) as raised:
@@ -83,7 +116,11 @@ def test_batch_with_datasets_from_another_owner_is_not_deletable(batch: SimpleNa
 
 
 @pytest.mark.parametrize('operation', ['processing', 'upload'])
-def test_active_work_blocks_delete(batch: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, operation: str) -> None:
+@pytest.mark.parametrize('status', ['PENDING', 'REJECTED'])
+def test_active_work_blocks_delete(
+    batch: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, operation: str, status: str,
+) -> None:
+    batch.files[0].approval_status = status
     if operation == 'processing':
         monkeypatch.setattr(service.crud, 'group_processing_jobs', lambda *a: [SimpleNamespace(status='RUNNING')])
     else:
@@ -146,3 +183,17 @@ def test_delete_endpoint_rechecks_policy_and_requires_auth(batch: SimpleNamespac
         response = client.delete(f'/api/v1/datasets/groups/{batch.group.id}')
     assert response.status_code == 409
     batch.delete.assert_not_called()
+
+
+def test_delete_endpoint_accepts_owned_rejected_batch(batch: SimpleNamespace) -> None:
+    batch.group.first_submitted_at = datetime.now(UTC)
+    batch.files[0].approval_status = 'REJECTED'
+    app = FastAPI()
+    app.include_router(dataset_batches.router, prefix='/api/v1/datasets')
+    app.dependency_overrides[get_db] = lambda: batch.db
+    app.dependency_overrides[require_data_engineer] = lambda: batch.user
+    with TestClient(app) as client:
+        response = client.delete(f'/api/v1/datasets/groups/{batch.group.id}')
+    assert response.status_code == 200
+    assert response.json()['group_id'] == str(batch.group.id)
+    batch.delete.assert_called_once()

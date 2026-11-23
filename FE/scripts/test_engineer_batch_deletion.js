@@ -26,17 +26,20 @@ function renderBatches(items, mode = 'catalog') {
   return renderToStaticMarkup(React.createElement(context.EngineerBatchBrowser, { mode }))
 }
 
-test('only backend-authorized unsubmitted batches show a delete button', () => {
+test('owned drafts and fully rejected batches show delete beside View Datasets when authorized', () => {
   const items = [
     { group_id: 'draft', group_name: 'Draft', approval_status: 'PENDING', can_delete: true },
     { group_id: 'sent', group_name: 'Sent', approval_status: 'SUBMITTED', can_delete: false },
     { group_id: 'approved', group_name: 'Approved', approval_status: 'APPROVED', can_delete: false },
-    { group_id: 'rejected', group_name: 'Rejected', approval_status: 'REJECTED', can_delete: false },
+    { group_id: 'rejected', group_name: 'Rejected', approval_status: 'REJECTED', can_delete: true },
+    { group_id: 'other-rejected', group_name: 'Not owned', approval_status: 'REJECTED', can_delete: false },
     { group_id: 'mixed', group_name: 'Mixed', approval_status: 'MIXED', can_delete: false },
     { group_id: 'unknown', group_name: 'Unknown', approval_status: 'PENDING' },
   ]
   const html = renderBatches(items)
-  assert.equal((html.match(/>Delete batch</g) || []).length, 1)
+  assert.equal((html.match(/>Delete batch</g) || []).length, 2)
+  const rejectedRow = html.split('</tr>').find((row) => row.includes('>Rejected</button>'))
+  assert(rejectedRow?.includes('Delete batch'))
   assert.equal((html.match(/>View Datasets</g) || []).length, items.length)
   assert(!renderBatches(items, 'preview').includes('Delete batch'))
 })
@@ -73,6 +76,18 @@ test('opening and cancelling confirmation never sends a DELETE request', () => {
   state.render().open({ group_id: 'sent', can_delete: false })
   assert.equal(state.render().target, null)
   assert.equal(state.calls.length, 0)
+})
+
+test('rejected batch confirmation deletes its group and refreshes the catalog', async () => {
+  const state = hook()
+  state.render().open({ group_id: 'rejected', approval_status: 'REJECTED', can_delete: true })
+  assert.equal(state.calls.length, 0)
+  const promise = state.render().confirm()
+  assert.deepEqual(state.calls, ['rejected'])
+  state.resolve({ cleanup_pending: false })
+  await promise
+  assert.equal(state.render().target, null)
+  assert.equal(state.reloads(), 1)
 })
 
 test('confirmation sends one DELETE despite repeated clicks and refreshes after success', async () => {

@@ -170,6 +170,7 @@ class UploadedDatasetGroupSummary(BaseModel):
     total_sessions: int
     approval_status: str = "UNKNOWN"
     approval_counts: dict[str, int] = Field(default_factory=dict)
+    # Owner may delete an unsubmitted draft or a batch whose files are all rejected.
     can_delete: bool = False
     datasets: list[UploadedDatasetSummary] | None = None
 

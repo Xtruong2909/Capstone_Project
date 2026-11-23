@@ -6,6 +6,9 @@ export default function EngineerDeleteBatchModal({ deletion }) {
   const { t } = useLanguage()
   if (!deletion.target) return null
   return <AdminModal title={t('Delete batch')} onClose={deletion.close} busy={deletion.busy}>
+    {deletion.target.approval_status === 'REJECTED' && <p className="admin-cell-note">
+      {t('This batch was rejected by the administrator. You can delete it and upload a new batch.')}
+    </p>}
     <p>{t('Delete this batch and all its datasets and recording sessions?')}</p>
     <p><strong>{deletion.target.group_name || deletion.target.drone_id}</strong></p>
     <p className="admin-cell-note">{t('Associated files will also be removed. This action cannot be undone.')}</p>

@@ -113,6 +113,38 @@ def test_first_submission_remains_locked_after_file_metadata_resets(database: Si
     assert path.is_file()
 
 
+def test_fully_rejected_batch_is_listed_as_deletable_and_removed(database: SimpleNamespace) -> None:
+    group, _, file, _, path = create_batch(database, 'REJECTED')
+    group.first_submitted_at = datetime.now(UTC)
+    file.submitted_at = datetime.now(UTC)
+    file.submitted_by = file.approved_by = database.user.id
+    database.db.commit()
+    group_id = group.id
+    assert crud.deletable_group_ids(database.db, [group_id], database.user.id) == {group_id}
+    service.delete_batch(database.db, group_id, database.user)
+    database.db.expire_all()
+    assert database.db.get(DatasetGroup, group_id) is None
+    assert not path.exists()
+
+
+@pytest.mark.parametrize('other_status', ['PENDING', 'SUBMITTED', 'APPROVED', 'UNKNOWN', None])
+def test_mixed_or_missing_files_never_make_rejected_batch_deletable(
+    database: SimpleNamespace, other_status: str | None,
+) -> None:
+    group, _, _, _, path = create_batch(database, 'REJECTED')
+    _, second_dataset, second_file, _, kept_path = create_batch(database, other_status or 'PENDING')
+    second_dataset.group = group
+    group.first_submitted_at = datetime.now(UTC)
+    if other_status is None:
+        database.db.delete(second_file)
+    database.db.commit()
+    assert not crud.deletable_group_ids(database.db, [group.id], database.user.id)
+    with pytest.raises(HTTPException) as raised:
+        service.delete_batch(database.db, group.id, database.user)
+    assert raised.value.status_code == 409
+    assert path.is_file() and kept_path.is_file()
+
+
 def test_partial_ownership_cannot_delete_global_group(database: SimpleNamespace) -> None:
     group, _dataset, _file, _session, path = create_batch(database)
     user = User(id=uuid4(), email='other-delete-test@example.invalid', full_name='Other',

@@ -1,6 +1,7 @@
 const translations = {
   vi: {
     'Delete batch': 'Xóa batch',
+    'This batch was rejected by the administrator. You can delete it and upload a new batch.': 'Batch này đã bị quản trị viên từ chối. Bạn có thể xóa và tải lên batch mới.',
     'Deleting...': 'Đang xóa...',
     'Delete this batch and all its datasets and recording sessions?': 'Xóa batch này cùng toàn bộ tập dữ liệu và phiên ghi hình?',
     'Associated files will also be removed. This action cannot be undone.': 'Các tệp liên quan cũng sẽ được xóa. Thao tác này không thể hoàn tác.',
