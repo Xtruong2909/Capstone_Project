@@ -4,6 +4,7 @@ from app.api.v1.endpoints import (
     admin,
     admin_portal,
     auth,
+    browser_session,
     dataset_access,
     dataset_batches,
     dataset_mapping,
@@ -13,6 +14,7 @@ from app.api.v1.endpoints import (
 )
 
 api_router = APIRouter()
+api_router.include_router(browser_session.router, prefix="/auth/session", tags=["Browser Session"])
 api_router.include_router(dataset_batches.router, prefix='/datasets', tags=['Dataset Batch Management'])
 api_router.include_router(direct_upload.router, prefix='/datasets/direct-upload', tags=['Direct S3 Upload'])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])

@@ -11,7 +11,7 @@ const page = (number, more = true) => ({ rows: [{ value: number }], columns: [{ 
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 
 function cacheModule(load) {
-  let session = { user: { id: 'owner-A' }, token: 'fixture-A' }
+  let session = { user: { id: 'owner-A' }, sessionScope: 'fixture-A' }
   const context = vm.createContext({ Map, Date, Promise, DOMException, AbortController,
     authStorage: { read: () => session }, engineerService: { previewSession: load } })
   vm.runInContext(prepare(read('services/engineerPreviewCache.js')), context)
@@ -69,14 +69,14 @@ test('switching account or token discards cached data and aborts previous reques
   const oldCache = module.context.getEngineerPreviewCache()
   const request = oldCache.request(params)
   const rejected = assert.rejects(request, { name: 'AbortError' })
-  module.switchAccount({ user: { id: 'owner-B' }, token: 'fixture-B' })
+  module.switchAccount({ user: { id: 'owner-B' }, sessionScope: 'fixture-B' })
   const otherCache = module.context.getEngineerPreviewCache()
   assert.notEqual(otherCache, oldCache)
   assert.equal(otherCache.peek(params), null)
   assert.equal(pending[0].signal.aborted, true)
   pending[0].resolve(page(1))
   await rejected
-  module.switchAccount({ user: { id: 'owner-B' }, token: 'fixture-renewed' })
+  module.switchAccount({ user: { id: 'owner-B' }, sessionScope: 'fixture-renewed' })
   assert.notEqual(module.context.getEngineerPreviewCache(), otherCache)
 })
 

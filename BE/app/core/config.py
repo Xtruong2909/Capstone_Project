@@ -30,6 +30,11 @@ CORS_ALLOWED_ORIGINS = [
 SECRET_KEY = os.getenv("SECRET_KEY", "urban_traffic_super_secret_jwt_key_2026")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "true").lower() == "true"
+AUTH_COOKIE_NAME = "__Host-capstone_session" if AUTH_COOKIE_SECURE else "capstone_session"
+AUTH_SESSION_EXPIRE_MINUTES = int(os.getenv("AUTH_SESSION_EXPIRE_MINUTES", "60"))
+AUTH_REMEMBER_EXPIRE_MINUTES = int(os.getenv("AUTH_REMEMBER_EXPIRE_MINUTES", "10080"))
+AUTH_ALLOW_BEARER_LOGIN = os.getenv("AUTH_ALLOW_BEARER_LOGIN", "true").lower() == "true"
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

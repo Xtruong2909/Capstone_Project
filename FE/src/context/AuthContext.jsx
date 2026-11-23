@@ -1,22 +1,34 @@
-import { createContext, useState, useCallback } from 'react'
+import { createContext, useState, useCallback, useEffect } from 'react'
 import { authService } from '../services/authService'
 import { authStorage } from '../services/authStorage'
-import { requiresPasswordChange, sessionUser } from '../services/authSession'
+import { requiresPasswordChange } from '../services/authSession'
 
 export const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => authStorage.read().user)
-  const [token, setToken] = useState(() => authStorage.read().token)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [sessionError, setSessionError] = useState(null)
 
-  // Hàm thực hiện đăng nhập
+  useEffect(() => {
+    let active = true
+    const unsubscribe = authStorage.subscribe((session) => setUser(session.user))
+    authService.restoreSession().then((session) => {
+      if (active) authStorage.save(session)
+    }).catch((err) => {
+      if (active) {
+        authStorage.clear()
+        if (err.response?.status !== 401) setError('Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.')
+      }
+    }).finally(() => { if (active) setIsLoading(false) })
+    return () => { active = false; unsubscribe() }
+  }, [])
+
   const login = useCallback(async (email, password, rememberMe = false) => {
     const normalizedEmail = email.trim()
     const validationError = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
-      ? 'Enter a valid email address.'
-      : !password ? 'Enter your password.' : null
+      ? 'Enter a valid email address.' : !password ? 'Enter your password.' : null
     if (validationError) {
       setError(validationError)
       return { success: false, error: validationError }
@@ -24,75 +36,41 @@ export function AuthProvider({ children }) {
     setIsLoading(true)
     setError(null)
     try {
-      const data = await authService.login({ email: normalizedEmail, password })
-      authStorage.save(data, rememberMe)
-      const currentUser = authStorage.read().user
-      
-      // Lưu vào state và LocalStorage
-      setToken(data.access_token)
-      setUser(currentUser)
-      
-      return { success: true, user: currentUser }
+      const session = await authService.login({
+        email: normalizedEmail, password, remember_me: rememberMe,
+      })
+      authStorage.save(session)
+      return { success: true, user: authStorage.read().user }
     } catch (err) {
-      const errorMessage =
-        err.response?.data?.detail || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.'
-      setError(errorMessage)
-      return { success: false, error: errorMessage }
-    } finally {
-      setIsLoading(false)
-    }
+      const message = err.response?.data?.detail || 'Đăng nhập thất bại. Vui lòng thử lại.'
+      setError(message)
+      return { success: false, error: message }
+    } finally { setIsLoading(false) }
   }, [])
 
   const changeInitialPassword = useCallback(async (newPassword) => {
+    const session = await authService.changeInitialPassword(newPassword)
+    if (!session.user || !session.csrf_token || requiresPasswordChange(session.user)) {
+      throw new Error('Password change could not be completed. Please try again.')
+    }
+    authStorage.replace(session)
+  }, [])
+
+  const logout = useCallback(async () => {
+    // A network failure must not be reported as a successful server-side logout.
+    setSessionError(null)
     try {
-      const data = await authService.changeInitialPassword(newPassword)
-      const updatedUser = sessionUser(data.user, data.access_token, data.must_change_password)
-      if (!data.access_token || !updatedUser || requiresPasswordChange(updatedUser, data.access_token)) {
-        throw new Error('Password change could not be completed. Please try again.')
-      }
-      authStorage.replace(data)
-      setToken(data.access_token)
-      setUser(updatedUser)
+      await authService.logout()
+      authStorage.clear()
     } catch (err) {
-      if (err.response?.status === 401) {
-        authStorage.clear()
-        setToken(null)
-        setUser(null)
-      }
+      setSessionError('Chưa thể đăng xuất khỏi server. Vui lòng kiểm tra kết nối và thử lại.')
       throw err
     }
   }, [])
 
-  // Hàm đăng xuất
-  const logout = useCallback(async () => {
-    try {
-      if (!requiresPasswordChange(user, token)) await authService.logout()
-    } catch {
-      // Local logout must still succeed when the API is temporarily unavailable.
-    } finally {
-      setToken(null)
-      setUser(null)
-      authStorage.clear()
-    }
-  }, [user, token])
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isAuthenticated: !!token,
-        role: user?.role || null,
-        mustChangePassword: requiresPasswordChange(user, token),
-        isLoading,
-        error,
-        login,
-        changeInitialPassword,
-        logout,
-        setError,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={{
+    user, isAuthenticated: Boolean(user), role: user?.role || null,
+    mustChangePassword: requiresPasswordChange(user), isLoading, error,
+    login, changeInitialPassword, logout, setError,
+  }}>{sessionError && <div role="alert" style={{ padding: '12px 20px', background: '#fff1f2', color: '#9f1239' }}>{sessionError}</div>}{children}</AuthContext.Provider>
 }

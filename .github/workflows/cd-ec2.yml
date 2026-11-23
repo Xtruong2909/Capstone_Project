@@ -1,0 +1,71 @@
+name: CI-CD EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Do not interrupt a running backup/migration/deployment when another push arrives.
+concurrency:
+  group: production-ec2
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy trafficflow.id.vn
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.repository == 'Xtruong2909/Capstone_Project'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: production
+      url: https://trafficflow.id.vn
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ap-southeast-1
+      DEPLOY_BUCKET: capstone-traffic-truong-2026
+      EC2_INSTANCE_ID: i-00f58c4ef1a620884
+      EC2_ENV_SOURCE: /home/ubuntu/Capstone_Project/deploy/ec2/.env
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+    steps:
+      - name: Checkout the tested commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check deployment configuration
+        shell: bash
+        run: |
+          test -n "$AWS_DEPLOY_ROLE_ARN" || {
+            echo 'Set AWS_DEPLOY_ROLE_ARN in the production environment variables.' >&2
+            exit 1
+          }
+      - name: Authenticate to AWS with OIDC
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: capstone-deploy-${{ github.run_id }}
+      - name: Package the tested commit
+        shell: bash
+        run: git archive --format=tar.gz -o "$RUNNER_TEMP/release.tar.gz" "$GITHUB_SHA"
+      - name: Upload private release artifact
+        shell: bash
+        run: |
+          aws s3 cp "$RUNNER_TEMP/release.tar.gz" \
+            "s3://$DEPLOY_BUCKET/deployments/$GITHUB_SHA-$GITHUB_RUN_ID.tar.gz" \
+            --only-show-errors --sse AES256
+      - name: Deploy through Systems Manager
+        shell: bash
+        run: bash deploy/ec2/send-deploy-command.sh
+      - name: Check public HTTPS
+        shell: bash
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 --max-time 20 https://trafficflow.id.vn/health/db

@@ -20,7 +20,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
 
-  const { login, isLoading, error, setError, isAuthenticated, user, token } = useAuth();
+  const { login, isLoading, error, setError, isAuthenticated, user } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,7 +38,7 @@ export default function LoginPage() {
     }
   };
 
-  if (isAuthenticated) return <Navigate to={authenticatedPath(user, token)} replace />;
+  if (isAuthenticated) return <Navigate to={authenticatedPath(user)} replace />;
 
   return (
     <div className="login-page">

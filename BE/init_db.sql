@@ -346,4 +346,16 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO datasets (id, name, code, source, description, capture_date, location_name, created_by) VALUES
 ('11111111-1111-1111-1111-111111111111', 'pNEUMA Athens CBD Dataset', 'PNEUMA_ATHENS', 'EPFL (Barmpounakis & Geroliminis, 2020)', 'Large-scale naturalistic traffic dataset captured by a swarm of 10 drones in central Athens, Greece', '2018-10-24', 'Athens Central Business District, Greece', '00000000-0000-0000-0000-000000000001');
 
+-- Revocable browser authentication. Never store the raw session cookie in the DB.
+CREATE TABLE IF NOT EXISTS browser_sessions (
+    token_hash VARCHAR(64) PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    password_fingerprint VARCHAR(64) NOT NULL,
+    remember_me BOOLEAN NOT NULL DEFAULT FALSE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_browser_sessions_user_id ON browser_sessions(user_id);
+CREATE INDEX IF NOT EXISTS ix_browser_sessions_expires_at ON browser_sessions(expires_at);
+
 COMMIT;

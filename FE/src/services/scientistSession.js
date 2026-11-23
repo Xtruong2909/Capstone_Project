@@ -3,8 +3,8 @@ import { authStorage } from './authStorage.js'
 let current = null
 
 export function getScientistSession() {
-  const { user, token } = authStorage.read()
-  const scope = user?.id && token ? `${user.id}:${token}` : null
+  const { user, sessionScope } = authStorage.read()
+  const scope = user?.id && sessionScope ? `${user.id}:${sessionScope}` : null
   if (!current || current.scope !== scope) {
     current = {
       scope,

@@ -12,8 +12,8 @@ const stripImports = (source) => source.replace(/^import .*\r?\n/gm, '')
 const limitedToken = `test.${Buffer.from(JSON.stringify({ pwd_change_only: true })).toString('base64url')}.test`
 const regularToken = `test.${Buffer.from(JSON.stringify({ role: 'data_engineer' })).toString('base64url')}.test`
 const user = { id: 'first-login-user', email: 'first-login@example.test', role_id: 'data_engineer', must_change_password: true }
-const limitedSession = { access_token: limitedToken, user, must_change_password: true }
-const regularSession = { access_token: regularToken, user: { ...user, must_change_password: false }, must_change_password: false }
+const limitedSession = { csrf_token: 'limited-csrf', user, must_change_password: true }
+const regularSession = { csrf_token: 'regular-csrf', user: { ...user, must_change_password: false }, must_change_password: false }
 const event = { preventDefault() {} }
 function memoryStorage() {
   const values = new Map()
@@ -28,7 +28,7 @@ beforeEach(() => {
 function stateHooks() {
   const slots = []
   let cursor = 0
-  return { reset: () => { cursor = 0 },
+  return { reset: () => { cursor = 0 }, setFirst: (value) => { slots[0] = value },
     useState(initial) {
       const index = cursor++
       if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial
@@ -58,7 +58,7 @@ test('all workspaces redirect a first-login user to the password form', () => {
   }
 })
 
-test('the API flag persists on reload, including a top-level-only flag and legacy limited tokens', () => {
+test('the API flag persists on reload, including a top-level-only password flag', () => {
   authStorage.save({ access_token: 'fixture', user: { role_id: 'data_engineer' }, must_change_password: true }, true)
   assert.equal(authStorage.read().user.must_change_password, true)
   assert.equal(authStorage.read().user.role, 'data_engineer')
@@ -75,7 +75,7 @@ test('the service sends only new_password to the temporary-password endpoint', a
   } } })
   vm.runInContext(stripImports(read('../src/services/authService.js')).replace('export const authService =', 'globalThis.authService ='), context)
   assert.equal(await context.authService.changeInitialPassword('new-password-123'), regularSession)
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ url: '/auth/change-password', payload: { new_password: 'new-password-123' } }])
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ url: '/auth/session/change-password', payload: { new_password: 'new-password-123' } }])
 })
 
 function formHarness(changeInitialPassword) {
@@ -131,7 +131,7 @@ test('API rejection keeps the form available for correction and retry', async ()
 async function authHarness(service) {
   const hooks = stateHooks()
   const Provider = await component('../src/context/AuthContext.jsx', 'AuthProvider', {
-    createContext: () => ({ Provider: 'Provider' }), useState: hooks.useState, useCallback: (fn) => fn,
+    createContext: () => ({ Provider: 'Provider' }), useState: hooks.useState, useCallback: (fn) => fn, useEffect: () => { authStorage.subscribe((session) => hooks.setFirst(session.user)) },
     authStorage, authService: service, requiresPasswordChange, sessionUser,
   })
   return () => { hooks.reset(); return Provider({}).props.value }
@@ -153,16 +153,16 @@ test('login validates locally without browser popups and only submits complete c
   assert.equal(calls[0].password, ' secret ')
 })
 
-test('successful first password change replaces the limited token and retains the remember setting', async () => {
+test('successful first password change updates identity without persisting credentials', async () => {
   for (const remember of [false, true]) {
     authStorage.save(limitedSession, remember)
     const render = await authHarness({ changeInitialPassword: async () => regularSession })
     assert.equal(render().mustChangePassword, true)
     await render().changeInitialPassword('new-password-123')
     assert.equal(render().mustChangePassword, false)
-    assert.equal(render().token, regularToken)
+    assert.equal(render().user.id, user.id)
     assert.equal(authStorage.read().user.must_change_password, false)
-    assert.equal((remember ? localStorage : sessionStorage).getItem('access_token'), regularToken)
+    assert.equal((remember ? localStorage : sessionStorage).getItem('access_token'), null)
     assert.equal((remember ? sessionStorage : localStorage).getItem('access_token'), null)
     assert.equal(authenticatedPath(render().user, render().token), '/engineer')
   }
@@ -173,23 +173,23 @@ test('rejected or still-limited API responses never unlock the workspace', async
   const failed = await authHarness({ changeInitialPassword: async () => { throw { response: { status: 400 } } } })
   await assert.rejects(failed().changeInitialPassword('new-password-123'))
   assert.equal(failed().mustChangePassword, true)
-  assert.equal(authStorage.read().token, limitedToken)
+  assert.equal(authStorage.read().csrfToken, 'limited-csrf')
   const limited = await authHarness({ changeInitialPassword: async () => limitedSession })
   await assert.rejects(limited().changeInitialPassword('new-password-123'), /could not be completed/)
   assert.equal(limited().mustChangePassword, true)
 })
 
-test('an expired temporary token clears authentication; a limited session can log out locally', async () => {
+test('an expired session clears authentication and limited sessions revoke through the API', async () => {
   authStorage.save(limitedSession, false)
-  const expired = await authHarness({ changeInitialPassword: async () => { throw { response: { status: 401 } } } })
+  const expired = await authHarness({ changeInitialPassword: async () => { authStorage.clear(); throw { response: { status: 401 } } } })
   await assert.rejects(expired().changeInitialPassword('new-password-123'))
   assert.equal(expired().isAuthenticated, false)
-  assert.equal(authStorage.read().token, null)
+  assert.equal(authStorage.read().user, null)
   authStorage.save(limitedSession, false)
   let logoutCalls = 0
   const signedIn = await authHarness({ logout: async () => { logoutCalls++ } })
   await signedIn().logout()
-  assert.equal(logoutCalls, 0)
+  assert.equal(logoutCalls, 1)
   assert.equal(signedIn().isAuthenticated, false)
 })
 

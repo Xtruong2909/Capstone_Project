@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci-test-only
+      POSTGRES_DB: capstone_ci
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      SECRET_KEY: ci-test-signing-key-not-for-production
+      STORAGE_BACKEND: local
+      AWS_EC2_METADATA_DISABLED: "true"
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_ALLOW_BEARER_LOGIN: "true"
+    defaults:
+      run:
+        working-directory: BE
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: BE/uv.lock
+      - name: Install locked dependencies
+        run: uv sync --frozen --group dev
+      - name: Check Python errors
+        # Existing style warnings can be addressed separately from fatal errors.
+        run: uv run --no-sync ruff check app tests --select E9,F63,F7,F82
+      - name: Run backend tests
+        run: uv run --no-sync pytest tests -q -p no:cacheprovider
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VITE_API_BASE_URL: /api/v1
+    defaults:
+      run:
+        working-directory: FE
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: FE/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run frontend tests
+        run: node --test scripts/test_*.js src/features/scientist/utils/*.test.js
+      - name: Build frontend
+        run: npm run build
+
+  deployment-files:
+    name: Deployment checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Check shell syntax
+        run: |
+          for script in deploy/ec2/setup-env.sh deploy/ec2/deploy-release.sh deploy/ec2/send-deploy-command.sh; do
+            bash -n "$script"
+          done
+      - name: Test deployment safeguards
+        run: python3 -m unittest discover -s deploy/ec2 -p 'test_*.py' -v
+      - name: Validate Compose
+        env:
+          POSTGRES_PASSWORD: ci-test-only
+          SECRET_KEY: ci-test-signing-key-not-for-production
+          SITE_ADDRESS: trafficflow.id.vn
+          S3_BUCKET_NAME: capstone-traffic-truong-2026
+        run: |
+          # This temporary empty env is exclusively for config validation on CI.
+          touch "$RUNNER_TEMP/compose-check.env"
+          export EC2_ENV_FILE="$RUNNER_TEMP/compose-check.env"
+          docker compose -f deploy/ec2/compose.yml config --quiet
+      - name: Check tracked secret filenames
+        run: |
+          if git ls-files | grep -Ei '(^|/)(\.env|[^/]*\.pem)$'; then
+            echo 'Remove tracked environment/private-key files before deploying.' >&2
+            exit 1
+          fi

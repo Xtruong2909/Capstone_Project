@@ -1,18 +1,32 @@
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.security import decode_access_token
 from app.crud.crud_user import get_user_by_id
 from app.database.database import get_db
 from app.models.user import User
+from app.services.browser_session_service import require_session
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+def _authentication_payload(
+    request: Request, credentials: HTTPAuthorizationCredentials | None, db: Session
+) -> dict | None:
+    if request.cookies.get(config.AUTH_COOKIE_NAME):
+        user, _, _ = require_session(request, db)
+        return {"sub": str(user.id), "pwd_change_only": user.must_change_password}
+    if credentials and config.AUTH_ALLOW_BEARER_LOGIN:
+        return decode_access_token(credentials.credentials)
+    return None
+
+
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -22,10 +36,7 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if not credentials:
-        raise credentials_exception
-
-    payload = decode_access_token(credentials.credentials)
+    payload = _authentication_payload(request, credentials, db)
     if not payload:
         raise credentials_exception
     if payload.get("pwd_change_only"):
@@ -63,6 +74,7 @@ def get_current_user(
 
 
 def get_user_requiring_password_change(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -72,10 +84,7 @@ def get_user_requiring_password_change(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if not credentials:
-        raise credentials_exception
-
-    payload = decode_access_token(credentials.credentials)
+    payload = _authentication_payload(request, credentials, db)
     if not payload or not payload.get("pwd_change_only"):
         raise credentials_exception
 
@@ -132,13 +141,12 @@ def require_data_engineer(current_user: User = Depends(get_current_user)) -> Use
 
 
 def get_current_user_optional(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User | None:
     """Retrieve current user if token is provided and valid, otherwise None."""
-    if not credentials:
-        return None
-    payload = decode_access_token(credentials.credentials)
+    payload = _authentication_payload(request, credentials, db)
     if not payload:
         return None
     if payload.get("pwd_change_only"):
@@ -154,6 +162,8 @@ def get_current_user_optional(
     except ValueError:
         return None
     user = get_user_by_id(db, user_id=user_id)
+    if user and not user.is_active:
+        return None
     if user and user.must_change_password:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

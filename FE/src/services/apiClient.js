@@ -6,17 +6,18 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// Request Interceptor: Tự động gắn Token vào Header nếu đã đăng nhập
+// Cookies carry the session; mutations also need the session-bound CSRF nonce.
 apiClient.interceptors.request.use(
   (config) => {
-    const { token } = authStorage.read()
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    const { csrfToken } = authStorage.read()
+    if (csrfToken && !['get', 'head', 'options'].includes(config.method?.toLowerCase() || 'get')) {
+      config.headers['X-CSRF-Token'] = csrfToken
     }
     return config
   },

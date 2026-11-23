@@ -36,6 +36,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-traffic_urban}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate deploy/ec2/.env first}
       SECRET_KEY: ${SECRET_KEY:?Generate deploy/ec2/.env first}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_ALLOW_BEARER_LOGIN: "false"
       STORAGE_BACKEND: s3
       S3_BUCKET_NAME: ${S3_BUCKET_NAME:?Set the existing S3 bucket}
       S3_KEY_PREFIX: ${S3_KEY_PREFIX-datasets}

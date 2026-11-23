@@ -153,6 +153,8 @@ Capstone_Project/
 
 **Triển khai EC2:** dùng [Compose riêng](deploy/ec2/compose.yml) và làm theo [hướng dẫn EC2](docs/DEVELOPER_SETUP_GUIDE.md#ec2). Frontend được build với API cùng origin; backend và PostgreSQL không publish cổng ra ngoài, S3 dùng IAM role của EC2.
 
+**CI/CD GitHub Actions:** xem [hướng dẫn CI/CD](docs/DEVELOPER_SETUP_GUIDE.md#github-actions-cicd) để cấu hình AWS OIDC, SSM và environment `production`. PR chạy kiểm tra; push `main` triển khai EC2 sau khi CI thành công, có backup DB và khôi phục ứng dụng khi kiểm tra lỗi.
+
 ### 1. Prerequisites
 Ensure you have the following installed on your machine:
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL + PostGIS)

@@ -19,9 +19,11 @@ export function useLogout() {
     guard.busy = true
     setIsLoggingOut(true)
     try {
-      // AuthContext calls the API with the current token, then clears local auth.
+      // The server revokes the cookie session before the UI redirects.
       await logout()
       if (guard.active) navigate('/login', { replace: true })
+    } catch {
+      // AuthProvider displays the failure; keep the user on the current page.
     } finally {
       guard.busy = false
       if (guard.active) setIsLoggingOut(false)

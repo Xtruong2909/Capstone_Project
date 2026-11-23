@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import Request as HttpRequest
 from sqlalchemy.orm import Session
 
+from app.core import config
 from app.core.deps import get_current_user, get_user_requiring_password_change
 from app.core.security import create_access_token, verify_password
 from app.crud import crud_user
@@ -52,6 +53,8 @@ def login(
     db: Session = Depends(get_db),
 ) -> Token:
     """Xác thực tài khoản bằng Email & Mật khẩu, trả về JWT Access Token kèm thông tin User."""
+    if not config.AUTH_ALLOW_BEARER_LOGIN:
+        raise HTTPException(status_code=404, detail="Use browser session authentication")
     user = crud_user.authenticate_user(db, email=request.email, password=request.password)
     client_ip = client_request.client.host if client_request.client else None
     if not user:
@@ -115,6 +118,8 @@ def change_password(
     db: Session = Depends(get_db),
 ) -> Token:
     """Change the temporary password and return a regular access token."""
+    if not config.AUTH_ALLOW_BEARER_LOGIN:
+        raise HTTPException(status_code=404, detail="Use browser session authentication")
     if verify_password(request.new_password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,6 +150,8 @@ def logout(
     current_user: User = Depends(get_current_user),
 ) -> MessageResponse:
     """Finish the current client session and record the logout event."""
+    if not config.AUTH_ALLOW_BEARER_LOGIN:
+        raise HTTPException(status_code=404, detail="Use browser session authentication")
     client_ip = client_request.client.host if client_request.client else None
     auth_service.logout_user(current_user, client_ip)
     return MessageResponse(message="Đăng xuất thành công.")

@@ -1,0 +1,3 @@
+# Only reviewed, idempotent migrations belong here. Historical migrations are
+# already applied on this server; never replay the whole BE/migrations directory.
+20261205_browser_sessions.sql

@@ -7,11 +7,12 @@ import { authenticatedPath } from '../../services/authSession'
 import './InitialPasswordPage.css'
 
 export default function InitialPasswordPage() {
-  const { user, token, isAuthenticated, mustChangePassword, logout } = useAuth()
+  const { user, isAuthenticated, isLoading, mustChangePassword, logout } = useAuth()
   const { t } = useLanguage()
   const form = useInitialPasswordChange()
+  if (isLoading) return <p role="status">{t('Please wait...')}</p>
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (!mustChangePassword) return <Navigate to={authenticatedPath(user, token)} replace />
+  if (!mustChangePassword) return <Navigate to={authenticatedPath(user)} replace />
   return <main className="initial-password-page">
     <section className="initial-password-card" aria-labelledby="initial-password-title">
       <div className="initial-password-icon"><ShieldCheck size={28} /></div>

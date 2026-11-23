@@ -265,7 +265,7 @@ sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml exec -T
 
 Trong S3 CORS, **thêm** origin website mới, giữ các origin local nhóm đang dùng và expose `ETag`; IAM role không thay thế CORS của browser upload. Xem [hướng dẫn S3](../BE/docs/s3_direct_upload.md).
 
-Frontend đã build gọi API cùng website qua `/api/v1`, nên không cần ghi IP backend vào bundle. Thành viên vẫn chạy FE local thì đặt `VITE_API_BASE_URL=https://traffic.example.com/api/v1` rồi khởi động lại Vite; các origin local 5173/5174 đã được đưa vào env server.
+Frontend đã build gọi API cùng website qua `/api/v1`, nên không cần ghi IP backend vào bundle. Thành viên dùng website HTTPS đã triển khai để làm việc chung; khi phát triển local, chạy cả FE và backend local theo hướng dẫn Browser session authentication bên dưới.
 
 ### 6. Cập nhật và sao lưu
 
@@ -301,3 +301,151 @@ The project includes built-in guidelines for both developers and AI tools (Antig
    ```powershell
    git push origin <your-branch-name>
    ```
+
+
+## Browser session authentication
+
+Website dùng cookie phiên opaque thay cho JWT trong Web Storage:
+
+- API: POST `/api/v1/auth/session/login`, GET `/api/v1/auth/session`,
+  POST `/api/v1/auth/session/logout`, POST `/api/v1/auth/session/change-password`.
+- Cookie production: `__Host-capstone_session`, `HttpOnly; Secure; SameSite=Lax; Path=/`,
+  không đặt Domain. JavaScript không đọc được credential; chủ trình duyệt vẫn xem
+  được cookie trong DevTools. Không trả credential trong JSON, không ghi vào Web Storage.
+- Database chỉ giữ SHA-256 của cookie ngẫu nhiên. Đăng xuất thu hồi phiên trong DB;
+  mật khẩu thay đổi làm mất hiệu lực các phiên cũ. Khóa tài khoản được kiểm tra mỗi request.
+- Response phiên có `csrf_token` (không phải credential đăng nhập). Frontend giữ trong RAM
+  và gửi `X-CSRF-Token` cho POST/PUT/PATCH/DELETE. Backend kiểm tra token gắn với phiên,
+  Origin cho phép và chặn Sec-Fetch-Site cross-site.
+- Không chọn ghi nhớ: cookie phiên, tối đa 60 phút. Chọn ghi nhớ: cookie có Max-Age,
+  tối đa 7 ngày. Điều chỉnh `AUTH_SESSION_EXPIRE_MINUTES` / `AUTH_REMEMBER_EXPIRE_MINUTES`.
+- Giới hạn 20 lần đăng nhập/IP/phút trong một worker, bộ nhớ có giới hạn. Nếu chạy nhiều
+  worker/máy, cần rate limiter dùng chung hoặc giới hạn ở proxy/WAF.
+- Compose EC2 bắt buộc `AUTH_COOKIE_SECURE=true` và `AUTH_ALLOW_BEARER_LOGIN=false`;
+  JWT cũ và endpoint đăng nhập bearer cũ không dùng được trên production.
+- Compose local đặt `AUTH_COOKIE_SECURE=false`. Chạy backend bằng uv ngoài Docker:
+  thêm `AUTH_COOKIE_SECURE=false` vào env **chỉ trên máy local**. Giữ hostname giống nhau
+  cho FE/API (cùng localhost hoặc cùng 127.0.0.1), không trộn hai hostname.
+- Trên production truy cập frontend/API cùng origin HTTPS. FE localhost gọi API production
+  là cross-site và không được hỗ trợ bởi cookie SameSite này; dùng website đã triển khai.
+
+### Nâng cấp database hiện có
+
+Trước khi chạy backend mới, áp dụng migration thêm bảng browser_sessions (không xóa
+dữ liệu ứng dụng). Sao lưu DB trước, chạy từ thư mục repository trên EC2:
+
+```bash
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml cp BE/migrations/20261205_browser_sessions.sql postgres:/tmp/browser_sessions.sql
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /tmp/browser_sessions.sql'
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml up -d --build --wait
+```
+
+Người dùng đang mở trang cần tải lại và đăng nhập lại sau cập nhật.
+
+## GitHub Actions CI/CD
+
+### Pipeline
+
+- PR vào `main`: [CI](../.github/workflows/ci.yml) kiểm tra lỗi Python,
+  chạy test backend/frontend, build frontend, kiểm tra Bash và Compose.
+- Push `main`: [CI-CD EC2](../.github/workflows/cd-ec2.yml) gọi lại CI.
+  Chỉ sau khi CI thành công mới triển khai bằng OIDC + AWS Systems Manager.
+- Có thể chạy thủ công **Actions → CI-CD EC2 → Run workflow**, chọn `main`.
+- GitHub runner đóng gói đúng commit đã test và gửi source archive vào prefix
+  `deployments/` của bucket hiện có. Archive chỉ gồm file Git đang theo dõi.
+- SSM gọi [deploy-release.sh](../deploy/ec2/deploy-release.sh) với user `ubuntu`.
+  Script build image, sao lưu DB, áp dụng migration trong allowlist,
+  khởi động dịch vụ và kiểm tra HTTPS.
+- Ứng dụng giữ Compose project `capstone-ec2` và các volume hiện có.
+  Bí mật được đọc từ `/home/ubuntu/Capstone_Project/deploy/ec2/.env` trên EC2.
+  Workflow không cần SSH private key hoặc AWS access key lâu dài trong GitHub.
+
+Repository hiện public. Pipeline dùng GitHub-hosted runner; không cài runner của
+repository public lên server production. Xem [GitHub runner security](https://docs.github.com/en/actions/reference/security/secure-use).
+
+### 1. Chuẩn bị EC2 (một lần)
+
+Trong AWS IAM, gắn policy **AmazonSSMManagedInstanceCore** vào role
+`truong-app-server-role` đang gắn EC2. Giữ quyền S3 của role.
+Role cần `s3:GetObject` trên `capstone-traffic-truong-2026/deployments/*`;
+policy `AmazonS3ReadOnlyAccess` hiện tại đã bao gồm quyền đó.
+
+SSM Agent dạng Snap đã được kiểm tra đang chạy trên EC2 này. Kiểm tra lại:
+
+```bash
+sudo systemctl status snap.amazon-ssm-agent.amazon-ssm-agent.service
+```
+
+Vào **AWS Systems Manager → Fleet Manager / Managed nodes**, xác nhận instance
+`i-00f58c4ef1a620884` hiện **Online**. EC2 cần truy cập HTTPS outbound tới SSM và S3;
+giữ cổng SSH chỉ cho IP quản trị.
+
+EC2 chưa có AWS CLI khi chuẩn bị pipeline. Cài AWS CLI v2 x86_64 theo
+[hướng dẫn AWS](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y unzip
+curl -fsS https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/capstone-awscliv2.zip
+unzip -q /tmp/capstone-awscliv2.zip -d /tmp/capstone-awscli
+sudo /tmp/capstone-awscli/aws/install
+aws --version
+```
+
+AWS CLI trên EC2 dùng IAM role; không chạy `aws configure` để lưu access key.
+
+### 2. Tạo IAM role cho GitHub (một lần)
+
+1. **IAM → Identity providers → Add provider → OpenID Connect**:
+   Provider URL `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.
+   Nếu provider đã có trong account thì dùng lại.
+2. Tạo role `capstone-github-deploy`, dùng trust policy trong
+   [github-oidc-trust.json](../deploy/ec2/github-oidc-trust.json).
+3. Gắn inline permission policy trong
+   [github-deploy-policy.json](../deploy/ec2/github-deploy-policy.json).
+   Policy chỉ cho upload artifact vào prefix `deployments/`, gửi lệnh tới đúng
+   instance và đọc trạng thái lệnh. Quyền deploy này cho phép chạy code trên server;
+   chỉ những người tin cậy được phép merge vào `main`.
+4. Sao chép ARN role mới. Không thay role đang gắn EC2 bằng role GitHub này.
+
+Trust policy dùng subject `repo:Xtruong2909/Capstone_Project:environment:production`.
+Xem [AWS OIDC trust](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-idp_oidc.html).
+
+### 3. Cấu hình GitHub (một lần)
+
+Trong repository **Settings → Environments**, tạo environment **production**:
+
+- **Deployment branches and tags**: chỉ cho phép branch `main` (đây là bước bắt buộc
+  vì trust OIDC gắn với environment).
+- Environment variable **AWS_DEPLOY_ROLE_ARN**:
+  `arn:aws:iam::378595784342:role/capstone-github-deploy` (dùng ARN role thực tế vừa tạo).
+- Có thể bật **Required reviewers** để duyệt mỗi lần deploy.
+- Thiết lập ruleset/branch protection cho `main`: yêu cầu review và CI thành công trước merge.
+
+Không đưa Gemini key, JWT secret, mật khẩu DB hoặc SSH key vào workflow.
+Chúng tiếp tục nằm trong env riêng trên server.
+
+### 4. Commit, push và xem lần chạy đầu
+
+Commit/push toàn bộ thay đổi ứng dụng, migrations và workflow sau khi review.
+Workflow chỉ thấy code đã commit; các file mới chưa theo dõi cũng phải được thêm.
+
+Sau push `main`, xem **Actions → CI-CD EC2**. CI sẽ chạy trước. Nếu AWS chưa
+được cấu hình, CD sẽ báo thiếu role/quyền/managed node; không thay đổi server.
+
+### Releases, migrations và khôi phục
+
+- Release source: `/home/ubuntu/capstone-deploy/releases/`.
+- Symlink release thành công: `/home/ubuntu/capstone-deploy/current`.
+- Backup DB và image IDs: `/home/ubuntu/capstone-deploy/backups/`.
+- Code đang chạy không bị ghi đè bởi `git pull` vào checkout cũ.
+- Script từ chối deploy khi có job dữ liệu đang chạy; chờ hoàn thành rồi rerun.
+- Chỉ áp dụng file trong [ci-migrations.txt](../deploy/ec2/ci-migrations.txt).
+  Chỉ thêm SQL đã review, idempotent, tương thích với code cũ; không thêm
+  migration xóa/sửa dữ liệu mang tính phá hủy vào allowlist này.
+- Nếu container mới/health check thất bại, script thử khởi động lại image và
+  cấu hình của release trước. Không tự restore DB đè dữ liệu production.
+- Nếu GitHub hủy job sau khi đã gửi SSM, lệnh trên EC2 có thể vẫn chạy.
+  Kiểm tra **Systems Manager → Run Command** trước khi gửi deploy lại.
+- Tự quản lý giữ/xóa backup, release cũ và artifact prefix `deployments/` theo nhu cầu;
+  script không chạy `docker system prune` hoặc xóa volume ứng dụng.

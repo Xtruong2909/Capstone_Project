@@ -67,8 +67,8 @@ export function createEngineerPreviewCache(load, now = Date.now) {
 let sessionScope
 let sessionCache
 export function getEngineerPreviewCache() {
-  const { user, token } = authStorage.read()
-  const scope = user?.id && token ? user.id + ':' + token : null
+  const { user, sessionScope: currentScope } = authStorage.read()
+  const scope = user?.id && currentScope ? user.id + ':' + currentScope : null
   if (!sessionCache || scope !== sessionScope) {
     sessionCache?.dispose()
     sessionScope = scope

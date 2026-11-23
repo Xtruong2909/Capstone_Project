@@ -1,5 +1,7 @@
 import apiClient from './apiClient'
 
+let restoringSession
+
 export const authService = {
   async forgotPassword(email) {
     const response = await apiClient.post('/auth/forgot-password', { email })
@@ -18,20 +20,20 @@ export const authService = {
   /**
    * Đăng nhập người dùng
    * @param {{ email: string, password: string }} credentials 
-   * @returns {Promise<{ access_token: string, token_type: string, user: object }>}
+   * @returns {Promise<{ csrf_token: string, user: object }>}
    */
   async login(credentials) {
-    const response = await apiClient.post('/auth/login', credentials)
+    const response = await apiClient.post('/auth/session/login', credentials)
     return response.data
   },
 
   async logout() {
-    const response = await apiClient.post('/auth/logout', undefined, { timeout: 10000 })
+    const response = await apiClient.post('/auth/session/logout', undefined, { timeout: 10000 })
     return response.data
   },
 
   async changeInitialPassword(newPassword) {
-    const response = await apiClient.post('/auth/change-password', { new_password: newPassword })
+    const response = await apiClient.post('/auth/session/change-password', { new_password: newPassword })
     return response.data
   },
 
@@ -42,6 +44,15 @@ export const authService = {
   async getCurrentUser() {
     const response = await apiClient.get('/auth/me')
     return response.data
+  },
+
+  restoreSession() {
+    if (!restoringSession) {
+      restoringSession = apiClient.get('/auth/session', { timeout: 10000 })
+        .then((response) => response.data)
+        .finally(() => { restoringSession = null })
+    }
+    return restoringSession
   },
 
   /**

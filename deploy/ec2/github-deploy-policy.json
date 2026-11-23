@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UploadTrackedSourceRelease",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::capstone-traffic-truong-2026/deployments/*"
+    },
+    {
+      "Sid": "DeployOnlyCapstoneInstance",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ec2:ap-southeast-1:378595784342:instance/i-00f58c4ef1a620884",
+        "arn:aws:ssm:ap-southeast-1::document/AWS-RunShellScript"
+      ]
+    },
+    {
+      "Sid": "ReadDeploymentCommandStatus",
+      "Effect": "Allow",
+      "Action": "ssm:GetCommandInvocation",
+      "Resource": "*"
+    }
+  ]
+}

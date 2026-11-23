@@ -25,7 +25,7 @@ async function providerLogout(post) {
   vm.runInContext(read('services/authService.js') + '\nglobalThis.service = authService', serviceContext)
   const providerContext = vm.createContext({ React, createContext: () => ({ Provider: () => null }),
     useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
-    useCallback: (callback) => callback, authStorage, requiresPasswordChange, sessionUser,
+    useCallback: (callback) => callback, useEffect: () => {}, authStorage, requiresPasswordChange, sessionUser,
     authService: serviceContext.service,
   })
   const { code } = await transformWithOxc(read('context/AuthContext.jsx'), 'AuthContext.jsx', { jsx: { runtime: 'classic' } })
@@ -39,7 +39,7 @@ function logoutHook(logout) {
   const context = vm.createContext({
     useAuth: () => ({ logout }),
     useNavigate: () => (path, options) => {
-      assert.equal(authStorage.read().token, null, 'Token must be cleared before redirect')
+      assert.equal(authStorage.read().user, null, 'Token must be cleared before redirect')
       navigation.push({ path, options })
     },
     useState: (initial) => {
@@ -59,7 +59,7 @@ function logoutHook(logout) {
 
 for (const role of ['admin', 'data_engineer']) {
   for (const succeeds of [true, false]) {
-    test(`${role}: wait for logout API, then clear both storages and redirect (${succeeds ? 'success' : 'network failure'})`, async () => {
+    test(`${role}: logout revokes before redirect and stays signed in on network failure (${succeeds ? 'success' : 'network failure'})`, async () => {
       const user = { id: role + '-fixture', role_id: role }
       authStorage.save({ access_token: 'fixture-current-token', user }, true)
       // Also verify stale session credentials are cleared.
@@ -68,10 +68,10 @@ for (const role of ['admin', 'data_engineer']) {
       let resolve, reject, calls = 0
       const logout = await providerLogout((url, payload, config) => {
         calls++
-        assert.equal(url, '/auth/logout')
+        assert.equal(url, '/auth/session/logout')
         assert.equal(payload, undefined)
         assert.equal(config.timeout, 10000)
-        assert.equal(authStorage.read().token, 'fixture-current-token')
+        assert.equal(authStorage.read().user.id, user.id)
         return new Promise((done, fail) => { resolve = done; reject = fail })
       })
       const hook = logoutHook(logout)
@@ -80,12 +80,13 @@ for (const role of ['admin', 'data_engineer']) {
       assert.equal(calls, 1)
       assert.equal(hook.render().isLoggingOut, true)
       assert.equal(hook.navigation.length, 0)
-      assert.equal(authStorage.read().token, 'fixture-current-token')
+      assert.equal(authStorage.read().user.id, user.id)
       if (succeeds) resolve({ data: { message: 'Signed out' } })
       else reject(new Error('Network unavailable'))
       await pending
-      assert.equal(hook.navigation[0].path, '/login')
-      assert.equal(hook.navigation[0].options.replace, true)
+      if (succeeds) assert.equal(hook.navigation[0].path, '/login')
+      if (succeeds) assert.equal(hook.navigation[0].options.replace, true)
+      else { assert.equal(hook.navigation.length, 0); assert.equal(authStorage.read().user.id, user.id) }
       for (const storage of [sessionStorage, localStorage]) {
         assert.equal(storage.getItem('access_token'), null)
         assert.equal(storage.getItem('user_info'), null)

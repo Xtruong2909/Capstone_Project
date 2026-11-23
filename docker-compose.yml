@@ -28,6 +28,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      AUTH_COOKIE_SECURE: "false"
       DATABASE_URL: postgresql://admin:123@postgres:5432/traffic_urban
     ports:
       - "8000:8000"
