@@ -12,6 +12,12 @@ from app.core.config import DATASET_UPLOAD_DIR, MAX_DATASET_UPLOAD_BYTES
 from app.crud import crud_dataset
 from app.models.dataset import Dataset, DatasetFile
 from app.schemas.dataset import DatasetUploadMetadata
+from app.services.audit_log_service import record_audit_event
+from app.services.storage_service import (
+    cleanup_failed_file,
+    discard_local_file,
+    persist_dataset_file,
+)
 
 SUPPORTED_FORMATS = {".csv", ".json", ".xls", ".xlsx", ".parquet"}
 UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024
@@ -133,10 +139,11 @@ def create_dataset_upload(
     file_id = uuid4()
     stored_filename = f"{file_id}{extension}"
     absolute_path = DATASET_UPLOAD_DIR / str(dataset_id) / stored_filename
-    relative_path = absolute_path.relative_to(DATASET_UPLOAD_DIR).as_posix()
     absolute_path.parent.mkdir(parents=True, exist_ok=True)
 
     file_size_bytes = 0
+    stored_path: str | None = None
+    commit_started = False
     try:
         with absolute_path.open("xb") as destination:
             file_size_bytes = _copy_upload(file_stream, destination, size)
@@ -144,20 +151,24 @@ def create_dataset_upload(
         if file_size_bytes == 0:
             raise EmptyDatasetFileError("File dataset không được để trống")
 
+        stored_path = persist_dataset_file(absolute_path, upload_root=DATASET_UPLOAD_DIR)
         try:
-            return crud_dataset.create_dataset_file(
+            created = crud_dataset.create_dataset_file(
                 db,
                 metadata=metadata,
                 dataset_id=dataset_id,
                 file_id=file_id,
                 creator_id=creator_id,
                 dataset_code=f"DATASET_{dataset_id.hex.upper()}",
-                data_file_path=relative_path,
+                data_file_path=stored_path,
                 original_filename=original_filename,
                 file_format=extension[1:].upper(),
                 file_size_bytes=file_size_bytes,
                 ip_address=ip_address,
+                commit=False,
             )
+            commit_started = True
+            db.commit()
         except IntegrityError as exc:
             db.rollback()
             constraint_name = getattr(
@@ -179,5 +190,18 @@ def create_dataset_upload(
                 message
             ) from exc
     except Exception:
-        absolute_path.unlink(missing_ok=True)
+        db.rollback()
+        if not commit_started:
+            cleanup_failed_file(stored_path, upload_root=DATASET_UPLOAD_DIR)
+            absolute_path.unlink(missing_ok=True)
         raise
+    if stored_path.startswith("s3://"):
+        discard_local_file(absolute_path)
+    record_audit_event(
+        user_id=creator_id, action="UPLOAD_DATASET", module="Dataset", status="SUCCESS",
+        description="Dataset uploaded successfully", resource_id=file_id,
+        ip_address=ip_address, details={"dataset_code": f"DATASET_{dataset_id.hex.upper()}",
+            "original_filename": original_filename, "file_format": extension[1:].upper(),
+            "file_size_bytes": file_size_bytes},
+    )
+    return created

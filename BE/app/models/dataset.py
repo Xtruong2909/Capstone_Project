@@ -28,6 +28,7 @@ class DatasetGroup(Base):
     source = Column(String(255), nullable=False)
     drone_id = Column(String(32), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    first_submitted_at = Column(DateTime(timezone=True), nullable=True)
 
     datasets = relationship("Dataset", back_populates="group")
 
@@ -97,7 +98,7 @@ class RecordingSession(Base):
     scheduled_end = Column(DateTime(timezone=True), nullable=False)
     file_path = Column(String(512), nullable=False)
     file_size = Column(BigInteger, nullable=False)
-    checksum = Column(String(64), nullable=False)
+    checksum = Column(String(64), nullable=True)
     upload_status = Column(String(32), nullable=False, default="UPLOADED")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
@@ -119,6 +120,7 @@ class DatasetUploadJob(Base):
     total_files = Column(Integer, nullable=False)
     processed_files = Column(Integer, nullable=False, default=0)
     result = Column(JSONB, nullable=True)
+    upload_state = Column(JSONB, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC),

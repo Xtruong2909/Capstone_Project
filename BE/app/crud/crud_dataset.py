@@ -38,7 +38,7 @@ def get_or_create_dataset_group(db: Session, source: str, drone_id: str) -> Data
     group = db.query(DatasetGroup).filter(
         DatasetGroup.source == normalized_source,
         DatasetGroup.drone_id == normalized_drone,
-    ).one()
+    ).with_for_update().one()
     return group
 
 
@@ -46,7 +46,7 @@ def get_dataset_group_by_id(
     db: Session, group_id: UUID, *, for_update: bool = False,
 ) -> DatasetGroup | None:
     query = db.query(DatasetGroup).filter(DatasetGroup.id == group_id)
-    return (query.with_for_update() if for_update else query).first()
+    return (query.populate_existing().with_for_update() if for_update else query).first()
 
 
 def create_group_processing_job(
@@ -394,6 +394,21 @@ def save_upload_job(db: Session, job: DatasetUploadJob) -> None:
     db.commit()
 
 
+def lock_upload_job(db: Session, job_id: UUID) -> DatasetUploadJob | None:
+    return db.query(DatasetUploadJob).filter(DatasetUploadJob.id == job_id).with_for_update().first()
+
+
+def referenced_recording_paths(db: Session, paths: list[str]) -> set[str]:
+    return {row[0] for row in db.query(RecordingSession.file_path).filter(RecordingSession.file_path.in_(paths)).all()}
+
+
+def expired_direct_uploads(db: Session, now_timestamp: float) -> list[DatasetUploadJob]:
+    return db.query(DatasetUploadJob).filter(
+        DatasetUploadJob.status == 'UPLOADING',
+        DatasetUploadJob.upload_state['expires_at'].as_float() <= now_timestamp,
+    ).order_by(DatasetUploadJob.created_at).limit(100).with_for_update(skip_locked=True).all()
+
+
 def get_dataset_latest_file(db: Session, dataset_id: UUID) -> tuple[Dataset, DatasetFile] | None:
     """Get a dataset and its latest uploaded dataset_file."""
     result = (
@@ -551,6 +566,7 @@ def create_dataset_file(
     file_format: str,
     file_size_bytes: int,
     ip_address: str | None,
+    commit: bool = True,
 ) -> tuple[Dataset, DatasetFile]:
     """Persist a dataset and its uploaded file dataset_file."""
     dataset = Dataset(
@@ -578,6 +594,9 @@ def create_dataset_file(
         dataset_file.parquet_file_path = data_file_path
 
     db.add_all([dataset, dataset_file])
+    if not commit:
+        db.flush()
+        return dataset, dataset_file
     db.commit()
     db.refresh(dataset)
     db.refresh(dataset_file)
@@ -611,6 +630,7 @@ def create_normalized_file(
     user_id: UUID,
     cleaning_parameters: dict,
     original_filename: str | None = None,
+    commit: bool = True,
 ) -> tuple[DatasetFile, DataCleaningHistory]:
     # Older staging metadata has no filename; recover it from the source dataset_file.
     if original_filename is None and cleaning_parameters.get("source_file_id"):
@@ -651,6 +671,9 @@ def create_normalized_file(
         executed_by=user_id,
     )
     db.add(history)
+    if not commit:
+        db.flush()
+        return new_file, history
     db.commit()
     db.refresh(new_file)
     db.refresh(history)

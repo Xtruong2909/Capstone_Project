@@ -100,7 +100,7 @@ class DatasetFileSessionSummary(BaseModel):
     scheduled_start: datetime
     scheduled_end: datetime
     file_size: int
-    checksum: str
+    checksum: str | None = None
     upload_status: str
 
 

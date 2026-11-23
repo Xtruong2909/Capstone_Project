@@ -2,9 +2,19 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
+from fastapi import HTTPException
+
 from app.models.traffic import TrafficTimeSeries
 from app.services import traffic_aggregation_service as service
 from app.services.traffic_aggregation_service import aggregate_time_series_rows
+
+
+def test_missing_storage_path_returns_404_without_accessing_removed_columns() -> None:
+    file = SimpleNamespace(data_file_path=None, csv_file_path=None, parquet_file_path=None)
+    with pytest.raises(HTTPException) as raised:
+        service._resolve_dataset_file_path(file)
+    assert raised.value.status_code == 404
 
 
 def test_aggregate_time_series_rows_builds_one_minute_summary() -> None:

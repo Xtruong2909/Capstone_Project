@@ -225,7 +225,7 @@ def start_data_quality_check(
     dataset_file_id: UUID | None = None,
     session_id: UUID | None = None,
 ) -> tuple[DataQualityCheckStarted, Path | None]:
-    dataset, dataset_file = _resolve_dataset_file(db, dataset_id, dataset_file_id)
+    _dataset, dataset_file = _resolve_dataset_file(db, dataset_id, dataset_file_id)
     sessions = crud_dataset.list_all_file_sessions(db, dataset_file.id)
     selected_session: RecordingSession | None = None
     if session_id is not None:
@@ -729,7 +729,7 @@ def _timestamp_order_value(value: Any) -> float | None:
         return number if math.isfinite(number) else None
     except (TypeError, ValueError):
         try:
-            parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(str(value).strip())
             return parsed.timestamp()
         except (TypeError, ValueError, OverflowError):
             return None
@@ -1808,7 +1808,7 @@ def run_data_quality_check(
                     message="Recording date không khớp ngày của Dataset",
                     summaries=summaries_by_id,
                 )
-            checksum_prior = seen_checksums.get(session.checksum)
+            checksum_prior = seen_checksums.get(session.checksum) if session.checksum is not None else None
             filename_prior = seen_filenames.get(session.original_filename.casefold())
             if checksum_prior is not None and checksum_prior.id != session.id:
                 _add_cross_session_issue(
@@ -1824,7 +1824,8 @@ def run_data_quality_check(
                     message=f"Tên file trùng với {filename_prior.original_filename}",
                     summaries=summaries_by_id,
                 )
-            seen_checksums.setdefault(session.checksum, session)
+            if session.checksum is not None:
+                seen_checksums.setdefault(session.checksum, session)
             seen_filenames.setdefault(session.original_filename.casefold(), session)
 
         chronological = sorted(sessions, key=lambda item: (item.scheduled_start, item.scheduled_end))

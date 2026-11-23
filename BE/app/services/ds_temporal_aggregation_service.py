@@ -50,6 +50,11 @@ from app.services.recording_time_service import (
     recording_start_from_filename,
     recording_timestamp,
 )
+from app.services.temporal_aggregation_batch import (
+    RecordBatchCursor,
+    aggregate_numeric_batches,
+    supports_batch_aggregation,
+)
 
 logger = logging.getLogger(__name__)
 WORKFLOW_KEY = "ds_temporal_v1"
@@ -119,7 +124,11 @@ def create_temporal_aggregation(
     history = repo.get_cleaning_history(db, dataset_file.id)
     if history is None or not (history.parameters or {}).get("is_pneuma"):
         raise HTTPException(409, "Dataset File has no normalized pNEUMA provenance")
-    _normalized_path(dataset_file)
+    # Validate metadata here; S3 download belongs to the background worker.
+    if dataset_file.file_format.upper() != 'PARQUET':
+        raise HTTPException(409, 'Dataset File must be exported as normalized Parquet')
+    if not (dataset_file.parquet_file_path or dataset_file.data_file_path):
+        raise HTTPException(409, 'Normalized Parquet file is missing')
     sessions = _source_sessions(db, dataset.id, dataset_file.id, history)
     if not sessions:
         raise HTTPException(409, "Dataset File has no Recording Sessions")
@@ -536,23 +545,28 @@ def run_temporal_aggregation(*, db_session_factory: Any, aggregation_id: UUID) -
                 db, history, selected_sessions, parquet_file.metadata.num_rows,
             )
             track_column, time_column, speed_column = _normalized_columns(parquet_file)
-            normalized_rows = _normalized_pairs(
-                parquet_file, track_column, time_column, speed_column,
-            )
+            columnar = supports_batch_aggregation(parquet_file.schema_arrow, track_column, time_column, speed_column)
+            if columnar:
+                cursor = RecordBatchCursor(parquet_file.iter_batches(batch_size=DEFAULT_BATCH_SIZE,
+                    columns=[track_column, time_column, *([speed_column] if speed_column else [])]))
+            else:
+                normalized_rows = _normalized_pairs(parquet_file, track_column, time_column, speed_column)
             for session, row_count in zip(selected_sessions, counts):
                 result = results_by_id[session.id]
-                session_rows = islice(normalized_rows, row_count)
+                session_rows = cursor.take(row_count) if columnar else islice(normalized_rows, row_count)
                 if result.status in ("COMPLETED", "FAILED"):
                     deque(session_rows, maxlen=0)
                     continue
                 result.status = "RUNNING"
                 db.commit()
                 try:
-                    buckets, records_read = aggregate_normalized_rows(
-                        session_rows,
-                        aggregation_interval=job.aggregation_interval,
-                        recording_start=recording_start_from_filename(session.original_filename),
-                    )
+                    options = {'aggregation_interval': job.aggregation_interval,
+                               'recording_start': recording_start_from_filename(session.original_filename)}
+                    if columnar:
+                        buckets, records_read = aggregate_numeric_batches(session_rows, track_column=track_column,
+                            time_column=time_column, speed_column=speed_column, **options)
+                    else:
+                        buckets, records_read = aggregate_normalized_rows(session_rows, **options)
                     if records_read != row_count:
                         raise SessionAggregationError("Normalized Parquet ended before this Session")
                     rows = [

@@ -121,6 +121,9 @@ def get_group_processing_report(
 def submit_group_files(
     db: Session, group_id: UUID, user: User, note: str | None = None,
 ) -> GroupFileStatusResponse:
+    group = crud_dataset.get_dataset_group_by_id(db, group_id, for_update=True)
+    if group is None:
+        raise HTTPException(404, "Không tìm thấy nhóm Dataset")
     job, dataset_files = get_exported_group_files(db, group_id, owner_id=user.id)
     if any(dataset_file.approval_status == "REJECTED" for dataset_file in dataset_files):
         raise HTTPException(409, "Nhóm có dữ liệu bị từ chối; hãy dùng API Resubmit")
@@ -130,6 +133,8 @@ def submit_group_files(
     if any(crud_dataset.get_cleaning_history_by_file(db, dataset_file.id) is None for dataset_file in pending):
         raise HTTPException(409, "Nhóm có dữ liệu chưa được chuẩn hóa và Export")
     submitted_at = datetime.now(UTC)
+    if pending and group.first_submitted_at is None:
+        group.first_submitted_at = submitted_at
     for dataset_file in pending:
         dataset_file.approval_status = "SUBMITTED"
         dataset_file.submitted_by = user.id
@@ -150,11 +155,16 @@ def submit_group_files(
 def resubmit_group_files(
     db: Session, group_id: UUID, user: User,
 ) -> GroupFileStatusResponse:
+    group = crud_dataset.get_dataset_group_by_id(db, group_id, for_update=True)
+    if group is None:
+        raise HTTPException(404, "Không tìm thấy nhóm Dataset")
     job, dataset_files = get_exported_group_files(db, group_id, owner_id=user.id)
     rejected = [dataset_file for dataset_file in dataset_files if dataset_file.approval_status == "REJECTED"]
     if not rejected:
         raise HTTPException(409, "Nhóm không có dữ liệu bị từ chối để gửi lại")
     submitted_at = datetime.now(UTC)
+    if group.first_submitted_at is None:
+        group.first_submitted_at = submitted_at
     for dataset_file in rejected:
         dataset_file.approval_status = "SUBMITTED"
         dataset_file.submitted_by = user.id

@@ -33,6 +33,14 @@ SMTP_TIMEOUT_SECONDS = int(os.getenv("SMTP_TIMEOUT_SECONDS", "15"))
 DATASET_UPLOAD_DIR = Path(
     os.getenv("DATASET_UPLOAD_DIR", str(BASE_DIR / "uploads" / "datasets"))
 )
+STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local").strip().lower()
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "").strip()
+S3_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-southeast-1").strip()
+S3_KEY_PREFIX = os.getenv("S3_KEY_PREFIX", "datasets").strip("/")
+if STORAGE_BACKEND not in {"local", "s3"}:
+    raise RuntimeError("STORAGE_BACKEND must be local or s3")
+if STORAGE_BACKEND == "s3" and not S3_BUCKET_NAME:
+    raise RuntimeError("S3_BUCKET_NAME is required when STORAGE_BACKEND=s3")
 # Match the frontend's binary-size limit: 2.5 GiB (2,684,354,560 bytes).
 MAX_DATASET_UPLOAD_BYTES = int(os.getenv("MAX_DATASET_UPLOAD_BYTES", str(5 * 1024**3 // 2)))
 MAX_DATASET_UPLOAD_BATCH_BYTES = int(os.getenv("MAX_DATASET_UPLOAD_BATCH_BYTES", str(10 * 1024**3)))

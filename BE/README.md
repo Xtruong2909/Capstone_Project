@@ -4,6 +4,89 @@ FastAPI backend service for Urban Traffic Pattern Analysis and Short-Term Conges
 
 Dataset versioning has been removed. See [the current dataset model and migration guide](docs/dataset_current_state.md) before updating an existing database.
 
+## Dataset storage: local or private S3
+
+Create `BE/.env` with your database connection settings and application secret
+when configuring a new checkout; see the [setup guide](../docs/DEVELOPER_SETUP_GUIDE.md).
+`STORAGE_BACKEND=local` is the default and needs no AWS credentials. Existing
+local files remain readable after enabling S3. This integration does not move
+existing uploads or model artifacts automatically.
+
+For S3 development, add these non-secret settings to `BE/.env`:
+
+```dotenv
+STORAGE_BACKEND=s3
+S3_BUCKET_NAME=your-private-bucket
+AWS_DEFAULT_REGION=ap-southeast-1
+AWS_PROFILE=capstone
+S3_KEY_PREFIX=datasets
+```
+
+Configure `capstone` with `aws configure --profile capstone` on your own machine.
+Keep access keys in the AWS profile, outside the repository. Each developer needs
+their own credentials/permissions; `.env` and AWS credential files are not shared
+through Git. Python dependencies are installed with `uv sync --frozen`.
+
+From the repository root in PowerShell, start the S3-enabled backend with:
+
+```powershell
+./BE/scripts/start_s3.ps1
+```
+
+The script sets `AWS_PROFILE_DIR` to the local user's `.aws` directory and uses
+the optional [S3 Compose override](../compose.s3.yml) to mount it read-only. The
+base Compose file has no AWS bind mount, so local-only checkouts remain portable.
+For other shells, set `AWS_PROFILE_DIR` yourself and run
+`docker compose -f docker-compose.yml -f compose.s3.yml up -d --build backend`.
+When changing modes, recreate the backend container; a plain restart does not
+reload environment variables.
+
+Check connectivity from the backend container:
+
+```powershell
+docker compose exec backend /app/.venv/bin/python -m scripts.check_s3
+```
+
+For an explicit small synthetic CSV/Parquet roundtrip, add `--roundtrip`. That
+check uploads only generated data, verifies preview/normalization and cache
+recovery, deletes its own test objects, and never changes application DB rows.
+
+On EC2, omit `AWS_PROFILE` and the development override. Attach an instance role
+with access to the bucket; allow the backend container to obtain temporary role
+credentials through IMDSv2. The app uses the default Boto3 credential provider.
+
+### File lifecycle and API compatibility
+
+- With S3 enabled, the Engineer page uploads file parts directly from the browser
+  to S3. Apply the new migration and bucket CORS configuration in the
+  [direct upload guide](docs/s3_direct_upload.md). Backend completion checks S3
+  metadata and saves the catalog without reading file contents. Existing server upload,
+  session preview, normalization, export and review APIs remain supported.
+- Raw recording files and exported CSV/Parquet files go into the private bucket.
+  DB path fields contain stable `s3://bucket/prefix/key` references. Object keys
+  retain the application's UUID filenames and are not reused for new outputs.
+- Readers download S3 objects to a local cache when needed. Preview pagination
+  reuses that cache. Concurrent downloads are coordinated and a partial download
+  is never published as a complete cached file. Cache misses work after restart.
+- `.staging`, normalization staging/metadata, and preview indexes still use the
+  persistent dataset Docker volume. Keep that volume for workflow resume.
+- DB failures before commit trigger cleanup of new objects; after commit starts,
+  an ambiguous connection failure retains objects for reconciliation rather than
+  risking deletion of data referenced by a committed row. There is no distributed
+  transaction across S3 and PostgreSQL. Storage errors are reported without keys.
+- Keep the bucket private. Grant only bucket list/location/multipart-list and
+  object read/write/delete/abort/list-parts permissions for this application's
+  bucket/prefix. Configure an S3 lifecycle rule to abort abandoned multipart uploads
+  if required by your retention policy.
+
+Run the normal backend test suite in local mode (it does not require live AWS):
+
+```powershell
+$env:STORAGE_BACKEND = 'local'
+uv run pytest tests -q
+uv run ruff check .
+```
+
 For complete project documentation, architecture diagrams, and quick-start instructions, please refer to the [Root README](../README.md).
 
 ## Requirements
@@ -670,3 +753,22 @@ Business User xem dữ liệu nghiên cứu qua API `/api/shared-results`. Các 
 Train/Test Split và Experiment không trả dữ liệu cho role này. Data Scientist công bố từng
 resource và bật từng section qua `/api/shares`; việc thu hồi có hiệu lực ở request kế tiếp.
 Xem [hướng dẫn Result Sharing](docs/result_sharing.md) để biết migration, payload và phân trang.
+
+### Xóa batch chưa gửi duyệt
+
+Áp dụng [migration lưu lịch sử gửi duyệt](migrations/20261204_batch_deletion_policy.sql)
+trước khi chạy backend mới. Chạy từ thư mục gốc dự án với PostgreSQL trong Compose:
+
+```powershell
+Get-Content -Raw -Encoding UTF8 BE/migrations/20261204_batch_deletion_policy.sql | docker compose exec -T postgres psql -U admin -d traffic_urban -v ON_ERROR_STOP=1
+```
+
+- Danh mục trả `can_delete` cho mỗi batch; frontend chỉ hiện nút xóa khi giá trị là `true`.
+- `DELETE /api/v1/datasets/groups/{group_id}` chỉ dành cho Data Engineer sở hữu toàn bộ batch.
+- Batch đã từng gửi, kể cả bị từ chối hoặc được phê duyệt, không thể xóa. Cột
+  `dataset_groups.first_submitted_at` giữ lịch sử ngay cả khi trạng thái file thay đổi.
+- API kiểm tra lại trong transaction; có upload/xử lý đang chạy hoặc tham chiếu phân
+  tích chưa thể xóa thì trả `409`. Không tìm thấy batch thuộc tài khoản thì trả `404`.
+- Sau khi commit xóa metadata, dịch vụ dọn các file liên quan không còn được tham
+  chiếu. Nếu dọn storage gặp lỗi, response vẫn xác nhận xóa với `cleanup_pending=true`;
+  audit log giữ danh sách file cần dọn lại.

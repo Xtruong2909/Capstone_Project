@@ -23,6 +23,7 @@ from app.api.v1.endpoints.train_test_splits import router as train_test_splits_r
 from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
 from app.database.database import get_db
 from app.services.audit_log_service import record_audit_event
+from app.services.storage_service import StorageUnavailableError
 
 app = FastAPI(
     title=PROJECT_NAME,
@@ -74,6 +75,11 @@ app.include_router(prediction_router, prefix="/api")
 app.include_router(ai_assistant_router, prefix="/api")
 app.include_router(sharing_ds_router, prefix="/api/shares", tags=["Chia sẻ kết quả - Data Scientist"])
 app.include_router(sharing_bu_router, prefix="/api/shared-results", tags=["Kết quả được chia sẻ - Business User"])
+
+
+@app.exception_handler(StorageUnavailableError)
+async def storage_unavailable(request: Request, exc: StorageUnavailableError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)

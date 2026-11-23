@@ -3,6 +3,9 @@
 .env.local
 *.env
 *.pem
+.aws/
+backups/
+*.dump
 
 # Python
 __pycache__/

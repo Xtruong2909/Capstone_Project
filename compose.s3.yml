@@ -1,0 +1,11 @@
+# Local development only. Base Compose remains portable and needs no AWS profile.
+# AWS_PROFILE and bucket/region are read from BE/.env by the backend service.
+services:
+  backend:
+    volumes:
+      - type: bind
+        source: ${AWS_PROFILE_DIR:?Set AWS_PROFILE_DIR to the host .aws directory}
+        target: /root/.aws
+        read_only: true
+        bind:
+          create_host_path: false

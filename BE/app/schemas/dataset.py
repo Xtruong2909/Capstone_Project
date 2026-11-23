@@ -146,6 +146,7 @@ class DatasetUploadJobResponse(BaseModel):
     processed_files: int
     result: DatasetBatchUploadResponse | None = None
     error_message: str | None = None
+    stage: str | None = None
 
 
 class UploadedDatasetSummary(BaseModel):
@@ -169,6 +170,7 @@ class UploadedDatasetGroupSummary(BaseModel):
     total_sessions: int
     approval_status: str = "UNKNOWN"
     approval_counts: dict[str, int] = Field(default_factory=dict)
+    can_delete: bool = False
     datasets: list[UploadedDatasetSummary] | None = None
 
 
@@ -206,7 +208,7 @@ class RecordingSessionDetail(BaseModel):
     scheduled_end: datetime
     scheduled_duration_seconds: int
     actual_duration_seconds: int | None = None
-    checksum: str
+    checksum: str | None = None
     upload_status: str
     validation_status: str | None = None
     validation_message: str = "Chưa có kết quả xác minh ở cấp Recording Session"

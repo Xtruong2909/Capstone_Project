@@ -149,11 +149,13 @@ Capstone_Project/
 
 ## 🚀 Quick Start Guide
 
+**Thành viên chạy local với S3:** làm theo [Developer Setup Guide](docs/DEVELOPER_SETUP_GUIDE.md). Hướng dẫn bao gồm AWS profile riêng, cấu hình FE/BE, backup/restore PostgreSQL và script chạy backend S3. Pull code không tự mang theo cấu hình AWS hoặc dữ liệu trong database.
+
 ### 1. Prerequisites
 Ensure you have the following installed on your machine:
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL + PostGIS)
 * [Python 3.11+](https://www.python.org/downloads/) and [`uv`](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-* [Node.js 18+](https://nodejs.org/) & `npm`
+* [Node.js 22.12+](https://nodejs.org/) & `npm`
 
 ---
 
@@ -161,10 +163,10 @@ Ensure you have the following installed on your machine:
 
 Launch the spatial PostgreSQL container:
 ```bash
-docker compose up -d
+docker compose up -d postgres
 ```
 > [!NOTE]
-> Database will be exposed at `localhost:5432` with PostGIS extension pre-installed.
+> Database is exposed at `localhost:5433` (database `traffic_urban`) with PostGIS pre-installed. A new database still needs the application schema/data; follow the backup/restore steps in the setup guide before using the API.
 
 ---
 

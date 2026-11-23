@@ -32,6 +32,7 @@ from app.schemas.dataset import (
     DatasetPreviewPagination,
     DatasetPreviewResponse,
 )
+from app.services.storage_service import resolve_dataset_file
 
 MAX_COLUMNS = 512
 JSON_ARRAY_FIELDS = {"data", "rows", "records", "results"}
@@ -95,18 +96,10 @@ def resolve_stored_file_path(stored_path: str | None) -> Path:
     if not stored_path:
         raise DatasetPreviewNotFoundError("Dataset dataset_file không có đường dẫn file")
 
-    upload_root = DATASET_UPLOAD_DIR.resolve()
-    candidate = Path(stored_path)
-    if not candidate.is_absolute():
-        candidate = upload_root / candidate
-    resolved_path = candidate.resolve()
     try:
-        resolved_path.relative_to(upload_root)
-    except ValueError as exc:
-        raise DatasetPreviewNotFoundError("Đường dẫn file dataset không hợp lệ") from exc
-    if not resolved_path.is_file():
-        raise DatasetPreviewNotFoundError("Không tìm thấy file dataset trong kho lưu trữ")
-    return resolved_path
+        return resolve_dataset_file(stored_path, upload_root=DATASET_UPLOAD_DIR)
+    except FileNotFoundError as exc:
+        raise DatasetPreviewNotFoundError(str(exc)) from exc
 
 
 def _headers(values: Iterator[Any]) -> list[str]:

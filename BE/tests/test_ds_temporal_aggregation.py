@@ -283,7 +283,8 @@ def test_create_uses_latest_approved_file_and_all_sessions(monkeypatch) -> None:
     group_id, dataset_id, file_id = uuid4(), uuid4(), uuid4()
     session_ids = [uuid4() for _ in range(5)]
     dataset = SimpleNamespace(id=dataset_id, group_id=group_id)
-    dataset_file = SimpleNamespace(id=file_id, approval_status="APPROVED")
+    dataset_file = SimpleNamespace(id=file_id, approval_status="APPROVED", file_format='PARQUET',
+                                   parquet_file_path='s3://test/result.parquet', data_file_path=None)
     selected = []
     monkeypatch.setattr(service.crud_dataset, "get_dataset_by_id", lambda *_: dataset)
     monkeypatch.setattr(
@@ -295,7 +296,7 @@ def test_create_uses_latest_approved_file_and_all_sessions(monkeypatch) -> None:
         service.repo, "get_cleaning_history",
         lambda *_: SimpleNamespace(parameters={"is_pneuma": True}),
     )
-    monkeypatch.setattr(service, "_normalized_path", lambda *_: None)
+    monkeypatch.setattr(service, "_normalized_path", lambda *_: pytest.fail('Must not download S3 during job creation'))
     monkeypatch.setattr(
         service, "_source_sessions",
         lambda *_: [SimpleNamespace(id=session_id) for session_id in session_ids],

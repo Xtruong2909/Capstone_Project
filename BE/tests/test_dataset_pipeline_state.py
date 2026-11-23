@@ -143,3 +143,16 @@ def test_processing_endpoints_reject_completed_current_steps(
     with TestClient(app) as client:
         response = client.post(f"/datasets/groups/{pipeline.group_id}/{operation.lower()}")
     assert response.status_code == 409
+
+
+def test_unexported_workflow_does_not_probe_remote_source_objects(
+    pipeline: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline.current.data_file_path = 's3://unused/source.csv'
+
+    def must_not_read_storage(*args: object, **kwargs: object) -> bool:
+        raise AssertionError('An unexported workflow must not check a source object')
+
+    monkeypatch.setattr(service, 'dataset_file_exists', must_not_read_storage)
+    state = service.get_group_pipeline_state(None, pipeline.group_id, pipeline.owner_id)
+    assert not state.exported

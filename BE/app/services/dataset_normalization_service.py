@@ -30,8 +30,14 @@ from app.schemas.dataset_normalization import (
     ProcessingReportResponse,
 )
 from app.services.dataset_file_service import get_file_source_context
-from app.services.dataset_preview_service import resolve_stored_file_path
 from app.services.normalization_batch import write_pneuma_parquet
+from app.services.storage_service import (
+    cleanup_failed_file,
+    discard_local_file,
+    persist_dataset_file,
+    resolve_dataset_file,
+    resolve_dataset_files,
+)
 
 PNEUMA_HEADERS = (
     "track_id",
@@ -91,18 +97,13 @@ def _resolve_file_path(dataset_file: DatasetFile) -> Path:
             detail="dữ liệu dataset không có thông tin đường dẫn file.",
         )
 
-    upload_root = DATASET_UPLOAD_DIR.resolve()
-    candidate = Path(stored_path)
-    if not candidate.is_absolute():
-        candidate = upload_root / candidate
-
-    resolved_path = candidate.resolve()
-    if not resolved_path.is_file():
+    try:
+        return resolve_dataset_file(stored_path, upload_root=DATASET_UPLOAD_DIR)
+    except FileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy file dataset gốc trên hệ thống: {resolved_path.name}",
-        )
-    return resolved_path
+            detail="Không tìm thấy file dataset gốc trong kho lưu trữ.",
+        ) from exc
 
 
 def _csv_delimiter(first_line: str) -> str:
@@ -157,10 +158,11 @@ def normalize_dataset_structure_service(
     _dataset, source_file = dataset_info
     sessions = crud_dataset.list_all_file_sessions(db, source_file.id)
     if isinstance(sessions, list) and sessions:
-        sources = [
-            (session.id, session.original_filename, resolve_stored_file_path(session.file_path))
-            for session in sessions
-        ]
+        try:
+            paths = resolve_dataset_files([session.file_path for session in sessions], upload_root=DATASET_UPLOAD_DIR)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, 'Không tìm thấy file ghi hình nguồn trong kho lưu trữ.') from exc
+        sources = [(session.id, session.original_filename, path) for session, path in zip(sessions, paths, strict=True)]
     else:
         source_path = _resolve_file_path(source_file)
         sources = [(None, source_file.original_filename or source_path.name, source_path)]
@@ -512,16 +514,20 @@ def export_normalized_dataset_service(
     records_before = int(staging_meta["records_before"])
     source_session_ids = staging_meta.get("source_session_ids", [])
 
+    stored_path: str | None = None
+    commit_started = False
     try:
+        stored_path = persist_dataset_file(output_file_path, upload_root=upload_root)
         new_file, history = crud_dataset.create_normalized_file(
             db,
             dataset_id=dataset_id,
             new_file_id=new_file_id,
             file_format=format_upper,
-            file_path=output_file_path.relative_to(upload_root).as_posix(),
+            file_path=stored_path,
             file_size_bytes=file_size_bytes,
             total_records=records_after,
             original_filename=staging_meta.get("original_filename"),
+            commit=False,
             records_before=records_before,
             user_id=user.id,
             cleaning_parameters={
@@ -535,17 +541,23 @@ def export_normalized_dataset_service(
                 "is_pneuma": staging_meta.get("is_pneuma", True),
             },
         )
+        commit_started = True
+        db.commit()
     except Exception as exc:
         db.rollback()
-        output_file_path.unlink(missing_ok=True)
+        if not commit_started:
+            cleanup_failed_file(stored_path, upload_root=upload_root)
+            output_file_path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Không thể tạo Dataset File từ kết quả Normalize.",
         ) from exc
 
+    if stored_path.startswith("s3://"):
+        discard_local_file(output_file_path)
     # Keep staging available if database creation fails; remove it only after commit.
-    staging_file_path.unlink(missing_ok=True)
-    meta_path.unlink(missing_ok=True)
+    discard_local_file(staging_file_path)
+    discard_local_file(meta_path)
 
     return DatasetExportResult(
         dataset_id=dataset_id,

@@ -17,6 +17,7 @@ from app.schemas.dataset_pipeline import (
     PipelineGroupListResponse,
     PipelineGroupSummary,
 )
+from app.services.storage_service import dataset_file_exists
 
 
 def _after(value: datetime | None, baseline: datetime | None) -> bool:
@@ -47,7 +48,7 @@ def build_group_pipeline_state(
         parameters = history.parameters if history is not None else {}
         expected_sessions = set((parameters or {}).get("source_session_ids", []))
         stored_path = current.data_file_path or current.parquet_file_path or current.csv_file_path
-        file_exists = bool(stored_path and (DATASET_UPLOAD_DIR / stored_path).is_file())
+        file_exists = history is not None and dataset_file_exists(stored_path, upload_root=DATASET_UPLOAD_DIR)
         changed_after_export = history is not None and (
             any(_after(item.created_at, history.created_at) for item in sessions)
             or (mapping is not None and _after(mapping.updated_at, history.created_at)))

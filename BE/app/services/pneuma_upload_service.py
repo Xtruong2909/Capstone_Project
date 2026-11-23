@@ -33,6 +33,11 @@ from app.schemas.dataset import (
 )
 from app.services.audit_log_service import record_audit_event
 from app.services.dataset_multipart_service import StreamedUploadFile
+from app.services.storage_service import (
+    cleanup_failed_file,
+    discard_local_file,
+    persist_dataset_file,
+)
 
 FILENAME_PATTERN = re.compile(
     r"^(?P<day>\d{8})_(?P<drone>d\d+)_(?P<start>\d{4})_(?P<end>\d{4})\.csv$",
@@ -56,10 +61,11 @@ class RecordingMetadata:
 class StagedRecording:
     metadata: RecordingMetadata
     filename: str
-    path: Path
+    path: Path | None
     size: int
-    checksum: str
+    checksum: str | None
     result: RecordingUploadResult
+    remote_reference: str | None = None
 
 
 @dataclass
@@ -75,7 +81,8 @@ class PreparedBatch:
 
     def cleanup(self) -> None:
         for item in self.staged_files:
-            item.path.unlink(missing_ok=True)
+            if item.path is not None:
+                item.path.unlink(missing_ok=True)
 
 
 def parse_recording_filename(filename: str) -> RecordingMetadata:
@@ -157,8 +164,13 @@ def _persist_group(
     ip_address: str | None, source: str | None,
     location_name: str | None, description: str | None,
     group_name: str | None,
+    file_processed: Callable[[], None] | None = None,
 ) -> DatasetUploadGroup:
     moved: list[Path] = []
+    local_copies: list[tuple[Path, str]] = []
+    persisted: list[str] = []
+    committed = False
+    commit_started = False
     pending: list[tuple[StagedRecording, RecordingSession]] = []
     try:
         crud_dataset.lock_dataset_upload(db, name)
@@ -201,17 +213,28 @@ def _persist_group(
             dataset.group_id = group.id
         existing = crud_dataset.get_recording_sessions(db, dataset.id)
         by_name = {item.original_filename: item for item in existing}
-        by_checksum = {item.checksum: item for item in existing}
+        by_checksum = {item.checksum: item for item in existing if item.checksum is not None}
         for item in staged:
             named = by_name.get(item.filename)
-            checked = by_checksum.get(item.checksum)
+            checked = by_checksum.get(item.checksum) if item.checksum is not None else None
+            if (named is not None and (named.checksum is None or item.checksum is None)
+                    and item.remote_reference != named.file_path):
+                item.result.status = "CONFLICT"
+                item.result.error_message = "Tên tệp đã tồn tại; giữ bản ghi hiện có, không ghi đè nội dung"
+                if file_processed is not None:
+                    file_processed()
+                continue
             if named is not None and named.checksum != item.checksum:
                 item.result.status = "CONFLICT"
                 item.result.error_message = "Tên file đã tồn tại với nội dung khác"
+                if file_processed is not None:
+                    file_processed()
                 continue
             if named is not None or checked is not None:
                 item.result.status = "DUPLICATE"
                 item.result.session_id = (named or checked).id
+                if file_processed is not None:
+                    file_processed()
                 continue
             session_id = uuid4()
             relative_path = f"{name}/{session_id}.csv"
@@ -225,7 +248,8 @@ def _persist_group(
                 checksum=item.checksum, upload_status="UPLOADED",
             )
             by_name[item.filename] = session
-            by_checksum[item.checksum] = session
+            if item.checksum is not None:
+                by_checksum[item.checksum] = session
             pending.append((item, session))
         # Optional form hints matter only when adding new sessions. A retry of
         # existing files must remain DUPLICATE even if Swagger sent placeholders.
@@ -267,11 +291,21 @@ def _persist_group(
             dataset_file.submitted_by = dataset_file.submitted_at = dataset_file.approved_by = dataset_file.approval_note = None
             db.add(dataset_file)
             for item, session in pending:
-                destination = DATASET_UPLOAD_DIR / session.file_path
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(item.path, destination)
-                moved.append(destination)
+                if item.remote_reference is not None:
+                    session.file_path = item.remote_reference
+                else:
+                    destination = DATASET_UPLOAD_DIR / session.file_path
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(item.path, destination)
+                    moved.append(destination)
+                    session.file_path = persist_dataset_file(destination, upload_root=DATASET_UPLOAD_DIR)
+                    local_copies.append((destination, session.file_path))
+                persisted.append(session.file_path)
                 crud_dataset.add_recording_session(db, session)
+                if file_processed is not None:
+                    file_processed()
+            if session_count == 1:
+                dataset_file.csv_file_path = dataset_file.data_file_path = first.file_path
             db.flush()
             crud_dataset.link_file_sessions(
                 db, file_id, [session.id for session in existing]
@@ -280,7 +314,12 @@ def _persist_group(
         else:
             latest = crud_dataset.get_dataset_latest_file(db, dataset.id)
             file_id = latest[1].id if latest else None
+        commit_started = True
         db.commit()
+        committed = True
+        for path, reference in local_copies:
+            if reference.startswith("s3://"):
+                discard_local_file(path)
         for item, session in pending:
             item.result.status = "UPLOADED"
             item.result.session_id = session.id
@@ -311,9 +350,13 @@ def _persist_group(
             ) for session in all_sessions],
         )
     except Exception:
-        db.rollback()
-        for path in moved:
-            path.unlink(missing_ok=True)
+        if not committed:
+            db.rollback()
+            if not commit_started:
+                for reference in persisted:
+                    cleanup_failed_file(reference, upload_root=DATASET_UPLOAD_DIR)
+                for path in moved:
+                    path.unlink(missing_ok=True)
         raise
 
 
@@ -380,14 +423,23 @@ def finish_pneuma_batch(
     """Commit each dataset independently and clean staging files."""
     results, groups = prepared.results, prepared.groups
     processed = prepared.total_files - sum(len(items) for items in groups.values())
+
+    def advance() -> None:
+        nonlocal processed
+        processed += 1
+        if progress is not None:
+            progress(processed)
+
     try:
         summaries = []
         for dataset_name, items in groups.items():
+            group_end = processed + len(items)
             try:
                 summaries.append(_persist_group(
                     db, dataset_name, items, creator_id, ip_address,
                     prepared.source, prepared.location_name, prepared.description,
                     prepared.group_name,
+                    advance,
                 ))
             except Exception as exc:
                 if not isinstance(exc, ValueError):
@@ -399,9 +451,12 @@ def finish_pneuma_batch(
                         str(exc) if isinstance(exc, ValueError)
                         else "Không thể lưu Dataset; vui lòng thử lại"
                     )
-            processed += len(items)
-            if progress is not None:
-                progress(processed)
+            # Failures may stop a group before every file was attempted. Settle
+            # the remaining files once, without counting transferred files twice.
+            if processed < group_end:
+                processed = group_end
+                if progress is not None:
+                    progress(processed)
         return DatasetBatchUploadResponse(
             group_id=_common_group_id(summaries),
             group_name=_common_group_name(summaries),
@@ -443,17 +498,19 @@ def upload_pneuma_batch(
 def run_pneuma_upload_job(
     job_id: UUID, prepared: PreparedBatch, creator_id: UUID, ip_address: str | None,
 ) -> None:
-    """Background worker; uses a fresh database session after the request has ended."""
+    """Persist progress independently of each dataset's atomic transaction."""
     db = SessionLocal()
+    job_db = SessionLocal()
     try:
-        job = crud_dataset.get_upload_job(db, job_id)
+        job = crud_dataset.get_upload_job(job_db, job_id)
         job.status = "RUNNING"
         job.processed_files = prepared.total_files - sum(len(group) for group in prepared.groups.values())
-        crud_dataset.save_upload_job(db, job)
+        crud_dataset.save_upload_job(job_db, job)
 
         def update_progress(count: int) -> None:
             job.processed_files = count
-            crud_dataset.save_upload_job(db, job)
+            # Never commit the dataset transaction just to publish progress.
+            crud_dataset.save_upload_job(job_db, job)
 
         result = finish_pneuma_batch(db, prepared, creator_id, ip_address, update_progress)
         job.status = "FAILED" if result.failed_count == result.total_files else "COMPLETED"
@@ -461,18 +518,20 @@ def run_pneuma_upload_job(
         job.processed_files = prepared.total_files
         if job.status == "FAILED":
             job.error_message = "Tất cả file đều lỗi; xem result.files để biết chi tiết"
-        crud_dataset.save_upload_job(db, job)
+        crud_dataset.save_upload_job(job_db, job)
     except Exception:
         logger.exception("pNEUMA upload job %s failed", job_id)
         db.rollback()
+        job_db.rollback()
         prepared.cleanup()
-        job = crud_dataset.get_upload_job(db, job_id)
+        job = crud_dataset.get_upload_job(job_db, job_id)
         if job is not None:
             job.status = "FAILED"
             job.error_message = "Upload thất bại; vui lòng thử lại"
-            crud_dataset.save_upload_job(db, job)
+            crud_dataset.save_upload_job(job_db, job)
     finally:
         db.close()
+        job_db.close()
 
 
 def get_pneuma_upload_job_response(
@@ -498,4 +557,5 @@ def get_pneuma_upload_job_response(
         job_id=job.id, status=job.status, total_files=job.total_files,
         processed_files=job.processed_files, result=result,
         error_message=job.error_message,
+        stage=(getattr(job, 'upload_state', None) or {}).get('stage'),
     )

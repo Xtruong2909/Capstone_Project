@@ -20,6 +20,7 @@ from app.models.dataset import DatasetFile
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 from app.schemas.traffic_aggregation import TrafficAggregationRecord
 from app.services.audit_log_service import record_audit_event
+from app.services.dataset_preview_service import resolve_stored_file_path
 from app.services.recording_time_service import (
     numeric_timestamp,
     recording_start_from_filename,
@@ -55,20 +56,14 @@ def _resolve_dataset_file_path(dataset_file: DatasetFile) -> Path:
         dataset_file.data_file_path
         or dataset_file.csv_file_path
         or dataset_file.parquet_file_path
-        or dataset_file.geojson_file_path
     )
     if not stored_path:
         raise HTTPException(status_code=404, detail="Dataset dataset_file does not contain a file path")
 
-    path = Path(stored_path)
-    if not path.is_absolute():
-        from app.core.config import DATASET_UPLOAD_DIR
-
-        path = DATASET_UPLOAD_DIR / path
-    resolved = path.resolve(strict=False)
-    if not resolved.exists():
-        raise HTTPException(status_code=404, detail="Dataset file for aggregation was not found")
-    return resolved
+    try:
+        return resolve_stored_file_path(stored_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset file for aggregation was not found") from exc
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -88,7 +83,7 @@ def _parse_datetime(value: Any) -> datetime | None:
             except (OverflowError, OSError, ValueError):
                 return None
         try:
-            parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(cleaned)
             if parsed.tzinfo is None:
                 return parsed.replace(tzinfo=UTC)
             return parsed.astimezone(UTC)

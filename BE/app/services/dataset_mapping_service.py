@@ -26,6 +26,7 @@ from app.services.dataset_preview_service import (
     get_dataset_preview,
     resolve_stored_file_path,
 )
+from app.services.dataset_schema_service import read_remote_recording_columns
 
 
 class DatasetMappingNotFoundError(FileNotFoundError):
@@ -60,11 +61,13 @@ def _dataset_schema(
         reference_filename = ""
         for session in sessions:
             try:
-                path = resolve_stored_file_path(session.file_path)
-                preview = _read_csv(
-                    path, offset=0, page_size=1, representation="raw",
-                )
-            except DatasetPreviewNotFoundError as exc:
+                if session.file_path.startswith('s3://'):
+                    session_columns = read_remote_recording_columns(session.file_path)
+                else:
+                    path = resolve_stored_file_path(session.file_path)
+                    preview = _read_csv(path, offset=0, page_size=1, representation="raw")
+                    session_columns = [{"name": column.name, "type": column.type} for column in preview.columns]
+            except (DatasetPreviewNotFoundError, FileNotFoundError) as exc:
                 raise DatasetMappingNotFoundError(
                     f"Không tìm thấy file session {session.original_filename}: {exc}"
                 ) from exc
@@ -73,10 +76,6 @@ def _dataset_schema(
                     f"Không đọc được cấu trúc cột của {session.original_filename}: {exc}"
                 ) from exc
 
-            session_columns = [
-                {"name": column.name, "type": column.type}
-                for column in preview.columns
-            ]
             if columns is None:
                 columns = session_columns
                 reference_filename = session.original_filename

@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.crud import crud_dataset
+from app.crud import crud_dataset, crud_dataset_batch
 from app.models.dataset import Dataset, DatasetFile, RecordingSession
 from app.models.user import User
 from app.schemas.dataset import (
@@ -154,9 +154,12 @@ def list_uploaded_datasets(
         db, list(grouped), owner_id=user.id if user.role_id == "data_engineer" else None,
         visible_user_id=visible_user_id,
     )
+    deletable = (crud_dataset_batch.deletable_group_ids(db, list(grouped), user.id)
+                 if user.role_id == 'data_engineer' else set())
     return UploadedDatasetListResponse(
         groups=[UploadedDatasetGroupSummary(
             group_id=key,
+            can_delete=key in deletable,
             group_name=items[0].group_name,
             source=(first_dataset[key].group.source
                     if first_dataset[key].group is not None else first_dataset[key].source),

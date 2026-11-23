@@ -11,11 +11,18 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.v1.endpoints import datasets as dataset_endpoint
+from app.core import config
 from app.core.deps import require_data_engineer
 from app.database.database import get_db
 from app.models.dataset import Dataset, DatasetFile, RecordingSession
 from app.services import pneuma_upload_service as service
 from app.services.dataset_multipart_service import StreamedUploadFile
+
+
+@pytest.fixture(autouse=True)
+def local_storage_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests must not upload to the bucket configured in the developer's env."""
+    monkeypatch.setattr(config, "STORAGE_BACKEND", "local")
 
 
 class MemoryDB:
@@ -689,6 +696,107 @@ def test_large_batch_returns_job_and_job_status(monkeypatch: pytest.MonkeyPatch)
     assert status.status_code == 200, status.text
     assert status.json()["status"] == "COMPLETED"
     assert status.json()["processed_files"] == 1
+
+
+def test_progress_updates_between_files_before_group_commit(
+    storage: MemoryDB, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = service.prepare_pneuma_batch([
+        ("20181024_d1_0830_0900.csv", BytesIO(b"first")),
+        ("20181024_d1_0900_0930.csv", BytesIO(b"second")),
+    ])
+    counts: list[int] = []
+    events: list[str] = []
+    persist = service.persist_dataset_file
+
+    def transfer(path: Path, *, upload_root: Path) -> str:
+        events.append("transfer")
+        if len(events) > 1:
+            assert counts == [1]
+        return persist(path, upload_root=upload_root)
+
+    def commit() -> None:
+        assert counts == [1, 2]
+        events.append("commit")
+
+    monkeypatch.setattr(service, "persist_dataset_file", transfer)
+    monkeypatch.setattr(storage, "commit", commit)
+    result = service.finish_pneuma_batch(storage, prepared, storage.creator_id, progress=counts.append)
+
+    assert result.uploaded_count == 2
+    assert counts == [1, 2]
+    assert events == ["transfer", "transfer", "commit"]
+
+
+def test_progress_counts_invalid_duplicate_conflict_and_new_files_once(
+    storage: MemoryDB,
+) -> None:
+    upload(storage, ("20181024_d1_0830_0900.csv", b"existing"))
+    prepared = service.prepare_pneuma_batch([
+        ("invalid.csv", BytesIO(b"invalid")),
+        ("20181024_d1_0830_0900.csv", BytesIO(b"existing")),
+        ("20181024_d1_0830_0900.csv", BytesIO(b"conflict")),
+        ("20181024_d1_0900_0930.csv", BytesIO(b"new")),
+        ("20181024_d2_0830_0900.csv", BytesIO(b"other group")),
+    ])
+    counts: list[int] = []
+    result = service.finish_pneuma_batch(storage, prepared, storage.creator_id, progress=counts.append)
+    assert counts == [2, 3, 4, 5]
+    assert (result.uploaded_count, result.duplicate_count, result.failed_count) == (2, 1, 2)
+
+
+def test_failed_transfer_settles_progress_without_early_commit(
+    storage: MemoryDB, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = service.prepare_pneuma_batch([
+        ("20181024_d1_0830_0900.csv", BytesIO(b"first")),
+        ("20181024_d1_0900_0930.csv", BytesIO(b"second")),
+        ("20181024_d1_0930_1000.csv", BytesIO(b"third")),
+    ])
+    counts: list[int] = []
+    commits: list[bool] = []
+    persist = service.persist_dataset_file
+
+    def transfer(path: Path, *, upload_root: Path) -> str:
+        if counts:
+            raise OSError("transfer interrupted")
+        return persist(path, upload_root=upload_root)
+
+    monkeypatch.setattr(service, "persist_dataset_file", transfer)
+    monkeypatch.setattr(storage, "commit", lambda: commits.append(True))
+    result = service.finish_pneuma_batch(storage, prepared, storage.creator_id, progress=counts.append)
+    assert counts == [1, 3]
+    assert result.failed_count == 3
+    assert commits == []
+    assert not list(service.DATASET_UPLOAD_DIR.glob("*/*.csv"))
+
+
+def test_background_progress_uses_independent_session(
+    storage: MemoryDB, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = service.prepare_pneuma_batch([
+        ("20181024_d1_0830_0900.csv", BytesIO(b"first")),
+        ("20181024_d1_0900_0930.csv", BytesIO(b"second")),
+    ])
+    job = SimpleNamespace(id=uuid4(), status="PENDING", processed_files=0,
+                          result=None, error_message=None)
+    closed: list[str] = []
+    job_db = SimpleNamespace(close=lambda: closed.append("job"), rollback=lambda: None)
+    sessions = iter([storage, job_db])
+    saved: list[tuple[str, int]] = []
+    monkeypatch.setattr(storage, "close", lambda: closed.append("dataset"), raising=False)
+    monkeypatch.setattr(service, "SessionLocal", lambda: next(sessions))
+    monkeypatch.setattr(service.crud_dataset, "get_upload_job", lambda db, key: job)
+
+    def save(db: object, value: object) -> None:
+        assert db is job_db
+        saved.append((value.status, value.processed_files))
+
+    monkeypatch.setattr(service.crud_dataset, "save_upload_job", save)
+    service.run_pneuma_upload_job(job.id, prepared, storage.creator_id, None)
+    assert saved == [("RUNNING", 0), ("RUNNING", 1), ("RUNNING", 2), ("COMPLETED", 2)]
+    assert job.result["uploaded_count"] == 2
+    assert closed == ["dataset", "job"]
 
 
 def test_upload_job_reports_failed_when_every_file_fails(

@@ -75,6 +75,9 @@ def review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(repo, "get_cleaning_history_by_file", lambda db, vid: None)
     monkeypatch.setattr(repo, "get_group_approval_counts", lambda db, ids, **kwargs:
         {group_id: {dataset_file.approval_status: 1}} if group_id in ids else {})
+    monkeypatch.setattr(dataset_review_service.crud_dataset_batch, 'deletable_group_ids',
+                        lambda db, ids, owner: {group_id} if dataset_file.approval_status == 'PENDING'
+                        and dataset.created_by == owner and group_id in ids else set())
     engineer = SimpleNamespace(id=uuid4(), role_id="data_engineer")
     dataset.created_by = engineer.id
     app = FastAPI()
@@ -110,7 +113,7 @@ def test_dataset_list_detail_and_sessions(review: SimpleNamespace) -> None:
         "group_id": str(review.dataset.group_id), "group_name": "Batch 01",
         "source": "pneuma", "drone_id": "d1",
         "dataset_count": 1, "total_sessions": 1,
-        "approval_status": "PENDING", "approval_counts": {"PENDING": 1},
+        "approval_status": "PENDING", "approval_counts": {"PENDING": 1}, "can_delete": True,
     }]
     assert detail.status_code == 200, detail.text
     assert detail.json()["approval_status"] == "PENDING"
