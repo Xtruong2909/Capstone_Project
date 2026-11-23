@@ -1,0 +1,2 @@
+deploy/ec2/*.sh text eol=lf
+FE/Caddyfile.ec2 text eol=lf

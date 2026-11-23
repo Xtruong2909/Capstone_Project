@@ -20,7 +20,7 @@ from app.api.v1.endpoints.prediction import router as prediction_router
 from app.api.v1.endpoints.sharing import bu_router as sharing_bu_router
 from app.api.v1.endpoints.sharing import ds_router as sharing_ds_router
 from app.api.v1.endpoints.train_test_splits import router as train_test_splits_router
-from app.core.config import API_V1_STR, PROJECT_NAME, VERSION
+from app.core.config import API_V1_STR, CORS_ALLOWED_ORIGINS, PROJECT_NAME, VERSION
 from app.database.database import get_db
 from app.services.audit_log_service import record_audit_event
 from app.services.storage_service import StorageUnavailableError
@@ -59,7 +59,7 @@ def swagger_upload_dropzone_script() -> FileResponse:
 # CORS Middleware Configuration for Frontend Access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

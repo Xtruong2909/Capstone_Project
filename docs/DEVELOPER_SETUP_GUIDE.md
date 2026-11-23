@@ -166,6 +166,120 @@ Nếu upload S3 bị lỗi CORS, bucket cần cho phép origin frontend local đ
 
 ---
 
+## EC2
+
+Chạy cấu hình riêng [deploy/ec2/compose.yml](../deploy/ec2/compose.yml) để phục vụ frontend đã build, backend và PostgreSQL. Caddy phục vụ React và chuyển tiếp cả `/api/*`, `/health/*`, `/docs`; HTTPS được cấp tự động khi có domain trỏ đúng máy chủ. Cấu hình local vẫn dùng các file Compose ở thư mục gốc.
+
+### 1. Tạo EC2 và quyền S3
+
+- Dùng Ubuntu 24.04 LTS **x86_64** trong Singapore (`ap-southeast-1`), cùng region với bucket. Chọn RAM/disk theo dữ liệu thực tế; máy chạy cả PostgreSQL, build FE, chuẩn hóa và huấn luyện cần nhiều tài nguyên hơn máy chỉ chạy API. Kiểm tra giá dự kiến trong AWS trước khi launch.
+- Tạo key pair và giữ file `.pem` trên máy quản trị.
+- Security Group: SSH 22 chỉ từ IP quản trị; TCP 80/443 cho website. Không mở cổng 5432/5433/8000 ra Internet. Khi chỉ kiểm tra bằng HTTP với IP, giới hạn cổng 80 về IP của người kiểm tra; dùng HTTPS trước khi đăng nhập qua Internet.
+- Gắn IAM role có quyền vào bucket `capstone-traffic-truong-2026`. Có thể tạo inline policy cho role với cùng quyền S3 đã cấp cho ứng dụng local; IAM user policy không tự chuyển sang EC2 role.
+- Trong metadata options: bật IMDS, yêu cầu IMDSv2, **hop limit = 2** để backend Docker lấy được credentials của role. Xem [AWS IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/attach-iam-role.html) và [IMDS trong container](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-IMDS-new-instances.html).
+- Dùng domain trỏ A record đến địa chỉ máy chủ để bật HTTPS. Nếu địa chỉ public IP thay đổi khi stop/start, cần cập nhật DNS hoặc dùng địa chỉ cố định phù hợp.
+
+### 2. Kết nối và cài Docker
+
+Trên máy Windows, thay đường dẫn key và `PUBLIC_IP` bằng giá trị thật:
+
+```powershell
+ssh -i "C:\duong-dan\capstone.pem" ubuntu@PUBLIC_IP
+```
+
+Trên EC2 Ubuntu mới, cài Docker theo [Docker apt repository](https://docs.docker.com/engine/install/ubuntu/):
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl git openssl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo docker compose version
+```
+
+### 3. Pull code và tạo cấu hình EC2
+
+Thay `REPO_URL` bằng URL repository, checkout đúng nhánh/commit nhóm đã push:
+
+```bash
+git clone REPO_URL Caspstone_Project
+cd Caspstone_Project
+```
+
+Nếu đã clone thì chuyển vào repository và `git pull --ff-only`.
+Tạo env server bằng [script](../deploy/ec2/setup-env.sh). Thay `traffic.example.com` bằng domain thật, giữ bucket và prefix khớp với dữ liệu trên máy local:
+
+```bash
+bash deploy/ec2/setup-env.sh traffic.example.com capstone-traffic-truong-2026 datasets
+```
+
+Script sinh mật khẩu PostgreSQL và JWT secret ngẫu nhiên, tạo `deploy/ec2/.env` với quyền chỉ chủ file đọc/ghi. Không copy `BE/.env` từ máy Windows lên; server dùng IAM role và không đặt `AWS_PROFILE=capstone`.
+Script sẽ từ chối ghi đè env đã có để tránh đổi mật khẩu của database đang chạy. Các biến SMTP/Gemini có thể bổ sung bằng `nano deploy/ec2/.env` nếu cần.
+
+Nếu chưa có domain, có thể đặt địa chỉ dạng `http://PUBLIC_IP` để kiểm tra kết nối HTTP. Dùng domain HTTPS trước khi dùng tài khoản qua Internet. Khi đổi địa chỉ, sửa đồng thời `SITE_ADDRESS` và origin tương ứng trong `CORS_ALLOWED_ORIGINS`, rồi recreate backend/web theo bước cập nhật bên dưới.
+
+### 4. Chuyển database
+
+Tạo backup trên máy Windows theo mục chạy local, lúc các tác vụ đã kết thúc. Từ Windows gửi file riêng qua SSH:
+
+```powershell
+scp -i "C:\duong-dan\capstone.pem" .\backups\capstone-team.dump ubuntu@PUBLIC_IP:/home/ubuntu/capstone-team.dump
+```
+
+Trên EC2, khởi động PostgreSQL rồi restore vào database ứng dụng trống:
+
+```bash
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml up -d --wait postgres
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml cp /home/ubuntu/capstone-team.dump postgres:/tmp/capstone-team.dump
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml exec -T postgres sh -c 'exec pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-acl --single-transaction /tmp/capstone-team.dump'
+```
+
+Không restore đè DB có dữ liệu cần giữ và không dùng `down -v`. Bản dump mới nhất mang theo schema/migrations đã áp dụng. Nếu code và snapshot không cùng phiên bản, kiểm tra các migrations còn thiếu trước khi chạy API.
+
+File đang ở S3 dùng lại trực tiếp. File còn ở ổ đĩa local và artifact model không nằm trong dump PostgreSQL. Cần sao chép vào các volume tương ứng và kiểm tra lại đường dẫn đã lưu trong DB; model lưu đường dẫn máy cũ có thể cần huấn luyện lại. Compose EC2 giữ `/app/uploads/datasets` và toàn bộ `/app/artifacts` trong named volume.
+
+### 5. Khởi động và kiểm tra
+
+```bash
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml up -d --build --wait
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml ps
+curl -fsS https://traffic.example.com/health/db
+```
+
+Thay domain mẫu bằng domain thật. Mở website, đăng nhập, kiểm tra danh mục và preview S3 trước khi chạy tác vụ lớn. Health check chỉ xác nhận backend/DB; kiểm tra thêm quyền bucket từ chính backend:
+
+```bash
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml exec -T backend /app/.venv/bin/python -c 'from app.core import config; from app.services.storage_service import get_s3_client; result = get_s3_client().list_objects_v2(Bucket=config.S3_BUCKET_NAME, Prefix=config.S3_KEY_PREFIX, MaxKeys=1); print("S3 accessible:", result.get("KeyCount", 0), "sample object(s)")'
+```
+
+Trong S3 CORS, **thêm** origin website mới, giữ các origin local nhóm đang dùng và expose `ETag`; IAM role không thay thế CORS của browser upload. Xem [hướng dẫn S3](../BE/docs/s3_direct_upload.md).
+
+Frontend đã build gọi API cùng website qua `/api/v1`, nên không cần ghi IP backend vào bundle. Thành viên vẫn chạy FE local thì đặt `VITE_API_BASE_URL=https://traffic.example.com/api/v1` rồi khởi động lại Vite; các origin local 5173/5174 đã được đưa vào env server.
+
+### 6. Cập nhật và sao lưu
+
+Trước khi cập nhật, đợi upload/chuẩn hóa/huấn luyện hoàn tất và backup database. Không rebuild/recreate backend khi đang có tác vụ nền cần giữ.
+
+```bash
+git pull --ff-only
+# Áp dụng các migrations còn thiếu tương ứng bản cập nhật, nếu có.
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml up -d --build --wait
+sudo docker compose --env-file deploy/ec2/.env -f deploy/ec2/compose.yml logs --tail 100 backend web
+```
+
+Backup định kỳ PostgreSQL, volume model/artifact và cấu hình server. Named volume giữ dữ liệu qua recreate container, nhưng không phải backup khi mất máy/ổ đĩa.
+
 ## 📏 3. Coding Standards & AI Guidelines
 
 The project includes built-in guidelines for both developers and AI tools (Antigravity, Cursor, Copilot, ChatGPT):

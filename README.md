@@ -151,6 +151,8 @@ Capstone_Project/
 
 **Thành viên chạy local với S3:** làm theo [Developer Setup Guide](docs/DEVELOPER_SETUP_GUIDE.md). Hướng dẫn bao gồm AWS profile riêng, cấu hình FE/BE, backup/restore PostgreSQL và script chạy backend S3. Pull code không tự mang theo cấu hình AWS hoặc dữ liệu trong database.
 
+**Triển khai EC2:** dùng [Compose riêng](deploy/ec2/compose.yml) và làm theo [hướng dẫn EC2](docs/DEVELOPER_SETUP_GUIDE.md#ec2). Frontend được build với API cùng origin; backend và PostgreSQL không publish cổng ra ngoài, S3 dùng IAM role của EC2.
+
 ### 1. Prerequisites
 Ensure you have the following installed on your machine:
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL + PostGIS)

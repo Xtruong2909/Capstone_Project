@@ -1,0 +1,19 @@
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	@backend path /api /api/* /health /health/* /docs /docs/* /redoc
+	handle @backend {
+		reverse_proxy backend:8000 {
+			transport http {
+				dial_timeout 10s
+				response_header_timeout 30m
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
