@@ -1,9 +1,11 @@
-import { Eye, FolderOpen, Layers, Search, Upload, Workflow } from 'lucide-react'
+import { Eye, FolderOpen, Layers, Search, Trash2, Upload, Workflow } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useEngineerBatchBrowser } from '../../../hooks/useEngineerData'
+import { useEngineerBatchDeletion } from '../../../hooks/useEngineerBatchDeletion'
 import { useLanguage } from '../../../hooks/useLanguage'
-import { EngineerBadge, EngineerHeader, EngineerPagination, EngineerState } from './EngineerUi'
+import { EngineerBadge, EngineerFeedback, EngineerHeader, EngineerPagination, EngineerState } from './EngineerUi'
 import EngineerBatchApproval from './EngineerBatchApproval'
+import EngineerDeleteBatchModal from './EngineerDeleteBatchModal'
 
 export default function EngineerBatchBrowser({ mode = 'preview' }) {
   const { t } = useLanguage()
@@ -11,6 +13,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
   const [params] = useSearchParams()
   const groupId = mode !== 'pipeline' ? params.get('groupId') : null
   const { search, setSearch, resource, groupName } = useEngineerBatchBrowser(groupId, mode)
+  const deletion = useEngineerBatchDeletion(resource.reload)
   const path = mode === 'pipeline' ? '/engineer/pipeline-studio' : mode === 'catalog' ? '/engineer/datasets' : '/engineer/preview'
   const openBatch = (id) => {
     setSearch('')
@@ -42,6 +45,8 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
           {resource.loading ? '…' : resource.total} {t(groupId ? 'Datasets' : 'Batches')}
         </span>
       </div>
+
+      {!deletion.target && <EngineerFeedback mutation={deletion} />}
 
       <EngineerState resource={resource}>
         {isNoResults ? (
@@ -132,6 +137,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
                       <td>{item.total_sessions}</td>
                       {mode === 'catalog' && <td><EngineerBatchApproval status={item.approval_status} counts={item.approval_counts} /></td>}
                       <td>
+                        <div className="admin-actions">
                         <button
                           type="button"
                           className="btn-secondary"
@@ -140,6 +146,12 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
                           {mode === 'pipeline' ? <Workflow size={16} /> : <FolderOpen size={16} />}
                           {t(mode === 'pipeline' ? 'Open Pipeline' : 'View Datasets')}
                         </button>
+                        {mode === 'catalog' && item.can_delete === true && <button type="button"
+                          className="btn-secondary de-delete-batch" disabled={deletion.busy}
+                          onClick={() => deletion.open(item)}>
+                          <Trash2 size={16} />{t('Delete batch')}
+                        </button>}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -151,6 +163,7 @@ export default function EngineerBatchBrowser({ mode = 'preview' }) {
       </EngineerState>
 
       {!isNoResults && <EngineerPagination {...resource} />}
+      <EngineerDeleteBatchModal deletion={deletion} />
     </section>
   )
 }

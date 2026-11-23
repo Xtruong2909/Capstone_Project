@@ -66,9 +66,11 @@ export function useEngineerPipeline(groupId) {
   const job = useEngineerJob('processing:' + groupId, false, pipeline.data ? pipeline.data.job : undefined)
   const mutation = useAdminMutation()
   const params = { group_id: groupId, job_state: job.data?.job_id + ':' + job.data?.status }
-  const status = useAdminResource(engineerService.getStatus, params, Boolean(groupId))
+  const exportReady = Boolean(groupId) && (Boolean(pipeline.data?.exported)
+    || (job.data?.operation === 'EXPORT' && job.data.status === 'COMPLETED')) && !job.running
+  const status = useAdminResource(engineerService.getStatus, params, exportReady)
   const dataset_files = useAdminResource(engineerService.getFiles, params, Boolean(groupId))
-  const report = useAdminResource(engineerService.getReport, params, Boolean(groupId))
+  const report = useAdminResource(engineerService.getReport, params, exportReady)
   const refresh = () => { invalidateEngineerPreviews(groupId); pipeline.reload(); status.reload(); dataset_files.reload(); report.reload() }
   const jobId = job.data?.job_id
   const jobStatus = job.data?.status
@@ -127,7 +129,7 @@ export function useEngineerWizard(groupId) {
     saveWizardStep(storageKey, value)
   }
   return { ...workflow, ...processing, mapping, step, busy, normalized, exported, exportCompleted, available,
-    restoring: workflow.pipeline.loading || workflow.job.loading || mapping.resource.loading || workflow.status.loading,
+    restoring: workflow.pipeline.loading || workflow.job.loading,
     goTo: (next) => { if (!busy && available[next - 1]) selectStep(next) },
     markDirty: () => { setDirty(true); setNeedsExport(true) },
     process: async (operation) => {

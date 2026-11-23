@@ -188,6 +188,9 @@
 .de-stepper__step:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
 
 /* Stages & Actions */
+.de-delete-batch { color: #dc2626; border-color: #fecaca; }
+.de-delete-batch:hover:not(:disabled) { color: #b91c1c; background: #fff1f2; border-color: #fca5a5; }
+.de-delete-batch-actions { justify-content: flex-end; margin-top: 24px; }
 .de-stage { display: flex; gap: 18px; align-items: flex-start; padding: 28px 24px; }
 .de-stage__icon {
   display: grid;

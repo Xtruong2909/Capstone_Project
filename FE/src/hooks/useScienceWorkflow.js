@@ -11,12 +11,21 @@ export function useScienceTraining(groupId) {
   const [loadedGroupId, setLoadedGroupId] = useState(null)
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [startingAggregation, setStartingAggregation] = useState(false)
+  const [dismissedAggregationId, setDismissedAggregationId] = useState(null)
+  const aggregationPending = useRef(false)
   const [error, setError] = useState('')
   const [loadError, setLoadError] = useState('')
   const visibleWorkflow = loadedGroupId === groupId || !hasStoredWorkflow
     ? workflow
     : storedWorkflow
   const aggregationId = visibleWorkflow.aggregation?.aggregation_id
+  const aggregationProgressHidden = !startingAggregation && Boolean(aggregationId) && dismissedAggregationId === aggregationId
+  const dismissAggregationProgress = () => {
+    if (!startingAggregation && ['COMPLETED', 'PARTIAL_SUCCESS', 'FAILED'].includes(visibleWorkflow.aggregation?.status)) {
+      setDismissedAggregationId(aggregationId)
+    }
+  }
   useEffect(() => {
     if (!groupId || !storageKey) return
     let cancelled = false
@@ -60,10 +69,21 @@ export function useScienceTraining(groupId) {
     catch (err) { setError(extractErrorMessage(err, 'Thao tác không thành công.')) }
     finally { setBusy(false) }
   }, [])
-  const startAggregation = () => run(async () => {
-    const result = await dataScienceService.startAggregation(groupId)
-    save({ aggregation: result, features: null, split: null, experiment: null })
-  })
+  const startAggregation = async () => {
+    if (aggregationPending.current) return
+    aggregationPending.current = true
+    setDismissedAggregationId(null)
+    setStartingAggregation(true)
+    try {
+      await run(async () => {
+        const result = await dataScienceService.startAggregation(groupId)
+        save({ aggregation: result, features: null, split: null, experiment: null })
+      })
+    } finally {
+      aggregationPending.current = false
+      setStartingAggregation(false)
+    }
+  }
   const refreshAggregation = useCallback(async () => {
     if (!aggregationId) return
     try { save({ aggregation: await dataScienceService.getAggregation(aggregationId) }) }
@@ -84,7 +104,7 @@ export function useScienceTraining(groupId) {
     save({ split: result, experiment: null })
   })
   return {
-    workflow: visibleWorkflow, busy, error, loadError,
+    workflow: visibleWorkflow, busy, startingAggregation, aggregationProgressHidden, dismissAggregationProgress, error, loadError,
     isLoadingWorkflow: Boolean(groupId) && loadedGroupId !== groupId && !hasStoredWorkflow,
     reloadWorkflow: () => setWorkflowRefreshKey((value) => value + 1),
     startAggregation, refreshAggregation, generateFeatures, refreshFeatures, createSplit,

@@ -43,6 +43,7 @@ export default function EngineerUploadPage() {
     description: "",
   });
   const [progress, setProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState('preparing');
   const [result, setResult] = useState(null);
   const [validationError, setValidationError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
@@ -141,12 +142,14 @@ export default function EngineerUploadPage() {
 
     setResult(null);
     setProgress(0);
+    setUploadPhase('preparing');
     job.track(null);
 
     await mutation.run(async () => {
       const response = await engineerService.upload(
         { files, ...metadata },
         (progressEvent) => {
+          setUploadPhase(progressEvent.phase || 'local');
           if (progressEvent.total) {
             setProgress(
               Math.round((progressEvent.loaded * 100) / progressEvent.total),
@@ -164,7 +167,7 @@ export default function EngineerUploadPage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    });
+    }, undefined, '');
   };
 
   return (
@@ -437,7 +440,8 @@ export default function EngineerUploadPage() {
             </p>
           )}
 
-          <EngineerFeedback mutation={mutation} />
+          <EngineerFeedback mutation={{ ...mutation, success: !busy && finalResult && finalResult.failed_count === 0
+            ? t('Upload and dataset registration completed.') : '' }} />
 
           {/* Upload Progress Bar */}
           {mutation.busy && (
@@ -452,7 +456,10 @@ export default function EngineerUploadPage() {
                   marginBottom: "6px",
                 }}
               >
-                <span>{t("Uploading sessions to staging storage...")}</span>
+                <span>{t(uploadPhase === 's3' ? 'Uploading recordings directly to S3...'
+                  : uploadPhase === 'confirming' ? 'Confirming files on S3...'
+                    : uploadPhase === 'preparing' ? 'Preparing upload...'
+                      : 'Uploading sessions to staging storage...')}</span>
                 <span>{progress}%</span>
               </div>
               <progress

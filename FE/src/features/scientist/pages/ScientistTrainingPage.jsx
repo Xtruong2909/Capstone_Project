@@ -4,6 +4,7 @@ import { useApprovedDatasets, useApprovedGroups, useGroupDatasets, useGroupSessi
 import { useAggregationResults, useFeaturePreview, useScienceTraining } from '../../../hooks/useScienceWorkflow'
 import { AggregationTimeTable, ChronologicalSplitTable, FeaturePreviewTable } from '../components/TrainingTimeTables'
 import ScientistBackLink from '../components/ScientistBackLink'
+import ScientistAggregationProgress from '../components/ScientistAggregationProgress'
 
 const RUNNING_STATUSES = ['PROCESSING', 'PENDING', 'QUEUED', 'RUNNING']
 
@@ -52,7 +53,7 @@ export default function ScientistTrainingPage() {
   const group = groups.find((item) => item.group_id === activeGroupId)
   const { datasets: groupDatasets } = useGroupDatasets(activeGroupId)
   const sessionsById = useGroupSessionMetadata(groupDatasets)
-  const { workflow, busy, error, loadError, isLoadingWorkflow, reloadWorkflow, startAggregation, refreshAggregation, generateFeatures, refreshFeatures, createSplit } = useScienceTraining(group?.group_id)
+  const { workflow, busy, startingAggregation, aggregationProgressHidden, dismissAggregationProgress, error, loadError, isLoadingWorkflow, reloadWorkflow, startAggregation, refreshAggregation, generateFeatures, refreshFeatures, createSplit } = useScienceTraining(group?.group_id)
   const { aggregation, features, split, experiment } = workflow
   const aggregationTable = useAggregationResults(
     aggregation?.aggregation_id,
@@ -69,7 +70,7 @@ export default function ScientistTrainingPage() {
     }, { replace: true })
   }
   const featureTable = useFeaturePreview(features?.feature_generation_id, features?.status === 'COMPLETED')
-  const aggregationState = getStepState(aggregation, true)
+  const aggregationState = startingAggregation ? 'processing' : getStepState(aggregation, true)
   const featuresState = getStepState(features, aggregationState === 'complete')
   const splitState = getStepState(split, featuresState === 'complete')
   const experimentState = getStepState(experiment, splitState === 'complete')
@@ -105,11 +106,7 @@ export default function ScientistTrainingPage() {
         {aggregationState !== 'processing' && <button type="button" className={`sci-training-button${aggregation ? ' sci-training-button--secondary' : ''}`} disabled={busy} onClick={startAggregation}><Database size={16} /> {aggregation ? 'Tổng hợp lại' : 'Bắt đầu tổng hợp'}</button>}
         {aggregation && aggregationState !== 'complete' && <button type="button" className="sci-training-button sci-training-button--secondary" disabled={busy} onClick={refreshAggregation}><RefreshCw size={15} /> Cập nhật</button>}
       </div>}>
-        {aggregationState === 'processing' && <div className="sci-aggregation-progress" role="status">
-          <div><strong>{aggregation?.completed_sessions || 0}/{aggregation?.total_sessions || 0} phiên hoàn tất</strong><span>Tiến độ tự cập nhật sau mỗi 3 giây.</span></div>
-          <progress aria-label="Tiến độ tổng hợp phiên ghi hình" max={Math.max(1, aggregation?.total_sessions || 0)} value={(aggregation?.completed_sessions || 0) + (aggregation?.failed_sessions || 0)} />
-          {aggregation?.failed_sessions > 0 && <span>{aggregation.failed_sessions} phiên xử lý lỗi</span>}
-        </div>}
+        {!aggregationProgressHidden && <ScientistAggregationProgress aggregation={aggregation} starting={startingAggregation} sessionsById={sessionsById} onDismiss={dismissAggregationProgress} />}
         {['partial', 'failed'].includes(aggregationState) && <div className="sci-training-alert" role="alert">
           <strong>{(aggregation.sessions || []).filter((session) => session.status === 'COMPLETED').length}/{aggregation.total_sessions} phiên đã hoàn tất.</strong>
           <p>Các phiên thành công vẫn có thể xem bên dưới. Cần xử lý phiên lỗi và tổng hợp đầy đủ trước khi tạo đặc trưng.</p>

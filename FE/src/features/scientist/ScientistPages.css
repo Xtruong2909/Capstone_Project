@@ -3325,10 +3325,20 @@
   .sci-experiment-chart-canvas { height: 280px; }
   .sci-experiment-session-chart__title { align-items: flex-start; flex-direction: column; }
 }
-.sci-aggregation-progress { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid #dce9fa; border-radius: 10px; background: #f5f9ff; color: #607a99; font-size: 12px; }
+.sci-aggregation-progress { position: relative; display: grid; gap: 10px; padding: 14px 16px; border: 1px solid #dce9fa; border-radius: 10px; background: #f5f9ff; color: #607a99; font-size: 12px; }
+.sci-aggregation-progress--dismissible > div:first-of-type { padding-right: 28px; }
+.sci-aggregation-progress__dismiss { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #607a99; font-size: 23px; line-height: 1; cursor: pointer; }
+.sci-aggregation-progress__dismiss:hover { background: #e3edfc; color: #2464b3; }
+.sci-aggregation-progress__dismiss:focus-visible { outline: 2px solid #2677e0; outline-offset: 2px; }
 .sci-aggregation-progress > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .sci-aggregation-progress strong { color: #2464b3; }
 .sci-aggregation-progress progress { width: 100%; height: 8px; accent-color: #2677e0; }
+.sci-aggregation-progress__track { position: relative; overflow: hidden; border-radius: 6px; }
+.sci-aggregation-progress--indeterminate progress { opacity: 0; }
+.sci-aggregation-progress--indeterminate .sci-aggregation-progress__track { height: 8px; background: #dce9fa; }
+.sci-aggregation-progress--indeterminate .sci-aggregation-progress__track::after { content: ''; position: absolute; inset: 0; width: 35%; background: #2677e0; border-radius: 6px; animation: sci-aggregation-sweep 1.3s ease-in-out infinite; }
+@keyframes sci-aggregation-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .sci-aggregation-progress--indeterminate .sci-aggregation-progress__track::after { animation: none; left: 32%; } }
 .sci-training-status--partial { color: #a46611; background: #fff4dc; }
 .sci-training-step--partial { border-color: #efd5a7; }
 .sci-best-overall {

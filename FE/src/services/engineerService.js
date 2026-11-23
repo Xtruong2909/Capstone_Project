@@ -1,4 +1,5 @@
 import apiClient from './apiClient'
+import { uploadDirectToS3 } from './directS3UploadService'
 
 const get = async (url, params = {}, signal) => (await apiClient.get(url, { params, signal })).data
 const groupPath = (id) => '/datasets/groups/' + id
@@ -17,6 +18,7 @@ const submittedFiles = async (signal) => (await get('/datasets/files', {}, signa
 const pageItems = (items, page, page_size) => ({ items: items.slice((page - 1) * page_size, page * page_size), total: items.length, page, page_size })
 
 export const engineerService = {
+  deleteBatch: async (groupId) => (await apiClient.delete(groupPath(groupId))).data,
   getPipelineState: ({ group_id }, signal) => get(groupPath(group_id) + '/workflow', {}, signal),
   async listPipelineGroups(params, signal) {
     const data = await get('/datasets/pipeline/groups', params, signal)
@@ -99,10 +101,13 @@ export const engineerService = {
   async submit(groupId, comment) { return (await apiClient.post(groupPath(groupId) + '/submit', { comment: comment.trim() || null })).data },
   async resubmit(groupId) { return (await apiClient.post(groupPath(groupId) + '/resubmit')).data },
   async upload({ files, ...metadata }, onUploadProgress) {
+    const { data: capabilities } = await apiClient.get('/datasets/direct-upload/capabilities')
+    if (capabilities.mode === 's3') return uploadDirectToS3(files, metadata, onUploadProgress)
     const body = new FormData()
     files.forEach((file) => body.append('files', file))
     Object.entries(metadata).forEach(([key, value]) => { if (value?.trim()) body.append(key, value.trim()) })
-    return (await apiClient.post('/datasets/upload', body, { headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress })).data
+    return (await apiClient.post('/datasets/upload', body, { headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => onUploadProgress?.({ loaded: event.loaded, total: event.total, phase: 'local' }) })).data
   },
   async getHealth(_, signal) {
     const baseURL = apiClient.defaults.baseURL.replace(/\/api\/v1\/?$/, '')
