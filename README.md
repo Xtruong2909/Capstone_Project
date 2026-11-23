@@ -1,275 +1,218 @@
-# 🚦 UAV-Based Urban Traffic Analysis & Short-Term Traffic Flow Prediction
+UAV-Based Urban Traffic Analysis & Short-Term Vehicle Count Forecasting
+A web platform for managing UAV trajectory datasets, analyzing vehicle counts over time, and forecasting short-term traffic patterns.
 
-<div align="center">
+Capstone Project: FA26SE155 · Team: GFA26SE128
+FPT University Ho Chi Minh City · Fall 2026
 
-![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
-![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL_16-316192?style=for-the-badge&logo=postgresql&logoColor=white)
-![PostGIS](https://img.shields.io/badge/PostGIS-Spatial_Data-blue?style=for-the-badge)
-![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+Core technologies: FastAPI · React · Vite · PostgreSQL · PostGIS · scikit-learn · Docker
+Overview
+This project supports an end-to-end research workflow using selected pNEUMA vehicle trajectory datasets. It connects dataset management, quality validation, session-based aggregation, model evaluation, and forecasting in a single web application.
 
-**An End-to-End Web Platform for UAV-Based Urban Traffic Analysis & Short-Term Traffic Flow Prediction**
+The forecasting target is the number of distinct vehicles observed within the selected observation area during each one-minute interval. The platform uses five lag features to forecast this count at 1, 3, and 5 minutes ahead.
 
-*Capstone Project FA26SE155 • FPT University Ho Chi Minh City • Fall 2026*
+Random Forest Regression is the primary model. Persistence and Historical Average provide reference baselines. Model performance is measured using MAE and RMSE under a chronological evaluation strategy.
+The target represents vehicles observed within an area during a time interval. It is distinct from traffic flow measured by counting vehicles crossing a fixed road section. Reports should state this definition explicitly when using the term “traffic flow.”
 
-[Features](#-key-features) • [System Architecture](#-system-architecture) • [Tech Stack](#-tech-stack) • [Quick Start](#-quick-start-guide) • [Project Structure](#-project-structure) • [Team](#-project-team)
+Project Scope
+Component	Research scope
+Primary dataset	Selected pNEUMA UAV trajectory CSV files
+Observation unit	An individual recording session within its observation area
+Aggregation interval	1 minute
+Target variable	Distinct observed vehicle count per minute
+Input features	5 lagged vehicle counts from the same session
+Forecast horizons	1, 3, and 5 minutes ahead
+Primary model	Random Forest Regression
+Baseline models	Persistence and Historical Average
+Evaluation metrics	MAE and RMSE
+Default split	Chronological 70% training / 30% testing
 
-</div>
 
----
+LSTM and five-minute aggregation are outside the scope described here.
+Main Functional Areas
+Module	Purpose
+Dataset management	Upload trajectory files and organize datasets, versions, and recording sessions.
+Data review and validation	Preview records and inspect missing values, duplicates, coordinates, timestamps, and negative speeds before aggregation.
+Batch management	Group selected datasets for a shared aggregation and experiment workflow while preserving session identity.
+Time-series aggregation	Generate one-minute distinct vehicle counts for each recording session.
+Experiment management	Configure training runs and retain dataset references, model settings, split settings, and evaluation results.
+Model comparison	Compare Random Forest, Persistence, and Historical Average on equivalent evaluation samples.
+Forecasting	Use a selected trained configuration and recent session observations to produce forecasts for the supported horizons.
+Visualization	Display time-series trends and actual-versus-predicted vehicle counts.
+Access control	Provide role-based access for Administrators, Data Engineers, Data Scientists, and Business Users.
 
-## 📌 Executive Summary
 
-Urban traffic congestion presents severe economic, environmental, and public safety challenges in modern metropolitan centers. Recent advancements in **Unmanned Aerial Vehicle (UAV)** technology enable the capture of high-resolution, microscopic vehicle trajectory datasets (such as **inD** and **pNEUMA**). However, modern traffic researchers and urban analysts encounter severe workflow fragmentation—relying on disconnected Python scripts, desktop simulation suites (like SUMO), and generic forecasting tools (like Forecast Pro) that lack spatial awareness.
+Vehicle Counting Method
+Each trajectory contains a vehicle identifier and timestamped observations. A vehicle can appear in many raw records, so counting raw rows would overestimate the number of vehicles.
 
-This project delivers a **unified, web-based Urban Traffic Analytics Platform** that bridges the gap between spatial vehicle trajectories and time-series forecasting:
-1. **UAV Dataset Management & Validation**: Ingests, validates, cleans, and versions raw drone trajectory CSV datasets (e.g. selected pNEUMA subsets).
-2. **Spatial-Temporal Pattern Mining**: Computes per-minute distinct vehicle counts, speed, and estimated traffic flow across selected road segments using PostGIS spatial indexing.
-3. **Short-Term Flow Forecasting Engine**: Aggregates continuous trajectories into 1-minute and 5-minute time-series and predicts traffic flow for near-future horizons (**1, 3, and 5 minutes ahead**) using **Historical Average / Persistence (Baseline)** and **Random Forest Regression** (with **LSTM** as a deep learning extension).
-4. **Interactive GIS Visualization**: Provides interactive traffic trend charts, actual vs. predicted flow comparisons, and spatial analytics using **Goong Map API**.
-5. **Reproducible Experiment Management**: Centralized hyperparameter logging, benchmark evaluation (**MAE, RMSE** with chronological train/test split), and PDF/Excel reporting.
-6. **Role-Based Access Control**: Dedicated user authorization and audit trails for 4 standardized system roles: `Administrator`, `Data Engineer`, `Data Scientist`, and `Business User`.
+For each recording session and one-minute interval:
+1. Select valid observations inside the configured observation area.
+2. Assign observations to a minute interval using their timestamps.
+3. Count distinct track_id values in that interval.
+4. Store the result together with the session identifier and interval timestamp.
+An interval includes its start time and excludes its end time. For example, the 08:30 interval covers 08:30:00 ≤ time < 08:31:00.
+Interval	Example observed IDs	Distinct vehicle count
+08:30–08:31	101, 101, 102, 103, 103	3
+08:31–08:32	101, 104, 104, 105	3
 
----
 
-## ✨ Key Features
+Vehicle 101 contributes once to each interval in which it appears. Consequently, summing minute counts does not produce the number of unique vehicles over the entire recording.
 
-| Module | Features & Capabilities |
-| :--- | :--- |
-| 🛸 **UAV Dataset Pipeline** | Multi-format upload (CSV, JSON), automated data-cleaning & quality validation (missing coordinates, negative speeds, invalid timestamps), dataset versioning & archiving (`PASSED` / `FAILED` status flags). |
-| 🗺️ **Interactive GIS Visualization** | Integration with **Goong Map SDK**, spatial Region of Interest (ROI) filtering, and dynamic trajectory overlays. |
-| 📊 **Traffic Pattern Analysis** | Quantitative analysis of distinct vehicle counts, average speeds, and estimated traffic flow, with peak-hour detection and bottleneck recognition. |
-| 📈 **Short-Term Flow Forecasting** | Multi-model forecasting engine (**Historical Average Baseline** & **Random Forest Regression**, optional **LSTM**) with configurable time aggregation intervals (1, 5 minutes) predicting traffic flow 1, 3, and 5 minutes in advance. |
-| 🔬 **Experiment Tracking** | Reproducibility engine storing dataset versions, hyperparameters, and evaluation metrics (**MAE, RMSE**) for side-by-side model benchmarking. |
-| 📑 **Reporting & Export** | One-click export of analysis findings, forecasting benchmarks, and spatial heatmaps into formal **PDF & Excel** reports. |
-| 🛡️ **Role-Based Access Control** | Dedicated user authorization and audit trails for 4 standardized system roles: `Administrator`, `Data Engineer`, `Data Scientist`, and `Business User`. |
+Vehicle identifiers must be interpreted within their source session. Counts from overlapping drones must not be treated as a deduplicated citywide total without cross-camera vehicle matching.
 
----
+Raw timestamps must be interpreted according to the dataset format before assigning absolute recording times. A fixed sampling interval alone does not determine the minute count.
+Forecasting and Evaluation
+1. Prepare session-level time series
+Validate trajectory observations and aggregate one-minute counts separately for each session. Keep recording dates, timezones, and session boundaries available throughout processing.
 
-## 🏛️ System Architecture
+Do not concatenate unrelated recordings into an artificial continuous timeline. A period with unavailable recording data must not automatically become a zero-vehicle interval.
+2. Create lag features and targets
+At forecast origin t, define the five available observations as:
+lag_1 = count(t)
+lag_2 = count(t - 1 minute)
+lag_3 = count(t - 2 minutes)
+lag_4 = count(t - 3 minutes)
+lag_5 = count(t - 4 minutes)
 
-The platform follows a clean, decoupled, layered microservice/modular architecture:
+target_h1 = count(t + 1 minute)
+target_h3 = count(t + 3 minutes)
+target_h5 = count(t + 5 minutes)
+This notation defines lag_1 as the latest completed minute available at the forecast origin. API responses and UI labels should use the same convention.
 
-```mermaid
-flowchart TD
-    subgraph FE["Frontend Application (React 19 + Vite)"]
-        UI["UI Components & Analytics Dashboard"]
-        Hooks["Custom React Hooks & State Management"]
-        Client["Axios API Client Layer"]
-        GoongSDK["Goong Map JS SDK (Spatial & Heatmap)"]
-        UI --> Hooks --> Client
-        UI --> GoongSDK
-    end
+All features and targets in a sample must belong to the same session. A sample is eligible for evaluation at a horizon only when its required observations and actual target are available.
+3. Split data chronologically
+Use the earlier portion of eligible data for training and the later portion for testing, with a default 70/30 ratio. Preserve complete sessions when using a session-based split, and report the resulting sample counts and achieved ratio.
 
-    subgraph BE["Backend Application (FastAPI + Python 3.11)"]
-        Router["API Routers (/api/v1)"]
-        Service["Traffic Analytics & Processing Services"]
-        Forecast["Forecasting Engine (Baseline, Random Forest & LSTM)"]
-        CRUD["SQLAlchemy 2.0 CRUD Layer"]
-        Router --> Service
-        Service --> Forecast
-        Service --> CRUD
-    end
+Training labels must not extend into the test period. Apply this boundary rule separately for each forecast horizon. Any fitted preprocessing and Historical Average statistics must use training data only.
 
-    subgraph Storage["Persistence & External Services"]
-        DB[("PostgreSQL 16 + PostGIS Spatial Engine")]
-        Datasets[("Public Datasets (pNEUMA subset)")]
-        GoongAPI["Goong Map REST API (Geocoding & Tiles)"]
-    end
+For rolling evaluation, a later test forecast may use observations that have become available by its own forecast origin. This protocol must be distinguished from forecasting an entire test period from one fixed origin.
+4. Train models and compute baselines
+Model	Prediction rule
+Persistence	Reuse the latest observed vehicle count for each horizon.
+Historical Average	Use an average calculated from training observations according to the experiment's documented grouping rule.
+Random Forest Regression	Learn relationships between the five lag features and the future vehicle count.
 
-    Client --> Router
-    CRUD --> DB
-    Service --> Datasets
-    Service --> GoongAPI
-```
 
----
+Historical Average must document whether it uses a global training mean or supported time-based groups. Group statistics and fallback values must exclude test observations.
+5. Evaluate and compare
+Report MAE and RMSE separately for each horizon. Both metrics are expressed in vehicles; lower values indicate smaller prediction errors.
 
-## 🛠️ Tech Stack
+For each experiment, retain:
+- Dataset version, batch, and session references.
+- Aggregation interval, target definition, and lag convention.
+- Forecast horizons and model hyperparameters, including the random seed.
+- Split strategy, cutoff, and training/test sample counts per horizon.
+- Training and prediction times.
+- Predictions, actual values, and evaluation metrics.
+Compare models on the same eligible test samples for each horizon. If hyperparameters or a “best” configuration are selected, use a chronological validation set or time-series cross-validation within the training portion, then reserve the test set for final evaluation.
 
-### Backend
-* **Language & Runtime**: Python 3.11+
-* **Framework**: FastAPI (Asynchronous REST API)
-* **Package Manager**: `uv` (Ultra-fast Python package manager)
-* **ORM & Database Tooling**: SQLAlchemy 2.0, GeoAlchemy2, Alembic
-* **Forecasting & Data Processing**: Scikit-learn (Random Forest Regression), Pandas, NumPy, Statsmodels/PyTorch (LSTM extension)
-* **Linter & Code Quality**: Ruff
+Short recordings can produce very small test sets after lag and target construction. Report these limitations alongside the results; a low error on a few samples is insufficient evidence of generalization.
+6. Generate forecasts
+Keep training/evaluation and forecasting as separate workflows. For forecasting, select a trained configuration and a session with at least five consecutive valid minute observations.
 
-### Frontend
-* **Core Library**: React 19
-* **Build Tool**: Vite
-* **Icons**: Lucide React
-* **Maps & GIS**: Goong Map JS SDK
-* **Code Quality**: Oxlint
+Display the forecast origin, target timestamp, horizon, and predicted count. Display actual values and errors only after those actual observations are available. Predictions beyond the recording end remain forecasts without evaluation metrics.
 
-### Database & Infrastructure
-* **Database Engine**: PostgreSQL 16
-* **Spatial Extension**: PostGIS 3.4 (High-performance geometric & spatial indexing)
-* **Containerization**: Docker Compose
-* **Configuration Management**: Pydantic Settings
+Random Forest can return fractional estimates. Preserve the original values for metric calculation; the UI may round them for presentation when clearly labeled.
+System Architecture
+The platform uses a frontend/backend architecture with a layered FastAPI application.
+Layer	Responsibility
+React frontend	Dataset review, batch navigation, experiment comparison, and forecast visualization.
+FastAPI API	Request validation, authorization, and endpoints for the research workflow.
+Service layer	Data validation, aggregation, feature generation, training, and forecasting.
+Database layer	Application records, dataset metadata, experiments, and results in PostgreSQL/PostGIS.
+File storage	Dataset files using the storage backend configured for the environment, including S3 where enabled.
 
----
 
-## 📂 Project Structure
+Technology Stack
+Area	Technologies
+Backend	Python, FastAPI, Pydantic Settings
+Database access	SQLAlchemy, GeoAlchemy2, Alembic
+Data processing	pandas, NumPy
+Machine learning	scikit-learn
+Frontend	React, Vite, Lucide React
+Database	PostgreSQL with PostGIS
+Local infrastructure	Docker Compose
+Backend dependency management	uv
+Frontend dependency management	npm
 
-```text
-Capstone_Project/
-├── BE/                           # Backend Application (FastAPI)
-│   ├── app/
-│   │   ├── api/v1/               # API Routers & Endpoints
-│   │   ├── core/                 # App Settings & Database Session
-│   │   ├── crud/                 # Database Query Operations (SQLAlchemy)
-│   │   ├── models/               # Database ORM Models
-│   │   ├── schemas/              # Pydantic Request & Response Schemas
-│   │   ├── services/             # Business Logic & Analytics Services
-│   │   └── main.py               # FastAPI Application Entrypoint
-│   ├── pyproject.toml            # Backend Dependencies & Configuration
-│   ├── uv.lock                   # Deterministic Dependency Lock
-│   └── README.md
-├── FE/                           # Frontend Application (React 19 + Vite)
-│   ├── src/
-│   │   ├── components/           # Reusable UI Components
-│   │   ├── features/             # Feature-specific Modules & Views
-│   │   ├── hooks/                # Custom React Hooks
-│   │   ├── services/             # Axios API Client Services
-│   │   ├── App.jsx               # Application Root Component
-│   │   └── main.jsx              # React DOM Entrypoint
-│   ├── package.json              # Frontend Dependencies & Scripts
-│   └── vite.config.js            # Vite Bundler Configuration
-├── docs/                         # System Documentation & Specifications
-├── docker-compose.yml            # Local PostgreSQL + PostGIS Container Setup
-├── dev.ps1                       # PowerShell Local Backend Launcher
-├── AGENTS.md                     # AI Autonomous Execution Guidelines
-└── CONTRIBUTING.md               # Git Workflow & Conventional Commits
-```
 
----
+Use the versions pinned in BE/pyproject.toml, BE/uv.lock, FE/package.json, the frontend lockfile, and the relevant Compose configuration.
+Project Structure
+Path	Purpose
+BE/app/api/v1/	API routers and endpoints
+BE/app/core/	Application configuration and core infrastructure
+BE/app/crud/	Database operations
+BE/app/models/	Database models
+BE/app/schemas/	Request and response schemas
+BE/app/services/	Business logic and data processing
+BE/app/main.py	FastAPI entry point
+BE/pyproject.toml	Backend dependencies and project configuration
+BE/uv.lock	Backend dependency lockfile
+FE/src/components/	Shared UI components
+FE/src/features/	Feature modules and pages
+FE/src/hooks/	React hooks
+FE/src/services/	API client services
+FE/src/App.jsx	Frontend application root
+FE/src/main.jsx	Frontend entry point
+docs/	Setup guides and project documentation
+docker-compose.yml	Local container configuration
+dev.ps1	Windows development launcher
 
-## 🚀 Quick Start Guide
 
-**Thành viên chạy local với S3:** làm theo [Developer Setup Guide](docs/DEVELOPER_SETUP_GUIDE.md). Hướng dẫn bao gồm AWS profile riêng, cấu hình FE/BE, backup/restore PostgreSQL và script chạy backend S3. Pull code không tự mang theo cấu hình AWS hoặc dữ liệu trong database.
-
-**Triển khai EC2:** dùng [Compose riêng](deploy/ec2/compose.yml) và làm theo [hướng dẫn EC2](docs/DEVELOPER_SETUP_GUIDE.md#ec2). Frontend được build với API cùng origin; backend và PostgreSQL không publish cổng ra ngoài, S3 dùng IAM role của EC2.
-
-**CI/CD GitHub Actions:** xem [hướng dẫn CI/CD](docs/DEVELOPER_SETUP_GUIDE.md#github-actions-cicd) để cấu hình AWS OIDC, SSM và environment `production`. PR chạy kiểm tra; push `main` triển khai EC2 sau khi CI thành công, có backup DB và khôi phục ứng dụng khi kiểm tra lỗi.
-
-### 1. Prerequisites
-Ensure you have the following installed on your machine:
-* [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for PostgreSQL + PostGIS)
-* [Python 3.11+](https://www.python.org/downloads/) and [`uv`](https://docs.astral.sh/uv/) (`pip install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-* [Node.js 22.12+](https://nodejs.org/) & `npm`
-
----
-
-### 2. Start Database (PostGIS)
-
-Launch the spatial PostgreSQL container:
-```bash
+Local Development
+Prerequisites
+- Docker with Docker Compose.
+- Python and Node.js versions compatible with the repository manifests.
+- uv and npm.
+- Environment configuration for the database, authentication, frontend API URL, and file storage.
+For S3-backed local development, each developer needs their own authorized AWS credentials or profile. Pulling source code does not copy another developer's AWS configuration, database contents, or environment variables.
+Start the database
+From the repository root:
 docker compose up -d postgres
-```
-> [!NOTE]
-> Database is exposed at `localhost:5433` (database `traffic_urban`) with PostGIS pre-installed. A new database still needs the application schema/data; follow the backup/restore steps in the setup guide before using the API.
+Use the database name, credentials, and host port defined in the actual Compose and backend environment configuration. The supplied setup describes host port 5433; verify that mapping before connecting.
 
----
-
-### 3. Start Backend Server
-
-Using `uv` with fast virtualenv sync:
-```powershell
-# Windows (via helper script)
+Initialize the application schema using the repository's migration instructions, or restore a compatible backup as described in its setup guide.
+Start the backend
+On Windows, use the repository helper:
 .\dev.ps1
-
-# Or manually:
+Alternatively, start the development server manually after configuring the backend environment:
 uv --directory BE run uvicorn app.main:app --reload --port 8000
-```
-* **API Server**: `http://localhost:8000`
-* **Interactive Swagger Docs**: `http://localhost:8000/docs`
-* **Alternative ReDoc**: `http://localhost:8000/redoc`
-
----
-
-### 4. Start Frontend Application
-
-In a new terminal window:
-```bash
+- API: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+Start the frontend
+In another terminal:
 cd FE
 npm install
 npm run dev
-```
-* **Frontend Web App**: `http://localhost:5173`
+The default Vite development URL is http://localhost:5173. Check the terminal output for the actual port.
+Deployment
+Use the repository's environment-specific EC2 and S3 setup instructions. Production configuration should define the frontend API route, database connectivity, file storage, and application secrets explicitly.
 
----
+Where the EC2 deployment supports IAM roles, use the instance role to authorize S3 access. Keep backend and database ports private when serving the application through a reverse proxy.
 
-## 🔬 Forecasting & Evaluation Methodology
+If GitHub Actions deployment is configured, document its actual trigger branch, required AWS permissions, backup procedure, and recovery behavior in the deployment guide. These details depend on the workflow files and must be verified before deployment.
+Contribution Guidelines
+Follow the repository's CONTRIBUTING.md and applicable AGENTS.md instructions. Confirm the team's active integration and release branches before opening a pull request.
 
-The platform implements an automated pipeline to benchmark short-term traffic predictions:
+Suggested commit messages:
+feat: add session-level vehicle count aggregation
+fix: prevent lag windows from crossing session boundaries
+test: verify forecast target alignment
+docs: clarify vehicle counting methodology
+refactor: simplify experiment comparison service
+chore: update dependencies
+Project Team
+Academic Supervisor: Mr. Ngo Dang Hai An — anndh2@fe.edu.vn
+Member	Role / Contact
+Nguyen Xuan Truong	Team Leader · truongnxse182688@fpt.edu.vn
+Hoang Huu Nhat Huy	huyhhnse183417@fpt.edu.vn
+Nguyen Duy Khang	khangndse184511@fpt.edu.vn
+Le Minh Huy	huylmse182698@fpt.edu.vn
 
-```text
-Raw UAV Trajectories (pNEUMA CSV subset)
-              │
-              ▼
-   Data Quality Validation (Coordinates, Missing Fields, Timestamps)
-              │
-              ▼
-   Spatial Discretization & ROI Filtering (1–3 Road Segments via PostGIS)
-              │
-              ▼
-   Temporal Aggregation (1-minute & 5-minute Buckets)
-              │
-              ▼
-   Model Training & Inference (1, 3, 5-minute horizons):
-       ├── Historical Average / Persistence (Baseline)
-       ├── Random Forest Regression (Primary ML Model)
-       └── LSTM (Deep Learning Extension)
-              │
-              ▼
-   Evaluation & Benchmark (Chronological Train/Test Split):
-       ├── MAE  (Mean Absolute Error)
-       └── RMSE (Root Mean Squared Error)
-```
 
----
+Academic Use and Dataset Attribution
+This project is developed for educational and research purposes as part of the FPT University graduation capstone.
 
-## 🤝 Contribution & Git Guidelines
+The primary dataset described in this project is pNEUMA. Cite the original dataset authors and follow the dataset's applicable access and usage terms. Dataset ownership and redistribution rights remain with the respective rights holders.
 
-We strictly enforce the **Feature-Branch GitFlow** and **Conventional Commits**:
-
-### Branching Convention
-* `main`: Production releases only.
-* `dev`: Primary integration branch.
-* `feature/<feature-name>`: Isolated feature development (e.g. `feature/traffic-analysis`).
-* `fix/<bug-name>`: Bug fixes (e.g. `fix/timestamp-validation`).
-
-### Commit Message Standard
-```text
-feat: add traffic density calculation algorithm
-fix: validate missing timestamps and negative speed entries
-test: add unit tests for Random Forest forecasting service
-docs: update API documentation for dataset upload endpoints
-refactor: optimize trajectory spatial aggregation pipeline
-chore: update dependency packages
-```
-For full development standards, consult [AGENTS.md](./AGENTS.md) and [CONTRIBUTING.md](./CONTRIBUTING.md).
-
----
-
-## 👥 Project Team (GFA26SE128)
-
-**Capstone Project FA26SE155 — Fall 2026**  
-*Department of Software Engineering, FPT University Ho Chi Minh City*
-
-* **Academic Supervisor**: **Mr. Ngo Dang Hai An** (`anndh2@fe.edu.vn`)
-* **Project Team**:
-  * **Nguyen Xuan Truong** (Leader) — `truongnxse182688@fpt.edu.vn`
-  * **Hoang Huu Nhat Huy** — `huyhhnse183417@fpt.edu.vn`
-  * **Nguyen Duy Khang** — `khangndse184511@fpt.edu.vn`
-  * **Le Minh Huy** — `huylmse182698@fpt.edu.vn`
-
----
-
-## 📄 License & Attribution
-
-This project is developed for educational and academic research purposes as part of the Capstone Graduation Project at FPT University.  
-Traffic datasets used: [inD Dataset](https://www.ind-dataset.com/) and [pNEUMA Dataset](https://open-traffic.epfl.ch/).
+This academic-use statement does not grant a software license. Refer to the repository's LICENSE file, if provided, for software licensing terms.
