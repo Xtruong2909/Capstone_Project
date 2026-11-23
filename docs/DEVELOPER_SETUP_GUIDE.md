@@ -408,8 +408,20 @@ AWS CLI trên EC2 dùng IAM role; không chạy `aws configure` để lưu acces
    chỉ những người tin cậy được phép merge vào `main`.
 4. Sao chép ARN role mới. Không thay role đang gắn EC2 bằng role GitHub này.
 
-Trust policy dùng subject `repo:Xtruong2909/Capstone_Project:environment:production`.
+Trust policy dùng subject
+`repo:Xtruong2909@141247165/Capstone_Project@1364492118:environment:production`.
+Repository này tạo ngày 10/09/2026, sau mốc 15/07/2026 nên GitHub dùng immutable
+subject có cả owner ID và repository ID. Các ID trên đã đối chiếu GitHub API.
+Không dùng subject chỉ có tên repo theo định dạng cũ. Xem
+[GitHub immutable subject claims](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
 Xem [AWS OIDC trust](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-idp_oidc.html).
+
+Nếu bước đăng nhập AWS báo `Not authorized to perform sts:AssumeRoleWithWebIdentity`:
+mở IAM role `capstone-github-deploy` → **Trust relationships → Edit trust policy**,
+thay bằng nội dung [github-oidc-trust.json](../deploy/ec2/github-oidc-trust.json) mới
+và lưu. Đây là trust policy của role, khác với inline permissions policy.
+Chỉ sửa file local không cập nhật IAM. Sau khi lưu trên AWS, rerun failed jobs
+trong GitHub Actions; không cần push code để áp dụng thay đổi trust policy AWS.
 
 ### 3. Cấu hình GitHub (một lần)
 

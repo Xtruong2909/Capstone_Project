@@ -294,6 +294,13 @@
   color: #9aa7ba;
 }
 
+/* Keep browser-autofilled credentials on the same white form background. */
+.login-page .input-wrapper input:is(:autofill, :-webkit-autofill) {
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  -webkit-text-fill-color: #26344f;
+  caret-color: #26344f;
+}
+
 .password-toggle {
   display: flex;
   align-items: center;

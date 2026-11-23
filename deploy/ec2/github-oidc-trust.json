@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:Xtruong2909/Capstone_Project:environment:production"
+          "token.actions.githubusercontent.com:sub": "repo:Xtruong2909@141247165/Capstone_Project@1364492118:environment:production"
         }
       }
     }
