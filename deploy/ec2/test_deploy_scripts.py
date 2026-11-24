@@ -41,7 +41,10 @@ elif tool == 'docker':
             elif 'pg_restore' in text:
                 assert sys.stdin.buffer.read() == b'MOCK_DATABASE_BACKUP'
             elif 'SELECT' in text: print(os.environ.get('MOCK_JOBS', '0'))
-            elif 'psql' in text and '-f' in command and fail == 'migration': sys.exit(1)
+            elif 'psql' in text and '-f' in command:
+                if os.environ.get('MOCK_CONSUME_MIGRATION_STDIN') == '1':
+                    sys.stdin.buffer.read()
+                if fail == 'migration': sys.exit(1)
 elif tool == 'curl' and os.environ.get('MOCK_FAIL') == 'health': sys.exit(22)
 elif tool == 'aws':
     if args[:2] == ['ssm', 'send-command']:
@@ -108,6 +111,18 @@ class DeploymentScriptTests(unittest.TestCase):
     def test_active_jobs_stop_before_build_or_restart(self) -> None:
         self.assertNotEqual(self.deploy(MOCK_JOBS="1").returncode, 0)
         self.assertFalse(any("build" in call or "up" in call for call in self.calls()))
+
+    def test_all_migrations_run_when_compose_exec_consumes_stdin(self) -> None:
+        migrations = ["20261205_browser_sessions.sql", "20261206_share_recipients.sql"]
+        (self.source / "deploy/ec2/ci-migrations.txt").write_text(
+            "# allowlist\n" + "\n".join(migrations) + "\n"
+        )
+        (self.source / "BE/migrations" / migrations[1]).write_text("SELECT 2;\n")
+        result = self.deploy(MOCK_CONSUME_MIGRATION_STDIN="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        copied = [Path(call[call.index("cp") + 1]).name for call in self.calls()
+                  if call[0] == "docker" and "cp" in call]
+        self.assertEqual(copied, migrations)
 
     def test_failed_build_or_migration_leaves_containers_running(self) -> None:
         for failure in ("build", "migration"):

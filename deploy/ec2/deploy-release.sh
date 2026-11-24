@@ -116,8 +116,10 @@ while IFS= read -r migration || [[ -n $migration ]]; do
   }
   migration_path="$release_dir/BE/migrations/$migration"
   test -f "$migration_path"
-  compose cp "$migration_path" postgres:/tmp/capstone-ci-migration.sql
-  db_sql -f /tmp/capstone-ci-migration.sql
+  # Compose attaches stdin by default, even for psql -f. Do not let it consume
+  # subsequent filenames from the allowlist being read by this loop.
+  compose cp "$migration_path" postgres:/tmp/capstone-ci-migration.sql < /dev/null
+  db_sql -f /tmp/capstone-ci-migration.sql < /dev/null
 done < "$release_dir/deploy/ec2/ci-migrations.txt"
 
 application_changed=1
