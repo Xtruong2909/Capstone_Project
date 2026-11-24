@@ -12,19 +12,28 @@ function toggleId(setter, id) {
 }
 
 export default function ShareSelectionModal({ onClose, onChanged }) {
-  const { batches, loading, busy, error, share } = useShareSelection()
+  const { batches, recipients, recipientIds, recipientsLoading, toggleRecipient, loading, busy, error, share } = useShareSelection()
   const [groupId, setGroupId] = useState('')
   const [experimentIds, setExperimentIds] = useState(new Set())
   const [predictionIds, setPredictionIds] = useState(new Set())
   const [search, setSearch] = useState('')
   const [confirming, setConfirming] = useState(false)
   const batch = batches.find((item) => item.group_id === groupId)
+  const selectedRecipients = recipients.filter((user) => recipientIds.includes(user.user_id))
   const visibleBatches = batches.filter((item) => item.name.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi')))
 
   const chooseBatch = (id) => {
     setGroupId(id)
     setExperimentIds(new Set())
     setPredictionIds(new Set())
+  }
+
+  const chooseRecipient = (userId) => {
+    toggleRecipient(userId)
+    setGroupId('')
+    setExperimentIds(new Set())
+    setPredictionIds(new Set())
+    setConfirming(false)
   }
 
   const submit = async () => {
@@ -49,10 +58,23 @@ export default function ShareSelectionModal({ onClose, onChanged }) {
       {error && <p className="share-error" role="alert">{error}</p>}
       {confirming && batch ? <div className="share-confirm">
         <h3>Xác nhận chia sẻ {batch.name}?</h3>
-        <p>Người dùng nghiệp vụ sẽ xem được toàn bộ {batch.session_count} session trong {batch.dataset_count} dataset đã duyệt của batch này.</p>
+        <p>Chỉ những người nhận dưới đây có quyền xem các tài nguyên được chọn.</p>
+        <ul>{selectedRecipients.map((user) => <li key={user.user_id}>{user.full_name} ({user.email})</li>)}</ul>
         <p>Bạn đã chọn {experimentIds.size} thí nghiệm và {predictionIds.size} dự đoán.</p>
       </div> : <div className="share-selection-body">
-        <div className="share-selection-step"><strong>1. Chọn batch</strong><span>Toàn bộ session trong batch sẽ được chia sẻ.</span></div>
+        <fieldset className="share-recipient-picker" disabled={busy || recipientsLoading}>
+          <legend>1. Chọn người nhận</legend>
+          <p>Chọn một hoặc nhiều Business User. Chỉ tài khoản được chọn mới có quyền xem.</p>
+          {recipientsLoading ? <p role="status">Đang tải người nhận…</p>
+            : !recipients.length ? <p role="status">Chưa có Business User đang hoạt động để chia sẻ.</p>
+              : recipients.map((user) => <label key={user.user_id} className="share-resource-option">
+                <input type="checkbox" checked={recipientIds.includes(user.user_id)} onChange={() => chooseRecipient(user.user_id)} />
+                <span><strong>{user.full_name}</strong><small>{user.email}</small></span>
+              </label>)}
+        </fieldset>
+        {!recipientIds.length && !recipientsLoading && <p className="share-state">Chọn người nhận để tải danh sách batch.</p>}
+        {recipientIds.length > 0 && <>
+        <div className="share-selection-step"><strong>2. Chọn batch</strong><span>Trạng thái chia sẻ được tính cho những người nhận đã chọn.</span></div>
         <input className="share-selection-search" type="search" aria-label="Tìm batch" placeholder="Tìm batch…" value={search} onChange={(event) => setSearch(event.target.value)} />
         {loading ? <p className="share-state">Đang tải batch…</p>
           : !visibleBatches.length ? <p className="share-state">Không có batch đã duyệt phù hợp.</p>
@@ -62,7 +84,7 @@ export default function ShareSelectionModal({ onClose, onChanged }) {
               {item.shared_dataset_count > 0 && <em>{item.is_shared ? 'Đã chia sẻ session' : `Đã chia sẻ ${item.shared_dataset_count}/${item.dataset_count} dataset`}</em>}
             </label>)}</div>}
         {batch && <>
-          <div className="share-selection-step"><strong>2. Chọn thí nghiệm</strong><span>Chỉ thí nghiệm được đánh dấu mới được chia sẻ.</span></div>
+          <div className="share-selection-step"><strong>3. Chọn thí nghiệm</strong><span>Chỉ thí nghiệm được đánh dấu mới được chia sẻ.</span></div>
           {!batch.experiments.length && <p className="share-selection-empty">Batch này chưa có thí nghiệm hoàn thành.</p>}
           {batch.experiments.map((experiment) => <div key={experiment.resource_id} className="share-selection-experiment">
             <label className={`share-resource-option${experiment.is_shared ? ' is-shared' : ''}`}>
@@ -70,7 +92,7 @@ export default function ShareSelectionModal({ onClose, onChanged }) {
               <span><strong>{experiment.name}</strong></span>
               {experiment.is_shared && <em>Đã chia sẻ</em>}
             </label>
-            {experiment.predictions.length > 0 && <div className="share-selection-predictions"><strong>3. Dự đoán của {experiment.name}</strong>
+            {experiment.predictions.length > 0 && <div className="share-selection-predictions"><strong>4. Dự đoán của {experiment.name}</strong>
               {experiment.predictions.map((prediction) => <label key={prediction.resource_id} className={`share-resource-option${prediction.is_shared ? ' is-shared' : ''}`}>
                 <input type="checkbox" checked={predictionIds.has(prediction.resource_id)} disabled={prediction.is_shared} onChange={() => toggleId(setPredictionIds, prediction.resource_id)} />
                 <span><strong>{prediction.name}</strong></span>
@@ -78,6 +100,7 @@ export default function ShareSelectionModal({ onClose, onChanged }) {
               </label>)}
             </div>}
           </div>)}
+        </>}
         </>}
       </div>}
       <footer className="share-modal__foot"><span>{batch ? `${batch.session_count} session · ${experimentIds.size} thí nghiệm · ${predictionIds.size} dự đoán` : 'Chưa chọn batch'}</span><div>

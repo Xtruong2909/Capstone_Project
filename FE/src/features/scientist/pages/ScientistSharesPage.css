@@ -1,4 +1,11 @@
 .share-management { width: 100%; max-width: 1500px; margin-inline: auto; gap: 18px; color: #123255; }
+.share-recipient-picker { margin: 0 0 24px; padding: 16px; border: 1px solid #cfdef0; border-radius: 12px; }
+.share-recipient-picker legend { padding: 0 6px; font-weight: 700; }
+.share-recipient-picker > p { margin: 0 0 12px; color: #617a98; }
+.share-recipient-picker .share-resource-option + .share-resource-option { margin-top: 8px; }
+.share-recipient-picker .share-resource-option span { min-width: 0; overflow-wrap: anywhere; }
+.share-recipient-names { display: flex; flex-direction: column; gap: 8px; }
+.share-recipient-names small { display: block; color: #617a98; overflow-wrap: anywhere; }
 .share-management * { box-sizing: border-box; }
 .share-management__hero { display: flex; align-items: center; gap: 18px; padding: 24px; border: 1px solid #c9dcfa; border-radius: 20px; background: linear-gradient(110deg, #eaf3ff, #fff 75%); }
 .share-management__hero > div:nth-child(2) { flex: 1; }

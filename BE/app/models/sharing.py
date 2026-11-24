@@ -53,6 +53,20 @@ class SharedReport(Base):
 
     creator = relationship("User", foreign_keys=[created_by])
     items = relationship("SharedReportItem", back_populates="report", cascade="all, delete-orphan")
+    recipients = relationship("SharedReportRecipient", cascade="all, delete-orphan", lazy="selectin")
+
+    @property
+    def recipient_ids(self) -> list[uuid.UUID]:
+        return [recipient.user_id for recipient in self.recipients]
+
+
+class SharedReportRecipient(Base):
+    __tablename__ = "shared_report_recipients"
+
+    share_id = Column(UUID(as_uuid=True), ForeignKey("shared_reports.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+
+
 
 
 class SharedReportItem(Base):

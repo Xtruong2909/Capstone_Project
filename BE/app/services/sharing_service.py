@@ -156,9 +156,31 @@ def validate_and_check_items(db: Session, items_data: list[dict[str, Any]], user
         _require_resource(db, user, item)
 
 
-def require_published_share(db: Session, share_id: UUID) -> SharedReport:
+def validate_recipients(db: Session, recipient_ids: list[UUID]) -> None:
+    if not recipient_ids or len(set(recipient_ids)) != len(recipient_ids):
+        raise _error("INVALID_SHARE_RECIPIENTS", "Chọn ít nhất một người nhận, không trùng nhau.", 422)
+    if len(repo.get_business_recipients(db, recipient_ids)) != len(recipient_ids):
+        raise _error("INVALID_SHARE_RECIPIENTS", "Người nhận phải là Business User đang hoạt động.", 422)
+
+
+def list_recipients(db: Session) -> list[dict[str, Any]]:
+    return [{"user_id": user.id, "full_name": user.full_name, "email": user.email}
+            for user in repo.list_business_recipients(db)]
+
+
+def managed_recipients(db: Session, share: SharedReport) -> list[dict[str, Any]]:
+    users = [repo.get_user(db, recipient.user_id) for recipient in share.recipients]
+    return [{"user_id": user.id, "full_name": user.full_name, "email": user.email}
+            for user in users if user is not None]
+
+
+def require_published_share(db: Session, share_id: UUID, viewer: User) -> SharedReport:
     share = repo.get_share_by_id(db, share_id)
     if share is None or share.status != "PUBLISHED" or share.visibility != "BUSINESS_USER":
+        raise _not_found()
+    if not viewer.is_active or viewer.role_id not in ("business_user", "admin"):
+        raise _not_found()
+    if viewer.role_id != "admin" and not repo.has_share_recipient(db, share_id, viewer.id):
         raise _not_found()
     owner = repo.get_user(db, share.created_by)
     if owner is None or not owner.is_active:
@@ -242,7 +264,7 @@ def _shareable_group_datasets(db: Session, user: User, group_id: UUID) -> list[d
     return result
 
 
-def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
+def share_catalog(db: Session, user: User, recipient_ids: list[UUID] | None = None) -> list[dict[str, Any]]:
     """Offer batches with all sessions and individually selectable results."""
     batches: dict[UUID, dict[str, Any]] = {}
     for group in repo.list_dataset_groups(db):
@@ -250,7 +272,7 @@ def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
         if not datasets:
             continue
         keys = [("DATASET", item["resource_id"]) for item in datasets]
-        active = repo.active_share_ids(db, keys)
+        active = repo.active_share_ids(db, keys, recipient_ids=recipient_ids)
         batches[group.id] = {
             "group_id": group.id,
             "name": group.name or f"Batch {str(group.id)[:8]}",
@@ -276,7 +298,7 @@ def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
             continue
         option = {
             "resource_id": experiment.id, "name": experiment.name,
-            "is_shared": bool(repo.active_share_ids(db, [("EXPERIMENT", experiment.id)])),
+            "is_shared": bool(repo.active_share_ids(db, [("EXPERIMENT", experiment.id)], recipient_ids=recipient_ids)),
             "predictions": [],
         }
         batches[group_id]["experiments"].append(option)
@@ -295,7 +317,7 @@ def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
         option["predictions"].append({
             "resource_id": prediction.id,
             "name": resource_name("PREDICTION", prediction),
-            "is_shared": bool(repo.active_share_ids(db, [("PREDICTION", prediction.id)])),
+            "is_shared": bool(repo.active_share_ids(db, [("PREDICTION", prediction.id)], recipient_ids=recipient_ids)),
         })
     return list(batches.values())
 
@@ -303,6 +325,7 @@ def share_catalog(db: Session, user: User) -> list[dict[str, Any]]:
 def prepare_group_share(
     db: Session, user: User, group_id: UUID,
     experiment_ids: list[UUID], prediction_ids: list[UUID],
+    recipient_ids: list[UUID] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     group = repo.get_dataset_group(db, group_id)
     if group is None:
@@ -312,6 +335,7 @@ def prepare_group_share(
         raise _error("BATCH_NOT_SHAREABLE", "Batch chưa có dataset đã duyệt được cấp quyền.", 422)
     active_datasets = repo.active_share_ids(
         db, [("DATASET", item["resource_id"]) for item in datasets],
+        recipient_ids=recipient_ids,
     )
     items = [item for item in datasets
              if ("DATASET", item["resource_id"]) not in active_datasets]

@@ -24,13 +24,64 @@ from app.models.model_training import (
     ModelTrainingSplit,
 )
 from app.models.prediction import PredictionResult, PredictionRun
-from app.models.sharing import SharedReport, SharedReportItem
+from app.models.sharing import SharedReport, SharedReportItem, SharedReportRecipient
 from app.models.traffic import TrafficAggregationJob, TrafficTimeSeries
 from app.models.user import User
 
 
 class DuplicateActiveShareError(Exception):
     """A resource already has an active share for the Business User role."""
+
+
+def list_business_recipients(db: Session) -> list[User]:
+    return list(db.scalars(select(User).where(
+        User.role_id == "business_user", User.is_active.is_(True),
+    ).order_by(User.full_name, User.email, User.id)).all())
+
+
+def get_business_recipients(db: Session, user_ids: list[UUID]) -> list[User]:
+    return list(db.scalars(select(User).where(
+        User.id.in_(user_ids), User.role_id == "business_user", User.is_active.is_(True),
+    ).order_by(User.id).with_for_update(of=User)).all())
+
+
+def has_share_recipient(db: Session, share_id: UUID, user_id: UUID) -> bool:
+    return db.scalar(select(SharedReportRecipient.user_id).where(
+        SharedReportRecipient.share_id == share_id, SharedReportRecipient.user_id == user_id,
+    )) is not None
+
+
+def create_selection_shares(
+    db: Session, *, title: str, owner_id: UUID,
+    items_data: list[dict[str, Any]], recipient_ids: list[UUID],
+) -> list[SharedReport]:
+    """One bundle per recipient; skip only resources already visible to that recipient."""
+    created: list[SharedReport] = []
+    try:
+        keys = [(item["resource_type"], item["resource_id"]) for item in items_data]
+        _lock_share_resources(db, keys)
+        for user_id in recipient_ids:
+            covered = active_share_ids(db, keys, recipient_ids=[user_id])
+            missing = [item for item in items_data
+                       if (item["resource_type"], item["resource_id"]) not in covered]
+            if not missing:
+                continue
+            report = SharedReport(
+                title=title, created_by=owner_id, status="PUBLISHED", published_at=datetime.now(UTC),
+                items=[SharedReportItem(**item) for item in missing],
+                recipients=[SharedReportRecipient(user_id=user_id)],
+            )
+            db.add(report)
+            created.append(report)
+        if not created:
+            raise DuplicateActiveShareError
+        db.commit()
+        for report in created:
+            db.refresh(report)
+    except Exception:
+        db.rollback()
+        raise
+    return created
 
 
 def _lock_share_resources(db: Session, keys: list[tuple[str, UUID]]) -> None:
@@ -67,10 +118,16 @@ def get_shares_by_owner(
 def get_published_shares(
     db: Session, *, resource_type: str | None = None, search: str | None = None,
     page: int = 1, page_size: int = 20,
+    viewer_id: UUID | None = None,
 ) -> tuple[list[SharedReport], int]:
     condition = [SharedReport.status == "PUBLISHED",
                  select(User.id).where(User.id == SharedReport.created_by,
                                        User.is_active.is_(True)).exists()]
+    if viewer_id is not None:
+        condition.append(select(SharedReportRecipient.share_id).where(
+            SharedReportRecipient.share_id == SharedReport.id,
+            SharedReportRecipient.user_id == viewer_id,
+        ).exists())
     if search:
         condition.append(SharedReport.title.ilike(f"%{search}%"))
     if resource_type:
@@ -92,6 +149,7 @@ def get_published_shares(
 def create_share(
     db: Session, *, title: str, description: str | None, created_by: UUID,
     status: str, items_data: list[dict[str, Any]],
+    recipient_ids: list[UUID],
 ) -> SharedReport:
     now = datetime.now(UTC)
     report = SharedReport(
@@ -102,11 +160,12 @@ def create_share(
         if status == "PUBLISHED":
             keys = [(item["resource_type"], item["resource_id"]) for item in items_data]
             _lock_share_resources(db, keys)
-            if active_share_ids(db, keys):
+            if any(active_share_ids(db, keys, recipient_ids=[recipient]) for recipient in recipient_ids):
                 raise DuplicateActiveShareError
         db.add(report)
         db.flush()
         report.items = [SharedReportItem(**item) for item in items_data]
+        report.recipients = [SharedReportRecipient(user_id=user_id) for user_id in recipient_ids]
         db.commit()
         db.refresh(report)
     except Exception:
@@ -119,6 +178,7 @@ def update_share(
     db: Session, *, share: SharedReport, title: str | None = None,
     description: str | None = None, set_description: bool = False,
     status: str | None = None, items_data: list[dict[str, Any]] | None = None,
+    recipient_ids: list[UUID] | None = None,
 ) -> SharedReport:
     now = datetime.now(UTC)
     try:
@@ -130,7 +190,9 @@ def update_share(
             ]
             keys = [(item["resource_type"], item["resource_id"]) for item in selected]
             _lock_share_resources(db, keys)
-            if active_share_ids(db, keys, exclude_share_id=share.id):
+            audience = recipient_ids if recipient_ids is not None else share.recipient_ids
+            if any(active_share_ids(db, keys, exclude_share_id=share.id, recipient_ids=[recipient])
+                   for recipient in audience):
                 raise DuplicateActiveShareError
         if title is not None:
             share.title = title
@@ -149,6 +211,11 @@ def update_share(
             db.expire(share, ["items"])
             share.items = [SharedReportItem(**item) for item in items_data]
         share.updated_at = now
+        if recipient_ids is not None:
+            db.execute(delete(SharedReportRecipient).where(SharedReportRecipient.share_id == share.id))
+            db.flush()
+            db.expire(share, ["recipients"])
+            share.recipients = [SharedReportRecipient(user_id=user_id) for user_id in recipient_ids]
         db.commit()
         db.refresh(share)
     except Exception:
@@ -235,9 +302,30 @@ def list_resource_candidates(db: Session, resource_type: str) -> list[Any]:
 
 def active_share_ids(
     db: Session, keys: list[tuple[str, UUID]], *, exclude_share_id: UUID | None = None,
+    recipient_ids: list[UUID] | None = None,
 ) -> set[tuple[str, UUID]]:
     if not keys:
         return set()
+    if recipient_ids is not None:
+        if not recipient_ids:
+            return set()
+        # A resource is fully shared only when every selected user can already see it.
+        covered = set(keys)
+        for recipient_id in recipient_ids:
+            recipient_stmt = (
+                select(SharedReportItem.resource_type, SharedReportItem.resource_id)
+                .join(SharedReport, SharedReport.id == SharedReportItem.share_id)
+                .join(SharedReportRecipient, SharedReportRecipient.share_id == SharedReport.id)
+                .join(User, User.id == SharedReport.created_by)
+                .where(SharedReport.status == "PUBLISHED", User.is_active.is_(True),
+                       SharedReportRecipient.user_id == recipient_id,
+                       SharedReportItem.resource_type.in_({kind for kind, _ in keys}),
+                       SharedReportItem.resource_id.in_({resource_id for _, resource_id in keys}))
+            )
+            if exclude_share_id is not None:
+                recipient_stmt = recipient_stmt.where(SharedReport.id != exclude_share_id)
+            covered &= set(db.execute(recipient_stmt).all())
+        return covered
     types = {kind for kind, _ in keys}
     ids = {resource_id for _, resource_id in keys}
     stmt = (
@@ -257,6 +345,7 @@ def active_share_ids(
 
 def create_resource_shares(
     db: Session, *, owner_id: UUID, resources: list[dict[str, Any]],
+    recipient_ids: list[UUID],
 ) -> tuple[list[SharedReport], set[tuple[str, UUID]]]:
     """Create one published report per resource in one transaction.
 
@@ -269,7 +358,7 @@ def create_resource_shares(
             kind, resource_id = item["resource_type"], item["resource_id"]
             key = (kind, resource_id)
             _lock_share_resources(db, [key])
-            if key in active_share_ids(db, [key]):
+            if any(key in active_share_ids(db, [key], recipient_ids=[recipient]) for recipient in recipient_ids):
                 duplicate.add(key)
                 continue
             report = SharedReport(
@@ -277,6 +366,7 @@ def create_resource_shares(
                 published_at=datetime.now(UTC),
             )
             db.add(report)
+            report.recipients = [SharedReportRecipient(user_id=user_id) for user_id in recipient_ids]
             db.flush()
             db.add(SharedReportItem(
                 share_id=report.id, resource_type=kind, resource_id=resource_id,

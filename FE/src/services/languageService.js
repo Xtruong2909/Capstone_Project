@@ -1730,6 +1730,21 @@ Object.assign(englishTranslations, {
   'Ẩn tiến độ tổng hợp': 'Hide aggregation progress',
 })
 
+Object.assign(englishTranslations, {
+  '1. Chọn người nhận': '1. Select recipients',
+  '2. Chọn batch': '2. Select batch',
+  '3. Chọn thí nghiệm': '3. Select experiments',
+  'Người nhận': 'Recipients',
+  'Chọn một hoặc nhiều Business User. Chỉ tài khoản được chọn mới có quyền xem.': 'Select one or more Business Users. Only selected accounts can view the shared resources.',
+  'Đang tải người nhận…': 'Loading recipients…',
+  'Không tải được người nhận.': 'Unable to load recipients.',
+  'Chưa có Business User đang hoạt động để chia sẻ.': 'No active Business Users are available for sharing.',
+  'Chọn người nhận để tải danh sách batch.': 'Select recipients to load batches.',
+  'Trạng thái chia sẻ được tính cho những người nhận đã chọn.': 'Sharing status applies to the selected recipients.',
+  'Chỉ những người nhận dưới đây có quyền xem các tài nguyên được chọn.': 'Only the recipients below can view the selected resources.',
+  'Chưa chọn người nhận': 'No recipients selected',
+})
+
 for (const [sourceText, vietnameseText] of Object.entries(translations.vi)) {
   const englishText = englishTranslations[sourceText]
   if (englishText && sourceText !== vietnameseText) {

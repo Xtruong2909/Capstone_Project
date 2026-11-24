@@ -65,10 +65,11 @@ def test_batch_share_reports_partial_result() -> None:
     try:
         with (
             patch.object(sharing_service, "prepare_resource_shares", return_value=(prepared, [failure])),
+            patch.object(crud_sharing, "get_business_recipients", return_value=[actor("business_user")]),
             patch.object(crud_sharing, "create_resource_shares", return_value=([report], set())) as create,
             patch("app.api.v1.endpoints.sharing.audit_log_service.record_audit_event"),
         ):
-            response = client.post("/api/shares/batch", json={"resources": [
+            response = client.post("/api/shares/batch", json={"recipient_ids": [str(uuid4())], "resources": [
                 {"resource_type": "DATASET", "resource_id": str(good_id)},
                 {"resource_type": "EXPERIMENT", "resource_id": str(bad_id)},
             ]})
@@ -107,7 +108,7 @@ def test_group_selection_creates_one_report_with_all_selected_resources() -> Non
                              created_by=user.id, visibility="BUSINESS_USER",
                              status="PUBLISHED", created_at=datetime.now(UTC),
                              updated_at=datetime.now(UTC), published_at=datetime.now(UTC),
-                             revoked_at=None, items=[])
+                             revoked_at=None, items=[], recipient_ids=[uuid4()])
     prepared = [
         {"resource_type": "DATASET", "resource_id": dataset_id,
          "visible_sections": ["metadata", "sessions"]},
@@ -119,15 +120,18 @@ def test_group_selection_creates_one_report_with_all_selected_resources() -> Non
     try:
         with (
             patch.object(sharing_service, "prepare_group_share", return_value=("Batch A", prepared)) as prepare,
-            patch.object(crud_sharing, "create_share", return_value=report) as create,
+            patch.object(crud_sharing, "create_selection_shares", return_value=[report]) as create,
+            patch.object(crud_sharing, "get_business_recipients", return_value=[actor("business_user")]),
             patch("app.api.v1.endpoints.sharing.audit_log_service.record_audit_event"),
         ):
             response = client.post("/api/shares/selection", json={
                 "group_id": str(group_id), "experiment_ids": [str(experiment_id)],
+                "recipient_ids": [str(report.recipient_ids[0])],
                 "prediction_ids": [str(prediction_id)],
             })
         assert response.status_code == 201
-        assert prepare.call_args.args[2:] == (group_id, [experiment_id], [prediction_id])
+        assert prepare.call_args.args[2:] == (group_id, [experiment_id], [prediction_id], report.recipient_ids)
+        assert response.json()["created_count"] == 1
         assert create.call_args.kwargs["items_data"] == prepared
         assert create.call_count == 1
     finally:
@@ -156,6 +160,7 @@ def test_repository_skips_existing_active_share() -> None:
     with patch.object(crud_sharing, "active_share_ids", return_value={("DATASET", resource_id)}):
         created, duplicate = crud_sharing.create_resource_shares(
             db, owner_id=uuid4(), resources=[{"resource_type": "DATASET", "resource_id": resource_id}],
+            recipient_ids=[uuid4()],
         )
     assert created == []
     assert duplicate == {("DATASET", resource_id)}

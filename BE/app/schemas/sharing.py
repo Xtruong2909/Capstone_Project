@@ -35,12 +35,20 @@ class ShareCreate(BaseModel):
     description: str | None = None
     status: str = "DRAFT"
     items: list[ShareItemCreate] = Field(default_factory=list)
+    recipient_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
 class ShareUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     status: str | None = None
     items: list[ShareItemCreate] | None = None  # None = no change; list = full replace
+    recipient_ids: list[UUID] | None = Field(None, max_length=100)
+
+
+class ShareRecipientResponse(BaseModel):
+    user_id: UUID
+    full_name: str
+    email: str
 
 class ShareResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -56,6 +64,12 @@ class ShareResponse(BaseModel):
     published_at: datetime | None
     revoked_at: datetime | None
     items: list[ShareItemResponse] = Field(default_factory=list)
+    recipient_ids: list[UUID] = Field(default_factory=list)
+
+
+class GroupShareResponse(BaseModel):
+    shares: list[ShareResponse]
+    created_count: int
 
 
 class ShareListItem(BaseModel):
@@ -167,6 +181,7 @@ class ShareCatalogResponse(BaseModel):
 
 class GroupShareRequest(BaseModel):
     group_id: UUID
+    recipient_ids: list[UUID] = Field(..., min_length=1, max_length=100)
     experiment_ids: list[UUID] = Field(default_factory=list, max_length=100)
     prediction_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
@@ -177,6 +192,7 @@ class ResourceShareSelection(BaseModel):
 
 
 class BatchShareRequest(BaseModel):
+    recipient_ids: list[UUID] = Field(default_factory=list, max_length=100)
     resources: list[ResourceShareSelection] = Field(..., min_length=1, max_length=100)
 
 
@@ -204,6 +220,7 @@ class ManagedResourceShare(BaseModel):
     status: str
     revoked_at: datetime | None
     item_count: int
+    recipients: list[ShareRecipientResponse] = Field(default_factory=list)
 
 
 class ManagedResourceSharePage(BaseModel):

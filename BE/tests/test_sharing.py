@@ -25,6 +25,7 @@ from app.models.user import User
 from app.services import sharing_service
 
 NOW = datetime.now(UTC)
+RECIPIENT_ID = uuid4()
 
 
 def user(role: str = "data_scientist") -> SimpleNamespace:
@@ -46,6 +47,7 @@ def share(owner: SimpleNamespace, status: str = "PUBLISHED", items: list | None 
         created_at=NOW, updated_at=NOW,
         published_at=NOW if status == "PUBLISHED" else None,
         revoked_at=NOW if status == "REVOKED" else None,
+        recipient_ids=[RECIPIENT_ID],
     )
 
 
@@ -55,7 +57,8 @@ def api():
     db = MagicMock()
     app.dependency_overrides[get_current_user] = lambda: actor
     app.dependency_overrides[get_db] = lambda: db
-    with patch("app.api.v1.endpoints.sharing.audit_log_service.record_audit_event"):
+    with patch("app.api.v1.endpoints.sharing.audit_log_service.record_audit_event"), \
+         patch.object(crud_sharing, "get_business_recipients", return_value=[user("business_user")]):
         yield TestClient(app, raise_server_exceptions=False), actor, db
     app.dependency_overrides.clear()
 
@@ -79,7 +82,7 @@ def test_ds_create_uses_authenticated_owner(api) -> None:
         patch.object(crud_sharing, "create_share", return_value=saved) as create,
     ):
         response = client.post("/api/shares", json={
-            "title": "Kết quả", "status": "PUBLISHED",
+            "title": "Kết quả", "status": "PUBLISHED", "recipient_ids": [str(RECIPIENT_ID)],
             "items": [{"resource_type": "EXPERIMENT", "resource_id": str(uuid4()),
                        "visible_sections": ["experiment_summary"]}],
         })
@@ -372,7 +375,7 @@ def test_create_transaction_rolls_back_on_error() -> None:
     with pytest.raises(RuntimeError):
         crud_sharing.create_share(
             db, title="Report", description=None, created_by=uuid4(),
-            status="DRAFT", items_data=[],
+            status="DRAFT", items_data=[], recipient_ids=[],
         )
     db.rollback.assert_called_once()
     db.commit.assert_not_called()
@@ -419,7 +422,7 @@ def test_deleted_or_inaccessible_resource_invalidates_published_share() -> None:
         patch.object(sharing_service, "validate_and_check_items", side_effect=HTTPException(404)),
         pytest.raises(HTTPException) as error,
     ):
-        sharing_service.require_published_share(MagicMock(), published.id)
+        sharing_service.require_published_share(MagicMock(), published.id, user("business_user"))
     assert error.value.status_code == 404
 
 
@@ -443,7 +446,7 @@ def test_postgres_share_round_trip_with_rollback() -> None:
             with patch.object(db, "commit", db.flush):
                 created = crud_sharing.create_share(
                     db, title="Temporary sharing test", description=None,
-                    created_by=owner_id, status="DRAFT", items_data=[],
+                    created_by=owner_id, status="DRAFT", items_data=[], recipient_ids=[],
                 )
                 assert crud_sharing.get_share_by_id(db, created.id) is not None
                 resource_id = uuid4()

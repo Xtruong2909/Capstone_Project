@@ -16,6 +16,7 @@ from app.schemas.sharing import (
     BatchShareResponse,
     BatchShareResult,
     GroupShareRequest,
+    GroupShareResponse,
     ManagedResourceShare,
     ManagedResourceSharePage,
     PublishedShareListResponse,
@@ -26,6 +27,7 @@ from app.schemas.sharing import (
     SharedResultDetail,
     ShareListItem,
     ShareListResponse,
+    ShareRecipientResponse,
     ShareResponse,
     ShareUpdate,
 )
@@ -96,6 +98,7 @@ def create_share(
         any(item["visible_sections"] for item in items_data),
     )
     sharing_service.validate_and_check_items(db, items_data, current_user)
+    sharing_service.validate_recipients(db, payload.recipient_ids)
 
     try:
         share = crud_sharing.create_share(
@@ -105,6 +108,7 @@ def create_share(
             created_by=current_user.id,
             status=payload.status,
             items_data=items_data,
+            recipient_ids=payload.recipient_ids,
         )
     except crud_sharing.DuplicateActiveShareError as exc:
         raise HTTPException(409, {"code": "DUPLICATE_ACTIVE_SHARE",
@@ -122,6 +126,7 @@ def create_share(
             "share_id": str(share.id),
             "status": share.status,
             "item_count": len(items_data),
+            "recipient_ids": [str(value) for value in payload.recipient_ids],
         },
     )
     if share.status == "PUBLISHED":
@@ -191,8 +196,12 @@ def update_share(
         ),
     )
     old_items = {(item.resource_type, item.resource_id) for item in share.items}
+    recipients = payload.recipient_ids if payload.recipient_ids is not None else share.recipient_ids
+    if effective_status == "PUBLISHED" or payload.recipient_ids is not None:
+        sharing_service.validate_recipients(db, recipients)
 
     old_status = share.status
+    old_recipient_ids = [str(value) for value in share.recipient_ids]
     old_sections = {
         (item.resource_type, str(item.resource_id)): list(item.visible_sections)
         for item in share.items
@@ -206,6 +215,7 @@ def update_share(
             set_description="description" in payload.model_fields_set,
             status=payload.status,
             items_data=items_data,
+            recipient_ids=payload.recipient_ids,
         )
     except crud_sharing.DuplicateActiveShareError as exc:
         raise HTTPException(409, {"code": "DUPLICATE_ACTIVE_SHARE",
@@ -232,6 +242,8 @@ def update_share(
         ip_address=ip,
         details={
             "old_status": old_status, "new_status": share.status,
+            "old_recipient_ids": old_recipient_ids,
+            "recipient_ids": [str(value) for value in share.recipient_ids],
             "section_changes": section_changes,
             "added_items": len(new_sections.keys() - old_sections.keys()),
             "removed_items": len(old_sections.keys() - new_sections.keys()),
@@ -339,14 +351,26 @@ def list_available_resources(
 
 @ds_router.get("/catalog", response_model=ShareCatalogResponse)
 def get_share_catalog(
+    recipient_ids: list[UUID] | None = Query(None, max_length=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ShareCatalogResponse:
     _require_data_scientist(current_user)
-    return ShareCatalogResponse(batches=sharing_service.share_catalog(db, current_user))
+    if recipient_ids is not None:
+        sharing_service.validate_recipients(db, recipient_ids)
+    return ShareCatalogResponse(batches=sharing_service.share_catalog(db, current_user, recipient_ids))
 
 
-@ds_router.post("/selection", response_model=ShareResponse, status_code=status.HTTP_201_CREATED)
+@ds_router.get("/recipients", response_model=list[ShareRecipientResponse])
+def list_share_recipients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    _require_data_scientist(current_user)
+    return sharing_service.list_recipients(db)
+
+
+@ds_router.post("/selection", response_model=GroupShareResponse, status_code=status.HTTP_201_CREATED)
 def share_group_selection(
     payload: GroupShareRequest,
     request: Request,
@@ -354,24 +378,28 @@ def share_group_selection(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     _require_data_scientist(current_user)
+    sharing_service.validate_recipients(db, payload.recipient_ids)
     title, items = sharing_service.prepare_group_share(
         db, current_user, payload.group_id, payload.experiment_ids, payload.prediction_ids,
+        payload.recipient_ids,
     )
     try:
-        share = crud_sharing.create_share(
-            db, title=title, description=None, created_by=current_user.id,
-            status="PUBLISHED", items_data=items,
+        shares = crud_sharing.create_selection_shares(
+            db, title=title, owner_id=current_user.id,
+            items_data=items, recipient_ids=payload.recipient_ids,
         )
     except crud_sharing.DuplicateActiveShareError as exc:
         raise HTTPException(409, {"code": "DUPLICATE_ACTIVE_SHARE",
                                   "message": "Một tài nguyên trong batch đã được chia sẻ."}) from exc
-    audit_log_service.record_audit_event(
-        action="CREATE_SHARE", module="SHARING", status="SUCCESS",
-        description=f"Shared batch {payload.group_id} with {len(items)} resources",
-        user=current_user, resource_id=str(share.id), ip_address=_get_client_ip(request),
-        details={"group_id": str(payload.group_id), "item_count": len(items)},
-    )
-    return share
+    for share in shares:
+        audit_log_service.record_audit_event(
+            action="CREATE_SHARE", module="SHARING", status="SUCCESS",
+            description=f"Shared batch {payload.group_id} with {len(share.items)} resources",
+            user=current_user, resource_id=str(share.id), ip_address=_get_client_ip(request),
+            details={"group_id": str(payload.group_id), "item_count": len(share.items),
+                     "recipient_ids": [str(value) for value in share.recipient_ids]},
+        )
+    return {"shares": shares, "created_count": len(shares)}
 
 
 @ds_router.post("/batch", response_model=BatchShareResponse)
@@ -382,12 +410,13 @@ def create_resource_share_batch(
     current_user: User = Depends(get_current_user),
 ) -> BatchShareResponse:
     _require_data_scientist(current_user)
+    sharing_service.validate_recipients(db, payload.recipient_ids)
     prepared, failures = sharing_service.prepare_resource_shares(
         db, current_user,
         [(item.resource_type, item.resource_id) for item in payload.resources],
     )
     created, duplicates = crud_sharing.create_resource_shares(
-        db, owner_id=current_user.id, resources=prepared,
+        db, owner_id=current_user.id, resources=prepared, recipient_ids=payload.recipient_ids,
     ) if prepared else ([], set())
     results = [BatchShareResult.model_validate(item) for item in failures]
     created_by_key = {
@@ -445,6 +474,8 @@ def list_managed_resources(
             shared_by=share.created_by, shared_at=share.published_at,
             status=share.status, revoked_at=share.revoked_at,
             item_count=len(share.items),
+            recipients=[ShareRecipientResponse.model_validate(value) for value in
+                        sharing_service.managed_recipients(db, share)],
         ))
     return ManagedResourceSharePage(
         data=summaries,
@@ -512,6 +543,7 @@ def list_shared_results(
 
     shares, total = crud_sharing.get_published_shares(
         db,
+        viewer_id=current_user.id if current_user.role_id != "admin" else None,
         resource_type=resource_type,
         search=search,
         page=page,
@@ -545,7 +577,7 @@ def get_shared_result_detail(
 ) -> Any:
     _require_business_user(current_user)
 
-    share = sharing_service.require_published_share(db, share_id)
+    share = sharing_service.require_published_share(db, share_id, current_user)
     return sharing_service.assemble_shared_result_detail(db, share)
 
 
@@ -566,7 +598,7 @@ def get_shared_item_rows(
     current_user: User = Depends(get_current_user),
 ) -> SharedItemPage:
     _require_business_user(current_user)
-    share = sharing_service.require_published_share(db, share_id)
+    share = sharing_service.require_published_share(db, share_id, current_user)
     item = next((item for item in share.items if item.id == item_id), None)
     if item is None:
         raise HTTPException(404, {"code": "SHARE_NOT_FOUND", "message": "Không tìm thấy nội dung"})

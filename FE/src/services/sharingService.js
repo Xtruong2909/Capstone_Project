@@ -4,8 +4,14 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/ap
   .replace(/\/v1\/?$/, '')
 
 export const sharingService = {
-  async getCatalog() {
-    const { data } = await apiClient.get('/shares/catalog', { baseURL: API_BASE })
+  async getRecipients() {
+    const { data } = await apiClient.get('/shares/recipients', { baseURL: API_BASE })
+    return data
+  },
+  async getCatalog(recipientIds = []) {
+    const params = new URLSearchParams()
+    recipientIds.forEach((id) => params.append('recipient_ids', id))
+    const { data } = await apiClient.get('/shares/catalog', { baseURL: API_BASE, params })
     return data
   },
   async shareSelection(payload) {
@@ -20,8 +26,8 @@ export const sharingService = {
     const { data } = await apiClient.get('/shares/manage', { baseURL: API_BASE, params })
     return data
   },
-  async createBatch(resources) {
-    const { data } = await apiClient.post('/shares/batch', { resources }, { baseURL: API_BASE })
+  async createBatch(resources, recipientIds) {
+    const { data } = await apiClient.post('/shares/batch', { resources, recipient_ids: recipientIds }, { baseURL: API_BASE })
     return data
   },
   async revoke(shareId) {
