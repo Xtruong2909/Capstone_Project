@@ -1,5 +1,7 @@
 const translations = {
   vi: {
+    'Batch upload continues in the background.': 'Batch vẫn đang được tải lên khi bạn xem mục khác.',
+    'View upload progress': 'Xem tiến độ tải lên',
     'Delete batch': 'Xóa batch',
     'This batch was rejected by the administrator. You can delete it and upload a new batch.': 'Batch này đã bị quản trị viên từ chối. Bạn có thể xóa và tải lên batch mới.',
     'Deleting...': 'Đang xóa...',

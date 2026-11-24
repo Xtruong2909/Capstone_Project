@@ -1,32 +1,17 @@
-import { useState, useMemo, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Upload,
-  Workflow,
-  FolderOpen,
-  FileSpreadsheet,
-  AlertTriangle,
-  CheckCircle2,
-  X,
-  RefreshCw,
-  Info,
+  Upload, Workflow, FolderOpen, FileSpreadsheet, AlertTriangle,
+  CheckCircle2, X, RefreshCw, Info,
 } from "lucide-react";
-import { engineerService } from "../../../services/engineerService";
-import {
-  useEngineerJob,
-  useEngineerMutation,
-} from "../../../hooks/useEngineerData";
+import { useEngineerUpload } from "../../../hooks/useEngineerUpload";
 import { useLanguage } from "../../../hooks/useLanguage";
 import {
-  EngineerBadge,
-  EngineerFeedback,
-  EngineerHeader,
-  EngineerJob,
+  EngineerBadge, EngineerFeedback, EngineerHeader, EngineerJob,
 } from "../components/EngineerUi";
-import { formatBytes, MAX_UPLOAD_SIZE_BYTES } from "../utils/engineerHelpers";
+import { formatBytes } from "../utils/engineerHelpers";
 import "../EngineerData.css";
 
-const FILENAME_REGEX = /^\d{8}_d\d+_\d{4}_\d{4}\.csv$/i;
 const DEFAULT_SOURCE = "pNEUMA UAV Swarm";
 const DEFAULT_LOCATION = "Athens Central Business District, Greece";
 
@@ -34,141 +19,17 @@ export default function EngineerUploadPage() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-
-  const [files, setFiles] = useState([]);
-  const [metadata, setMetadata] = useState({
-    group_name: "",
-    source: "",
-    location_name: "",
-    description: "",
-  });
-  const [progress, setProgress] = useState(0);
-  const [uploadPhase, setUploadPhase] = useState('preparing');
-  const [result, setResult] = useState(null);
-  const [validationError, setValidationError] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const {
+    files, metadata, setMetadata, progress, uploadPhase, finalResult, validationError,
+    mutation, job, busy, analyzedFiles, invalidFilesCount, totalValidBytes,
+    handleSelectFiles, handleRemoveFile, handleRemoveAllInvalid, handleClearAllFiles,
+    handleUploadSubmit, reset,
+  } = useEngineerUpload();
 
-  const mutation = useEngineerMutation();
-  const job = useEngineerJob("upload", true);
-  const busy = mutation.busy || job.running;
-  const finalResult = result || job.data?.result;
-
-  // Analyze selected files and detect any format/size errors
-  const analyzedFiles = useMemo(() => {
-    return files.map((file) => {
-      const isFormatValid = FILENAME_REGEX.test(file.name);
-      const isSizeValid = file.size > 0 && file.size <= MAX_UPLOAD_SIZE_BYTES;
-      let error = null;
-      if (!isFormatValid) {
-        error = t("File name must match YYYYMMDD_dX_HHMM_HHMM.csv");
-      } else if (file.size === 0) {
-        error = t("File is empty (0 bytes)");
-      } else if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-        error = t("File exceeds maximum upload size (2.5 GB)");
-      }
-      return {
-        file,
-        name: file.name,
-        size: file.size,
-        isValid: !error,
-        error,
-      };
-    });
-  }, [files, t]);
-
-  const invalidFilesCount = useMemo(() => {
-    return analyzedFiles.filter((item) => !item.isValid).length;
-  }, [analyzedFiles]);
-
-  const totalValidBytes = useMemo(() => {
-    return analyzedFiles
-      .filter((item) => item.isValid)
-      .reduce((sum, item) => sum + item.size, 0);
-  }, [analyzedFiles]);
-
-  const handleSelectFiles = (selectedFileList) => {
-    setValidationError("");
-    mutation.clear();
-    const incoming = Array.from(selectedFileList || []);
-    if (!incoming.length) return;
-
-    // Merge incoming with existing without duplicates by filename
-    const existingNames = new Set(files.map((f) => f.name));
-    const fresh = incoming.filter((f) => !existingNames.has(f.name));
-    setFiles((prev) => [...prev, ...fresh]);
-    setResult(null);
-    job.track(null);
-  };
-
-  const handleRemoveFile = (indexToRemove) => {
-    setFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
-    setValidationError("");
-  };
-
-  const handleRemoveAllInvalid = () => {
-    setFiles((prev) =>
-      prev.filter(
-        (f) =>
-          FILENAME_REGEX.test(f.name) &&
-          f.size > 0 &&
-          f.size <= MAX_UPLOAD_SIZE_BYTES,
-      ),
-    );
-    setValidationError("");
-  };
-
-  const handleClearAllFiles = () => {
-    setFiles([]);
-    setValidationError("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handleUploadSubmit = async (event) => {
-    event.preventDefault();
-    if (!files.length) {
-      setValidationError(
-        t("Select at least one CSV recording session to upload."),
-      );
-      return;
-    }
-    if (invalidFilesCount > 0) {
-      setValidationError(
-        t("Please remove or fix all invalid files before uploading."),
-      );
-      return;
-    }
-
-    setResult(null);
-    setProgress(0);
-    setUploadPhase('preparing');
-    job.track(null);
-
-    await mutation.run(async () => {
-      const response = await engineerService.upload(
-        { files, ...metadata },
-        (progressEvent) => {
-          setUploadPhase(progressEvent.phase || 'local');
-          if (progressEvent.total) {
-            setProgress(
-              Math.round((progressEvent.loaded * 100) / progressEvent.total),
-            );
-          }
-        },
-      );
-
-      if (response?.job_id) {
-        job.track(response);
-      } else {
-        setResult(response);
-      }
-      setFiles([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }, undefined, '');
-  };
+  useEffect(() => {
+    if (!files.length && fileInputRef.current) fileInputRef.current.value = "";
+  }, [files]);
 
   return (
     <div className="de-workspace">
@@ -176,11 +37,7 @@ export default function EngineerUploadPage() {
       <section className="admin-card">
         <EngineerHeader
           title="Upload Dataset"
-          onRefresh={() => {
-            setFiles([]);
-            setResult(null);
-            job.track(null);
-          }}
+          onRefresh={reset}
         />
 
         <form className="de-form" onSubmit={handleUploadSubmit}>
@@ -264,6 +121,7 @@ export default function EngineerUploadPage() {
                       type="button"
                       className="btn-secondary"
                       onClick={handleRemoveAllInvalid}
+                      disabled={busy}
                       style={{ height: "32px", fontSize: "12px" }}
                     >
                       {t("Remove Invalid Files")}
@@ -273,6 +131,7 @@ export default function EngineerUploadPage() {
                     type="button"
                     className="btn-secondary"
                     onClick={handleClearAllFiles}
+                    disabled={busy}
                     style={{ height: "32px", fontSize: "12px" }}
                   >
                     {t("Clear All")}
@@ -566,10 +425,7 @@ export default function EngineerUploadPage() {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => {
-                setResult(null);
-                job.track(null);
-              }}
+              onClick={reset}
             >
               <RefreshCw size={15} />
               <span>{t("Upload More Files")}</span>

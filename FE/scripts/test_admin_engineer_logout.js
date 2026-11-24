@@ -110,7 +110,7 @@ test('Admin and DE logout buttons use the shared API flow and remain disabled wh
       useNavigate: () => () => {}, useAdminNavigation: () => () => {},
       useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
       useEngineerCatalog: () => ({ datasets: [] }), loadJsonStorage: () => ({}), RECORD_CACHE_STORAGE_KEY: 'fixture',
-      NavLink: icon, Outlet: icon, LanguageSwitcher: icon, ScientistProfileModal: icon,
+      NavLink: icon, Outlet: icon, LanguageSwitcher: icon, ScientistProfileModal: icon, EngineerUploadStatus: icon,
       LayoutDashboard: icon, Users: icon, ShieldCheck: icon, Database: icon, ScrollText: icon,
       LogOut: icon, Shield: icon, FileSpreadsheet: icon, Upload: icon, Table2: icon, Workflow: icon,
     })

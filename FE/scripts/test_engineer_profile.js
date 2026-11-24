@@ -37,7 +37,7 @@ test('engineer account card opens and closes the shared profile/password dialog'
     useLogout: () => ({ handleLogout: () => {}, isLoggingOut: false }),
     useNavigate: () => () => {}, useLocation: () => ({ pathname: '/engineer' }),
     useEngineerCatalog: () => ({ datasets: [] }), loadJsonStorage: () => ({}), RECORD_CACHE_STORAGE_KEY: 'records',
-    NavLink: icon, Outlet: icon, LanguageSwitcher: icon, ScientistProfileModal: Profile,
+    NavLink: icon, Outlet: icon, LanguageSwitcher: icon, ScientistProfileModal: Profile, EngineerUploadStatus: icon,
     LayoutDashboard: icon, FileSpreadsheet: icon, Upload: icon, Table2: icon, Workflow: icon, Database: icon, LogOut: icon,
   })
   let tree = elements(render())

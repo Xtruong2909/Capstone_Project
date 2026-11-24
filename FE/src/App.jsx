@@ -16,6 +16,7 @@ import AdminAuditLogsPage from './features/admin/pages/AdminAuditLogsPage'
 
 // Data Engineer features
 import EngineerLayout from './features/engineer/EngineerLayout'
+import { EngineerUploadProvider } from './context/EngineerUploadContext.jsx'
 import EngineerOverviewPage from './features/engineer/pages/EngineerOverviewPage'
 import EngineerCatalogPage from './features/engineer/pages/EngineerCatalogPage'
 import EngineerUploadPage from './features/engineer/pages/EngineerUploadPage'
@@ -66,7 +67,7 @@ export default function App() {
 
       {/* Data Engineer Workspace (Protected: only 'data_engineer' role) */}
       <Route element={<ProtectedRoute allowedRoles={['data_engineer']} />}>
-        <Route path="/engineer" element={<EngineerLayout />}>
+        <Route path="/engineer" element={<EngineerUploadProvider><EngineerLayout /></EngineerUploadProvider>}>
           <Route index element={<EngineerOverviewPage />} />
           <Route path="datasets" element={<EngineerCatalogPage />} />
           <Route path="upload" element={<EngineerUploadPage />} />

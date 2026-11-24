@@ -13,6 +13,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useLogout } from '../../hooks/useLogout'
 import { useLanguage } from '../../hooks/useLanguage'
 import LanguageSwitcher from '../../components/LanguageSwitcher'
+import EngineerUploadStatus from './components/EngineerUploadStatus'
 import ScientistProfileModal from '../scientist/components/ScientistProfileModal'
 import { useEngineerCatalog } from '../../hooks/useEngineerCatalog'
 import {
@@ -204,6 +205,7 @@ export default function EngineerLayout() {
         </header>
 
         <main className="adm-canvas">
+          <EngineerUploadStatus />
           <Outlet
             context={{
               dbStatus,
