@@ -67,12 +67,21 @@ export function LanguageProvider({ children }) {
       }
 
       if (node.nodeType !== Node.ELEMENT_NODE) return
+      if (node.nodeName === 'SCRIPT' || node.nodeName === 'STYLE' || node.nodeName === 'NOSCRIPT') return
 
       for (const attribute of ['aria-label', 'placeholder', 'title', 'alt']) {
         if (node.hasAttribute(attribute)) {
           const value = node.getAttribute(attribute)
           const translated = translateText(value, language)
           if (translated !== value) node.setAttribute(attribute, translated)
+        }
+      }
+
+      if (node.nodeName === 'INPUT' && (node.type === 'button' || node.type === 'submit')) {
+        const value = node.getAttribute('value')
+        if (value) {
+          const translated = translateText(value, language)
+          if (translated !== value) node.setAttribute('value', translated)
         }
       }
 
@@ -98,7 +107,7 @@ export function LanguageProvider({ children }) {
     translateNode(document.body)
     observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ['aria-label', 'placeholder', 'title', 'alt'],
+      attributeFilter: ['aria-label', 'placeholder', 'title', 'alt', 'value'],
       characterData: true,
       childList: true,
       subtree: true,

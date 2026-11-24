@@ -741,11 +741,9 @@ Object.assign(translations.vi, {
   'Recent Batches': 'Batch gần đây',
   'Dataset count': 'Số tập dữ liệu',
   'Unnamed batch': 'Batch chưa đặt tên',
-  'Unassigned Batch': 'Chưa thuộc batch',
   'Mixed review statuses': 'Nhiều trạng thái',
   'Datasets in batch': 'Tập dữ liệu trong batch',
   'Collapse': 'Thu gọn',
-  'View Datasets': 'Xem tập dữ liệu',
   'Dataset Metadata & Review': 'Thông tin tập dữ liệu và phê duyệt',
   'Open Pipeline Studio': 'Mở quy trình xử lý',
   'Close': 'Đóng',
@@ -884,7 +882,6 @@ Object.assign(translations.vi, {
   'The start date must not be after the end date.': 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.',
   'Select CSV recordings from multiple dates. Datasets and sessions are grouped automatically.': 'Chọn CSV của nhiều ngày. Hệ thống tự nhóm các dataset và phiên ghi hình.',
   'Select or drop multiple CSV files': 'Chọn hoặc kéo thả nhiều file CSV',
-  'Select CSV files': 'Chọn các file CSV',
   'Use non-empty CSV files named YYYYMMDD_dX_HHMM_HHMM.csv.': 'Chọn CSV không rỗng, có tên YYYYMMDD_dX_HHMM_HHMM.csv và trong giới hạn dung lượng.',
   'Select at least one CSV recording.': 'Chọn ít nhất một file CSV ghi hình.',
   'Batch Name': 'Tên batch',
@@ -964,6 +961,7 @@ for (const [englishText, vietnameseText] of Object.entries(translations.vi)) {
     englishTranslations[vietnameseText] = englishText
   }
 }
+
 Object.assign(englishTranslations, {
   'Cổng thông tin dành cho Người dùng nghiệp vụ: Theo dõi Dashboard lưu lượng, vận tốc, mật độ giao thông, so sánh kết quả thực tế với dự báo và xuất báo cáo PDF / Excel.':
     'Business user portal: monitor traffic flow, speed, and density; compare actual results with forecasts; and export PDF or Excel reports.',
@@ -1061,6 +1059,675 @@ Object.assign(englishTranslations, {
   'Xu hướng (trend)': 'Trend (trend)',
 })
 
+
+Object.assign(englishTranslations, {
+  '&ldquo;So sánh đã chọn&rdquo;': '"Compare selected"',
+  '+1, +3, +5 phút': '+1, +3, +5 min',
+  '. Chọn Recording Session cần dự báo': '. Select a recording session to forecast',
+  '0 ? ` Bỏ qua $': 'Skipped',
+  '1 ? `Chia sẻ cũ này gồm $': 'This legacy share contains',
+  '1 ? `Thu hồi gói ($': 'Revoke bundle (',
+  '1. Chọn batch': '1. Select batch',
+  '10 dòng / trang': '10 rows / page',
+  '2 thí nghiệm COMPLETED': '2 COMPLETED experiments',
+  '2. Chọn thí nghiệm': '2. Select experiment',
+  '20 dòng / trang': '20 rows / page',
+  '3. Dự đoán của': '3. Predictions for',
+  '5 giá trị Lag Feature dùng để dự báo': '5 lag feature values used for forecasting',
+  '50 dòng / trang': '50 rows / page',
+  '50% đặc trưng': '50% features',
+  '80% đặc trưng': '80% features',
+  'API chưa trả về danh sách session đã chia.': 'API has not returned the split sessions list yet.',
+  'Average RMSE = (RMSE +1 + RMSE +3 + RMSE +5) / 3. Khi bằng nhau: Average MAE → thời gian dự báo.': 'Average RMSE = (RMSE +1 + RMSE +3 + RMSE +5) / 3. When equal: Average MAE → forecast runtime.',
+  'Batch chưa có tập dữ liệu để hiển thị.': 'Batch has no datasets to display.',
+  'Batch chờ phê duyệt': 'Batches awaiting approval',
+  'Batch chờ xét duyệt': 'Batches awaiting review',
+  'Batch không còn trong danh sách chờ duyệt': 'Batch is no longer in the approval queue',
+  'Batch này chưa có dataset được duyệt.': 'This batch has no approved datasets.',
+  'Batch này chưa có thí nghiệm hoàn thành.': 'This batch has no completed experiments.',
+  'Batch này chưa có thí nghiệm.': 'This batch has no experiments.',
+  'Batch này có những dataset và session nào?': 'What datasets and sessions are in this batch?',
+  'Batch này không có trong danh sách được cấp quyền.': 'This batch is not in your authorized list.',
+  'Batch đã duyệt': 'Approved batch',
+  'Biểu đồ MAE và RMSE theo Forecast Horizon': 'MAE & RMSE Chart by Forecast Horizon',
+  'Biểu đồ cột số xe dự báo theo mốc': 'Bar chart of predicted vehicle counts by horizon',
+  'Biểu đồ dự báo': 'Forecast chart',
+  'Biểu đồ giao thông theo thời gian': 'Traffic time-series chart',
+  'Biểu đồ sai số tuyệt đối của ba mốc dự báo': 'Absolute error chart for the three forecast horizons',
+  'Biểu đồ đường lưu lượng quan sát và dự báo theo thời gian': 'Line chart of observed vs forecasted traffic flow over time',
+  'BƯỚC': 'STEP',
+  'BƯỚC 4': 'STEP 4',
+  'BƯỚC 4 · RANDOM FOREST': 'STEP 4 · RANDOM FOREST',
+  'Bạn chưa được cấp quyền truy cập batch nào.': 'You have not been granted access to any batches.',
+  'Bạn không có quyền truy cập batch này.': 'You do not have access to this batch.',
+  'Bạn đã chọn': 'You selected',
+  'Bản nháp': 'Draft',
+  'Bản nháp cũ': 'Legacy draft',
+  'Bảng dữ liệu theo mốc 1 phút': '1-minute aggregation table',
+  'Bảng dữ liệu theo phút': 'Minute-level data table',
+  'Bảng lag features và giá trị dự báo': 'Lag features and target forecast values table',
+  'Bảng xếp hạng Best Overall': 'Best Overall Leaderboard',
+  'Bấm “Bắt đầu chuẩn hóa” để xử lý batch. Tiến độ được tính theo số tập dữ liệu, không phải số dòng.': 'Click “Start Normalization” to process the batch. Progress is measured by dataset count, not row count.',
+  'Bật': 'Enabled',
+  'Bắt đầu': 'Start',
+  'Bắt đầu tổng hợp': 'Start aggregation',
+  'Bỏ qua': 'Skipped',
+  'CSV tiêu chuẩn': 'Standard CSV',
+  'Chi tiết': 'Details',
+  'Chi tiết chia sẻ': 'Share details',
+  'Chi tiết lần dự báo đã lưu': 'Saved forecast details',
+  'Chi tiết thí nghiệm': 'Experiment details',
+  'Chia dữ liệu 70/30': 'Split data 70/30',
+  'Chia dữ liệu theo thứ tự thời gian với tỷ lệ 70/30.': 'Split data chronologically with 70/30 ratio.',
+  'Chia dữ liệu train/test': 'Train/test split',
+  'Chia lại': 'Re-split',
+  'Chia nhánh tối thiểu (min_samples_split)': 'Min samples split (min_samples_split)',
+  'Chia sẻ': 'Share',
+  'Chia sẻ mới': 'New share',
+  'Chuyển đổi cấu trúc': 'Structure Transformation',
+  'Chuẩn hóa thành công': 'Normalized successfully',
+  'Chuẩn hóa toàn bộ tập dữ liệu trong batch theo ánh xạ cột đã lưu.': 'Normalize all datasets in the batch according to saved column mapping.',
+  'Chưa bắt đầu': 'Not started',
+  'Chưa chia sẻ': 'Not shared',
+  'Chưa chọn batch': 'No batch selected',
+  'Chưa chọn tập dữ liệu': 'No dataset selected',
+  'Chưa có dữ liệu': 'No data',
+  'Chưa có dữ liệu.': 'No data available.',
+  'Chưa có dự báo': 'No forecasts yet',
+  'Chưa có dự đoán trên tập Test.': 'No predictions on test set yet.',
+  'Chưa có kết quả nào': 'No results yet',
+  'Chưa có kết quả nào được công bố.': 'No published results yet.',
+  'Chưa có mẫu lag features để hiển thị.': 'No lag feature samples to display.',
+  'Chưa có mục nào được chia sẻ.': 'No items have been shared yet.',
+  'Chưa có ngày ghi hình': 'No recording date',
+  'Chưa có phiên ghi hình': 'No recording sessions',
+  'Chưa có số liệu đánh giá.': 'No evaluation metrics yet.',
+  'Chưa có thí nghiệm.': 'No experiments yet.',
+  'Chưa có tài nguyên phù hợp': 'No matching resources',
+  'Chưa có tài nguyên trong chia sẻ này.': 'No resources in this share.',
+  'Chưa có tập Train/Test. Hãy hoàn tất bước chia dữ liệu trước khi tạo thí nghiệm.': 'No train/test split available. Please complete data splitting before creating an experiment.',
+  'Chưa có tệp dữ liệu': 'No data files',
+  'Chưa mở': 'Not opened',
+  'Chưa thể đăng xuất khỏi server. Vui lòng kiểm tra kết nối và thử lại.': 'Could not sign out from the server. Please check your connection and try again.',
+  'Chưa xác định': 'Unknown',
+  'Chưa xác định batch': 'Unassigned batch',
+  'Chưa xác định session': 'Unassigned session',
+  'Chỉ số': 'Metrics',
+  'Chỉ thí nghiệm được đánh dấu mới được chia sẻ.': 'Only checked experiments will be shared.',
+  'Chọn batch để chia sẻ toàn bộ session, rồi chọn thí nghiệm và dự đoán cần chia sẻ.': 'Select a batch to share all its sessions, then choose experiments and predictions to share.',
+  'Chọn batch để xem các thí nghiệm đã tạo.': 'Select a batch to view created experiments.',
+  'Chọn batch để xem dataset, sau đó chọn session để xem trước.': 'Select a batch to view datasets, then select a session to preview.',
+  'Chọn chính xác dữ liệu và kết quả cho Người dùng nghiệp vụ xem.': 'Select exact data and results for Business Users to view.',
+  'Chọn dataset': 'Select dataset',
+  'Chọn dataset và session': 'Select dataset and session',
+  'Chọn dataset để xem các Recording Session.': 'Select a dataset to view its recording sessions.',
+  'Chọn một batch để xem các dataset đã được duyệt.': 'Select a batch to view approved datasets.',
+  'Chọn một kết quả để xem': 'Select a result to view',
+  'Chọn một mục để xem chi tiết.': 'Select an item to view details.',
+  'Chọn một session để xem bảng': 'Select a session to view table',
+  'Chọn một session để xem dữ liệu tổng hợp phương tiện theo thời gian.': 'Select a session to view temporal aggregated traffic data.',
+  'Chọn một session để xem lịch sử dự báo.': 'Select a session to view forecast history.',
+  'Chọn một session để xem trước dữ liệu của phiên ghi hình đó.': 'Select a session to preview its recording data.',
+  'Chọn nguồn dữ liệu, session cần dự báo rồi chọn thí nghiệm đã huấn luyện.': 'Select data source, target session, and a trained experiment.',
+  'Chọn phiên ghi hình và thời gian gốc thuộc tập Test để so sánh ba mốc dự báo Random Forest.': 'Select a test recording session and origin timestamp to compare three Random Forest forecast horizons.',
+  'Chọn phiên ghi hình để kiểm tra lược đồ và xem trước dữ liệu của tập dữ liệu này.': 'Select a recording session to inspect schema and preview data.',
+  'Chọn session': 'Select session',
+  'Chọn session để chạy dự báo': 'Select session to run forecast',
+  'Chọn session để xem số lượng phương tiện theo từng phút.': 'Select a session to view vehicle counts per minute.',
+  'Chọn session ở trên để xem dữ liệu theo thời gian.': 'Select a session above to view time-series data.',
+  'Chọn siêu tham số, kiểm tra tập Train/Test, rồi bắt đầu huấn luyện.': 'Select hyperparameters, verify train/test split, and start training.',
+  'Chọn thí nghiệm': 'Select experiment',
+  'Chọn thí nghiệm COMPLETED:': 'Select a COMPLETED experiment:',
+  'Chọn từ danh sách bên trái để xem chi tiết.': 'Select from the list on the left to view details.',
+  'Chọn ít nhất 2 thí nghiệm hoàn thành cùng Split:': 'Select at least 2 completed experiments with the same Split ID:',
+  'Chọn ít nhất 2 thí nghiệm để AI so sánh:': 'Select at least 2 experiments for AI to compare:',
+  'Chọn “Chia sẻ mới” để bắt đầu hoặc đổi bộ lọc.': 'Select “New Share” to begin or adjust filters.',
+  'Chờ duyệt': 'Pending review',
+  'Chờ kết quả': 'Awaiting results',
+  'Chờ xử lý': 'Pending',
+  'Các batch đã gửi xét duyệt sẽ xuất hiện tại đây.': 'Submitted batches will appear here.',
+  'Các batch đã được phê duyệt': 'Approved batches',
+  'Các bước từ batch đến dự báo': 'Steps from batch to forecast',
+  'Các bản ghi xem trước': 'Preview records',
+  'Các lần dự báo đã chạy cho session này.': 'Forecast runs completed for this session.',
+  'Các mốc dự báo': 'Forecast horizons',
+  'Các mốc quan sát': 'Observation points',
+  'Các phiên thành công vẫn có thể xem bên dưới. Cần xử lý phiên lỗi và tổng hợp đầy đủ trước khi tạo đặc trưng.': 'Successful sessions are viewable below. Failed sessions must be resolved and fully aggregated before feature generation.',
+  'Các session thuộc dataset này, kèm ngày và khoảng thời gian ghi hình.': 'Sessions in this dataset, with recording date and time window.',
+  'Cách chia dữ liệu': 'Data split method',
+  'Có': 'Yes',
+  'Có quyền truy cập': 'Authorized',
+  'Có tập dữ liệu xử lý lỗi': 'Some datasets failed processing',
+  'Căn bậc hai (sqrt)': 'Square root (sqrt)',
+  'Cấp quyền': 'Grant Access',
+  'Cấu hình': 'Configuration',
+  'Cấu hình Random Forest': 'Random Forest configuration',
+  'Cấu hình chia dữ liệu': 'Data split configuration',
+  'Cấu hình chia tập': 'Dataset split configuration',
+  'Cấu hình dự báo': 'Forecast configuration',
+  'Cấu hình thí nghiệm': 'Experiment configuration',
+  'Cấu trúc cột': 'Column structure',
+  'Cần kiểm tra': 'Needs inspection',
+  'Cần ít nhất 2 thí nghiệm COMPLETED': 'At least 2 COMPLETED experiments required',
+  'Cột tiếp': 'Next columns',
+  'Cột trước': 'Previous columns',
+  'Cột đầu vào': 'Input columns',
+  'Danh sách': 'List',
+  'Danh sách chia sẻ': 'Share list',
+  'Danh sách thí nghiệm': 'Experiments list',
+  'Danh sách được sắp xếp theo thời gian chia sẻ mới nhất.': 'List sorted by newest share date.',
+  'Data Scientist · Phân tích giao thông': 'Data Scientist · Traffic Analytics',
+  'Dataset chưa có nội dung được chia sẻ.': 'Dataset has no shared content.',
+  'Dataset này chưa có session.': 'This dataset has no sessions.',
+  'Dataset này chưa có thí nghiệm đủ điều kiện dự báo.': 'This dataset has no experiments eligible for forecasting.',
+  'Dung lượng': 'Size',
+  'Duyệt một phần': 'Partially approved',
+  'Dòng phương tiện đầu vào': 'Input vehicle rows',
+  'Dòng đầu ra': 'Output rows',
+  'Dòng đầu vào': 'Input rows',
+  'Dòng/trang': 'Rows/page',
+  'Dùng Best Overall để dự báo': 'Use Best Overall for forecasting',
+  'Dùng ở Prediction': 'Use in Prediction',
+  'Dữ liệu biểu đồ dự báo': 'Forecast chart data',
+  'Dữ liệu gốc': 'Raw data',
+  'Dữ liệu quan sát': 'Observed data',
+  'Dữ liệu quá nhiều cấp.': 'Data structure is too deeply nested.',
+  'Dữ liệu đã chuẩn hóa': 'Normalized data',
+  'DỰ BÁO GIAO THÔNG': 'TRAFFIC FORECASTING',
+  'Dự báo': 'Forecast',
+  'Dự báo (ms)': 'Forecast (ms)',
+  'Dự báo (xe/phút)': 'Forecast (veh/min)',
+  'Dự báo Random Forest': 'Random Forest forecast',
+  'Dự báo của': 'Predictions for',
+  'Dự báo lưu lượng': 'Traffic flow forecast',
+  'Dự báo theo mốc +1, +3, +5 phút': 'Forecast by +1, +3, +5 min horizons',
+  'Dự báo trên tập Test': 'Predictions on test set',
+  'Dự báo từ': 'Forecast from',
+  'Dự báo:': 'Forecast:',
+  'Dự đoán': 'Prediction',
+  'Dự đoán trên tập Test theo session': 'Predictions on test set by session',
+  'Em có thể giúp gì cho Anh/Chị?': 'How can I help you today?',
+  'Em sẵn sàng hỗ trợ phân tích dữ liệu, thí nghiệm và dự báo giao thông.': 'I\'m ready to assist with dataset analysis, experiments, and traffic forecasting.',
+  'Ghi chú câu hỏi bổ sung (tuỳ chọn)...': 'Additional question notes (optional)...',
+  'Giá trị khởi tạo ngẫu nhiên': 'Random seed',
+  'Giá trị lưu lượng gần nhất của session, từ cũ đến mới. Lag 1 là mốc thời gian gốc': 'Recent flow values for this session, oldest to newest. Lag 1 is the origin timestamp',
+  'Giá trị đầu vào': 'Input values',
+  'Giờ': 'Hour',
+  'Giữ nguyên thứ tự ngày và session · Train/Test 70/30': 'Preserve chronological order of dates and sessions · Train/Test 70/30',
+  'Gợi ý cấu hình Random Forest': 'Suggest Random Forest configuration',
+  'Gửi yêu cầu tới Trợ lý AI': 'Send prompt to AI Assistant',
+  'Hai chỉ số càng thấp thì dự báo càng sát thực tế. MAE và RMSE trong bảng chi tiết được tính theo từng mô hình và mốc của session.': 'Lower values indicate predictions closer to actual flows. Detailed MAE and RMSE are computed per model horizon for the selected session.',
+  'Hoàn thành một phần': 'Partially completed',
+  'Hoàn tất': 'Completed',
+  'Hoàn tất bước 1 để tiếp tục': 'Complete step 1 to proceed',
+  'Hoàn tất bước 2 để tiếp tục': 'Complete step 2 to proceed',
+  'Hoàn tất bước chia Train/Test để cấu hình thí nghiệm': 'Complete Train/Test split before configuring experiments',
+  'Hoàn tất một phần': 'Partially completed',
+  'Huấn luyện': 'Training',
+  'Huấn luyện và dự báo': 'Training & Forecasting',
+  'Hãy quay lại danh sách hoặc làm mới để xem trạng thái hiện tại.': 'Return to the list or refresh to view current status.',
+  'Hãy tạo thêm thí nghiệm trên cùng Split ID để có thể đối chiếu công bằng.': 'Please create more experiments with the same Split ID for fair comparison.',
+  'Hạng': 'Rank',
+  'Hạt giống (random_state)': 'Random seed (random_state)',
+  'Hỏi AI về dataset, thí nghiệm, dự báo...': 'Ask AI about datasets, experiments, forecasts...',
+  'Hỏi tự do': 'Custom query',
+  'Hủy': 'Cancel',
+  'KHÔNG GIAN NGHIỆP VỤ': 'BUSINESS WORKSPACE',
+  'Khi một tập dữ liệu chuẩn hóa thành công, bạn có thể xem kết quả tại đây trong lúc các tập còn lại tiếp tục xử lý.': 'When a dataset finishes normalizing, you can view its results here while others continue.',
+  'Khung giờ': 'Time window',
+  'Khung giờ ghi hình': 'Recording time window',
+  'Khác dữ liệu Dataset, Split ID, horizon hoặc quy tắc đánh giá với thí nghiệm đã chọn': 'Different dataset, Split ID, horizon, or evaluation protocol from the selected experiment',
+  'Khám phá dữ liệu, thí nghiệm và dự báo đã được chia sẻ với bạn.': 'Explore datasets, experiments, and forecasts shared with you.',
+  'Không có batch chờ phê duyệt': 'No batches awaiting approval',
+  'Không có batch đã duyệt phù hợp.': 'No matching approved batches found.',
+  'Không có bản ghi để hiển thị.': 'No records to display.',
+  'Không có dữ liệu thực tế và dự báo Random Forest cho mốc +': 'No actual and Random Forest forecast data for horizon +',
+  'Không có dữ liệu để hiển thị biểu đồ.': 'No chart data to display.',
+  'Không có phiên ghi hình được liên kết với tập dữ liệu này.': 'No recording sessions associated with this dataset.',
+  'Không có session phù hợp cho dataset này.': 'No matching sessions for this dataset.',
+  'Không giới hạn': 'Unlimited',
+  'Không thể kiểm tra phiên đăng nhập. Vui lòng thử lại.': 'Unable to verify login session. Please try again.',
+  'Không thể thu hồi chia sẻ.': 'Could not revoke share.',
+  'Không tìm thấy batch hoặc thí nghiệm phù hợp.': 'No matching batch or experiment found.',
+  'Không tìm thấy kết quả phù hợp.': 'No matching results found.',
+  'Không tìm thấy session phù hợp.': 'No matching session found.',
+  'Không tìm thấy thí nghiệm phù hợp.': 'No matching experiment found.',
+  'Không tải được danh sách batch chờ duyệt. Vui lòng làm mới.': 'Failed to load pending batch queue. Please refresh.',
+  'Kiểm tra các phiên ghi hình trước khi xét duyệt. Quyết định áp dụng cho': 'Inspect recording sessions before review. Decision applies to',
+  'Kiểm tra dữ liệu': 'Inspect data',
+  'Kích thước:': 'Size:',
+  'Kết quả': 'Results',
+  'Kết quả chuẩn hóa không có dòng dữ liệu.': 'Normalization result contains no data rows.',
+  'Kết quả chuẩn hóa đã sẵn sàng. Có thể xem trước bên dưới hoặc tiếp tục xuất tệp.': 'Normalization output is ready. Preview below or proceed to export files.',
+  'Kết quả dự báo': 'Forecast results',
+  'Kết quả sẽ xuất hiện tại đây sau khi chuẩn hóa thành công.': 'Results will appear here upon successful normalization.',
+  'Kết thúc': 'End',
+  'Log cơ số 2 (log2)': 'Base-2 logarithm (log2)',
+  'Loại': 'Type',
+  'Luận lý': 'Boolean',
+  'Làm mới': 'Refresh',
+  'Làm mới bảng': 'Refresh table',
+  'Làm mới dữ liệu xem trước': 'Refresh preview data',
+  'Làm mới hội thoại': 'Reset conversation',
+  'Lý do đề xuất:': 'Recommendation rationale:',
+  'Lưu': 'Save',
+  'Lưu kết quả để xem trước và chuyển sang bước xuất tệp.': 'Save results to preview and proceed to export.',
+  'Lưu lượng (xe/phút)': 'Traffic flow (veh/min)',
+  'Lưu lượng phương tiện sau khi tổng hợp dữ liệu pNEUMA.': 'Vehicle volume after aggregating pNEUMA trajectory data.',
+  'Lưu lượng quan sát và dự báo': 'Observed and forecasted traffic flow',
+  'Lưu lượng theo thời gian': 'Traffic flow over time',
+  'Lưu lượng xe (xe/phút)': 'Vehicle volume (veh/min)',
+  'Lưu lượng được chia thành từng session. Dùng phân trang để xem các mốc tiếp theo.': 'Traffic flow is partitioned by session. Use pagination to navigate timestamps.',
+  'Lược đồ': 'Schema',
+  'Lược đồ và xem trước dữ liệu': 'Schema & Data Preview',
+  'Lấy mẫu bootstrap': 'Bootstrap sampling',
+  'Lấy mẫu bootstrap khi huấn luyện': 'Use bootstrap sampling during training',
+  'Lịch sử': 'History',
+  'Lịch sử dự báo': 'Forecast history',
+  'Lọc loại tài nguyên': 'Filter resource type',
+  'Lọc trạng thái': 'Filter status',
+  'MAE (xe/phút)': 'MAE (veh/min)',
+  'MAE và RMSE được tính theo từng mô hình và mốc dự báo trong session đang chọn.': 'MAE and RMSE are computed per model and forecast horizon for the selected session.',
+  'Mean source speed × 3.6': 'Mean source speed × 3.6',
+  'Mã Train/Test': 'Train/Test Split ID',
+  'Mã lượt dự báo': 'Forecast ID',
+  'Mã thí nghiệm': 'Experiment ID',
+  'Mã tạo đặc trưng': 'Feature Generation ID',
+  'Mã:': 'ID:',
+  'Mô hình dự báo số lượng phương tiện tại các mốc +1, +3 và +5 phút.': 'Model forecasts vehicle volume at +1, +3, and +5 minute horizons.',
+  'Mô hình sử dụng': 'Model used',
+  'Mô hình theo mốc': 'Models by horizon',
+  'Mẫu nút lá tối thiểu (min_samples_leaf)': 'Min samples leaf (min_samples_leaf)',
+  'Mẫu tối thiểu để tách': 'Min samples split',
+  'Mẫu tối thiểu ở lá': 'Min samples leaf',
+  'Mặc định': 'Default',
+  'Mốc': 'Horizon',
+  'Mốc dự báo': 'Forecast horizon',
+  'Mỗi cột là sai số của một dự báo tại thời gian gốc đã chọn.': 'Each column represents forecast error at the selected origin timestamp.',
+  'Mỗi phiên ghi hình là một chuỗi riêng để không nối qua khoảng thời gian gián đoạn.': 'Each recording session is an independent series to avoid bridging time gaps.',
+  'Mỗi trang tối đa 2 ngày ghi hình · Lag 1–5 là các phút trước; +1, +3, +5 là mốc cần dự báo.': 'Up to 2 recording dates per page · Lags 1–5 are prior minutes; +1, +3, +5 are target horizons.',
+  'Mở Trợ lý AI Data Scientist': 'Open Data Scientist AI Assistant',
+  'Mở batch đã được Admin cấp quyền.': 'Open batch authorized by Admin.',
+  'Mở rộng sidebar': 'Expand sidebar',
+  'Nguồn ghi hình': 'Recording source',
+  'Ngày chia sẻ': 'Share date',
+  'Ngày giờ': 'Datetime',
+  'Ngày:': 'Date:',
+  'Người dùng nghiệp vụ sẽ mất quyền xem tài nguyên này ngay sau khi thu hồi.': 'Business users will lose access to this resource immediately upon revocation.',
+  'Người dùng nghiệp vụ sẽ xem được toàn bộ': 'Business users will have access to all',
+  'Nhấn vào session để kiểm tra cột và dữ liệu.': 'Click a session to inspect columns and data.',
+  'Nhập ghi chú đánh giá (không bắt buộc)': 'Enter review note (optional)',
+  'Năm mốc quan sát gần nhất và dự báo Random Forest tại +1, +3, +5 phút.': 'Latest 5 observed points and Random Forest forecasts at +1, +3, +5 min.',
+  'Nội dung chia sẻ': 'Shared content',
+  'PHÂN TÍCH DỮ LIỆU PNEUMA': 'PNEUMA DATA ANALYTICS',
+  'PHÂN TÍCH MÔ HÌNH': 'MODEL ANALYTICS',
+  'Phiên Test': 'Test sessions',
+  'Phiên Train': 'Train sessions',
+  'Phân bổ phiên ghi hình': 'Recording session distribution',
+  'Phân chia theo thời gian': 'Chronological partition',
+  'Phân trang dữ liệu xem trước': 'Preview pagination',
+  'Phân tích dataset này': 'Analyze this dataset',
+  'Phân tích dataset này và cho tôi biết chất lượng dữ liệu.': 'Analyze this dataset and evaluate data quality.',
+  'Phân tích dự báo theo thời gian gốc': 'Forecast analysis by origin timestamp',
+  'Phê duyệt': 'Approve',
+  'Phóng to cửa sổ chat': 'Maximize chat window',
+  'QUẢN LÝ TÀI NGUYÊN': 'RESOURCE MANAGEMENT',
+  'Quan sát': 'Observed',
+  'Quay lại': 'Back',
+  'Quay lại các phiên ghi hình': 'Back to recording sessions',
+  'Quay lại danh sách': 'Back to list',
+  'Quay lại danh sách sessions': 'Back to sessions list',
+  'Quay lại lịch sử dự báo': 'Back to forecast history',
+  'Quay lại tập dữ liệu trong batch': 'Back to datasets in batch',
+  'Quy trình chuẩn hóa dữ liệu': 'Data normalization pipeline',
+  'Quy trình huấn luyện': 'Training pipeline',
+  'Quyết định này áp dụng cho': 'This decision applies to',
+  'Quản lý chia sẻ': 'Share management',
+  'RMSE thấp nhất · Horizon +': 'Lowest RMSE · Horizon +',
+  'RMSE trung bình thấp nhất trên cả 3 horizon +1, +3, +5 phút': 'Lowest average RMSE across all 3 horizons (+1, +3, +5 min)',
+  'Sai số tuyệt đối': 'Absolute error',
+  'Sai số tuyệt đối theo mốc dự báo': 'Absolute error by forecast horizon',
+  'Sai số tuyệt đối:': 'Absolute error:',
+  'Session chưa xác định': 'Unassigned session',
+  'Session này chưa có dòng dữ liệu để xem trước.': 'This session has no data rows to preview.',
+  'Session này chưa có dữ liệu theo phút.': 'This session has no minute-level data.',
+  'Session này chưa có dữ liệu tổng hợp theo phút.': 'This session has no minute aggregated data.',
+  'Session này chưa có lần dự báo nào.': 'No forecasts have been run for this session.',
+  'Session này chưa có mốc thời gian tổng hợp.': 'This session has no aggregated timestamps.',
+  'Session này không có dự đoán phù hợp với bộ lọc.': 'This session has no predictions matching filter.',
+  'Session trước': 'Previous session',
+  'Session đã chọn': 'Selected session',
+  'Session đã dự báo': 'Forecasted session',
+  'Siêu tham số': 'Hyperparameters',
+  'Siêu tham số đã dùng': 'Applied hyperparameters',
+  'So sánh': 'Compare',
+  'So sánh các giá trị dự báo với lưu lượng quan sát tại thời gian gốc.': 'Compare forecast values against observed traffic at origin timestamp.',
+  'So sánh mốc dự báo': 'Compare forecast horizons',
+  'So sánh thí nghiệm': 'Compare experiments',
+  'So sánh đã chọn': 'Compare selected',
+  'Sẵn sàng': 'Ready',
+  'Sẵn sàng chuẩn hóa': 'Ready to normalize',
+  'Số cây': 'Number of trees',
+  'Số cây (n_estimators)': 'Number of trees (n_estimators)',
+  'Số cột dữ liệu': 'Data columns',
+  'Số cột:': 'Columns:',
+  'Số dòng:': 'Rows:',
+  'Số dự đoán': 'Predictions count',
+  'Số lượng mẫu': 'Sample count',
+  'Số mẫu': 'Samples',
+  'Số mẫu Test': 'Test samples',
+  'Số mẫu Train': 'Train samples',
+  'Số mẫu Train/Test': 'Train/Test samples',
+  'Số mẫu theo mốc dự báo': 'Samples by forecast horizon',
+  'Số mốc thời gian': 'Timestamps count',
+  'Số nguyên': 'Integer',
+  'Số phiên ghi hình': 'Recording sessions',
+  'Số thực': 'Float',
+  'Số tập dữ liệu đã xử lý': 'Processed datasets',
+  'Số xe dự báo': 'Forecasted vehicles',
+  'Số xe dự báo (xe/phút)': 'Forecasted vehicle volume (veh/min)',
+  'Số xe dự báo:': 'Forecasted vehicle volume:',
+  'Số xe được ghi nhận trong từng khoảng một phút.': 'Vehicle volume recorded per one-minute bucket.',
+  'Số đặc trưng mỗi lần chia (max_features)': 'Features per split (max_features)',
+  'Số đặc trưng xét': 'Features evaluated',
+  'Sử dụng tên cột đã lưu ở bước trước.': 'Use target column names saved in the prior step.',
+  'Thao tác': 'Actions',
+  'Theo dõi và kết quả chuẩn hóa': 'Normalization monitoring & results',
+  'Theo ngày': 'By date',
+  'Theo phiên ghi hình': 'By recording session',
+  'Thiết bị ghi hình': 'Recording device',
+  'Thiết bị trong các batch': 'Devices across batches',
+  'Thiếu thông tin lần tổng hợp hoặc session. Hãy quay lại bảng dữ liệu và chọn session.': 'Missing aggregation or session info. Please return to the data table and select a session.',
+  'Thu gọn Trợ lý AI': 'Collapse AI Assistant',
+  'Thu gọn sidebar': 'Collapse sidebar',
+  'Thu hồi': 'Revoke',
+  'Thu hồi chia sẻ?': 'Revoke share?',
+  'Thu nhỏ cửa sổ chat': 'Minimize chat window',
+  'Thành công': 'Success',
+  'Thí nghiệm chưa có MAE/RMSE của Random Forest theo Forecast Horizon.': 'Experiment has no Random Forest MAE/RMSE by Forecast Horizon.',
+  'Thí nghiệm này không có session đủ điều kiện trong dataset đã chọn.': 'This experiment has no eligible sessions in the selected dataset.',
+  'Thí nghiệm này không thuộc batch đã chọn.': 'This experiment does not belong to the selected batch.',
+  'Thí nghiệm theo batch': 'Experiments by batch',
+  'Thí nghiệm đã hoàn thành': 'Completed experiment',
+  'Thông tin Dataset': 'Dataset information',
+  'Thông tin Train/Test': 'Train/Test Split info',
+  'Thông tin dataset': 'Dataset info',
+  'Thông tin dự báo': 'Forecast info',
+  'Thông tin phiên ghi hình': 'Recording session info',
+  'Thông tin thí nghiệm': 'Experiment info',
+  'Thông tin tài khoản và quyền truy cập được quản trị viên quản lý. Hãy liên hệ quản trị viên nếu cần thay đổi email hoặc vai trò.': 'Account details and access privileges are managed by the administrator. Contact an admin to modify email or roles.',
+  'Thất bại': 'Failed',
+  'Thống kê': 'Statistics',
+  'Thời gian gốc': 'Origin timestamp',
+  'Thời gian gốc (Athens)': 'Origin timestamp (Athens)',
+  'Thời gian tạo': 'Created at',
+  'Thời điểm cần dự báo (Athens)': 'Target forecast time (Athens)',
+  'Thời điểm dự báo (Athens)': 'Forecast timestamp (Athens)',
+  'Thời điểm thực tế (Athens)': 'Actual timestamp (Athens)',
+  'Thực tế': 'Actual',
+  'Thực tế (xe/phút)': 'Actual (veh/min)',
+  'Thực tế và dự báo Random Forest trên tập Test': 'Actual vs Random Forest forecast on test set',
+  'Thực tế:': 'Actual:',
+  'Tiến độ theo tập dữ liệu': 'Progress by dataset',
+  'Tiến độ tổng hợp dữ liệu theo phút': 'Minute-level data aggregation progress',
+  'Tiến độ tự cập nhật theo kết quả xử lý của máy chủ.': 'Progress automatically updates according to server processing.',
+  'Tiếp tục': 'Continue',
+  'Toàn bộ session trong batch sẽ được chia sẻ.': 'All recording sessions in this batch will be shared.',
+  'Trang tiếp theo': 'Next page',
+  'Trang trước': 'Previous page',
+  'Trang tệp': 'File page',
+  'Trung bình mục tiêu Train': 'Train target mean',
+  'Trạng thái': 'Status',
+  'Trạng thái chuẩn hóa': 'Normalization status',
+  'Trạng thái phê duyệt': 'Approval status',
+  'Trạng thái tải lên': 'Upload status',
+  'Trộn dữ liệu': 'Shuffle data',
+  'Trợ lý AI': 'AI Assistant',
+  'Trợ lý AI Data Scientist': 'Data Scientist AI Assistant',
+  'Trợ lý AI Data Scientist (Gemini)': 'Data Scientist AI Assistant (Gemini)',
+  'Trợ lý AI đang phân tích dữ liệu...': 'AI Assistant is analyzing data...',
+  'Tài nguyên': 'Resources',
+  'Tài nguyên đã quản lý': 'Managed resources',
+  'Tài nguyên được chia sẻ': 'Shared resources',
+  'Tác vụ đã dừng. Xem chi tiết kết quả bên dưới.': 'Task stopped. Inspect detailed results below.',
+  'Tách điểm quỹ đạo với dữ liệu pNEUMA; giữ cấu trúc bảng với CSV thông thường.': 'Unpack trajectory points for pNEUMA data; keep tabular format for standard CSV.',
+  'Tên dataset': 'Dataset name',
+  'Tìm': 'Search',
+  'Tìm batch': 'Search batches',
+  'Tìm batch hoặc thí nghiệm…': 'Search batch or experiment…',
+  'Tìm batch…': 'Search batches…',
+  'Tìm chia sẻ': 'Search shares',
+  'Tìm dataset': 'Search datasets',
+  'Tìm dataset…': 'Search datasets…',
+  'Tìm kiếm': 'Search',
+  'Tìm kiếm batch': 'Search batches',
+  'Tìm kết quả': 'Search results',
+  'Tìm session': 'Search sessions',
+  'Tìm theo tiêu đề…': 'Search by title…',
+  'Tìm theo tên file, ngày ghi hình…': 'Search by filename, recording date…',
+  'Tìm thí nghiệm': 'Search experiments',
+  'Tìm thí nghiệm…': 'Search experiments…',
+  'Tìm tài nguyên…': 'Search resources…',
+  'Tóm tắt batch này': 'Summarize this batch',
+  'Tạo các đặc trưng từ dữ liệu đã tổng hợp để đưa vào mô hình.': 'Engineer lag features from aggregated data for model training.',
+  'Tạo kết quả chuẩn hóa': 'Generate normalization result',
+  'Tạo lag features': 'Generate lag features',
+  'Tạo lại đặc trưng': 'Regenerate features',
+  'Tạo thêm thí nghiệm cùng Split': 'Create more experiments with this Split ID',
+  'Tạo thí nghiệm mới': 'Create new experiment',
+  'Tạo và chạy thí nghiệm': 'Create & run experiment',
+  'Tạo đặc trưng': 'Generate features',
+  'Tạo đặc trưng, chia dữ liệu và chạy mô hình.': 'Generate features, split data, and train models.',
+  'Tải lên': 'Upload',
+  'Tải lại': 'Reload',
+  'Tất cả': 'All',
+  'Tất cả batch': 'All batches',
+  'Tất cả loại': 'All types',
+  'Tất cả thí nghiệm của batch được hiển thị trên cùng một trang.': 'All experiments for this batch are displayed on one page.',
+  'Tất cả đặc trưng': 'All features',
+  'Tập': 'Split',
+  'Tập Test': 'Test set',
+  'Tập Train': 'Train set',
+  'Tập dữ liệu này chưa có tệp ghi hình để xem trước.': 'This dataset has no recording files to preview.',
+  'Tập dữ liệu này chưa thuộc batch nào.': 'This dataset does not belong to any batch.',
+  'Tập dữ liệu trong các batch': 'Datasets in batches',
+  'Tập dữ liệu đã chuẩn hóa': 'Normalized dataset',
+  'Tắt': 'Disabled',
+  'Tệp ghi hình': 'Recording file',
+  'Tệp ghi hình nguồn': 'Source recording files',
+  'Tệp không có dòng dữ liệu để hiển thị.': 'File has no data rows to display.',
+  'Tệp nguồn': 'Source file',
+  'Tệp phiên ghi hình': 'Recording session file',
+  'Tệp tiếp': 'Next file',
+  'Tệp trước': 'Previous file',
+  'Tốc độ trung bình giúp quan sát mức độ thông thoáng giao thông.': 'Average velocity highlights corridor traffic flow stability.',
+  'Tối đa 10 dòng thực tế từ kết quả xử lý.': 'Up to 10 actual rows from processing results.',
+  'Tốt nhất': 'Best',
+  'Tổng': 'Total',
+  'Tổng bản ghi': 'Total records',
+  'Tổng hợp dữ liệu theo phút': 'Minute-level data aggregation',
+  'Tổng hợp lại': 'Re-aggregate',
+  'Tổng hợp phương tiện theo thời gian': 'Traffic volume aggregated over time',
+  'Tổng hợp sai số theo mô hình': 'Summary error metrics by model',
+  'Tổng phiên ghi hình': 'Total recording sessions',
+  'Tổng quan Train/Test': 'Train/Test summary',
+  'Tổng quan dự báo': 'Forecast summary',
+  'Tổng quan thí nghiệm': 'Experiment summary',
+  'Tổng số mẫu': 'Total samples',
+  'Từ chối': 'Reject',
+  'Từ chối batch': 'Reject batch',
+  'Tự nhận diện câu hỏi về dữ liệu, thí nghiệm và dự báo': 'Auto-detect questions about data, experiments, and forecasting',
+  'Tỷ lệ': 'Ratio',
+  'Tỷ lệ Train thực tế': 'Actual train ratio',
+  'Tỷ lệ Train yêu cầu': 'Target train ratio',
+  'Ví dụ: 1': 'Example: 1',
+  'Văn bản': 'String',
+  'Vị trí xem trước dữ liệu': 'Data preview pane',
+  'Với pNEUMA, dòng đầu vào chứa thông tin phương tiện và nhiều thời điểm; mỗi dòng đầu ra là một điểm quỹ đạo. Số dòng có thể tăng sau khi tách.': 'With pNEUMA, input rows contain vehicle info across timestamps; each output row is a trajectory point. Row count may increase after unpacking.',
+  'Xem': 'View',
+  'Xem biểu đồ': 'View chart',
+  'Xem chi tiết': 'View details',
+  'Xem các phiên ghi hình': 'View recording sessions',
+  'Xem các phiên ghi hình trong dataset đã được duyệt.': 'View recording sessions in approved datasets.',
+  'Xem dữ liệu': 'View data',
+  'Xem hồ sơ và bảo mật tài khoản': 'View account profile & security',
+  'Xem kết quả': 'View results',
+  'Xem phiên ghi hình': 'View recording sessions',
+  'Xem thí nghiệm': 'View experiment',
+  'Xem trước kết quả chuẩn hóa': 'Preview normalized data',
+  'Xem trước phiên ghi hình': 'Preview recording session',
+  'Xin chào Anh/Chị!': 'Hello!',
+  'Xu hướng MAE và RMSE trên tập Test tại các mốc +1, +3 và +5 phút.': 'MAE & RMSE trends on the test set across +1, +3, and +5 min horizons.',
+  'Xuất': 'Export',
+  'Xuất tệp': 'Export files',
+  'Xác nhận chia sẻ': 'Confirm share',
+  'Xác nhận thu hồi': 'Confirm revocation',
+  'Xóa': 'Delete',
+  'Xếp tăng dần theo RMSE trung bình của đủ 3 horizon.': 'Ranked in ascending order by average RMSE across all 3 horizons.',
+  '` : `Batch chờ phê duyệt ($': 'Batches awaiting approval (',
+  'aria-label="Tập dữ liệu đã chuẩn hóa" onChange=': 'Normalized dataset',
+  'bước hoàn tất': 'steps completed',
+  'bản ghi trên trang này': 'records on this page',
+  'bản ghi · Trang': 'records · Page',
+  'chờ duyệt': 'pending review',
+  'cây · Độ sâu tối đa': 'trees · Max depth',
+  'cây, sâu': 'trees, depth',
+  'cùng Split ID ở trên rồi nhấn': 'with the same Split ID above and click',
+  'cột': 'columns',
+  'dataset đã duyệt': 'approved datasets',
+  'dataset đã duyệt của batch này.': 'approved datasets in this batch.',
+  'dữ liệu dataset': 'dataset files',
+  'dự đoán toàn bộ tập Test).': 'predictions across entire test set).',
+  'dự đoán trong session (': 'predictions in session (',
+  'dự đoán.': 'predictions.',
+  'giây': 's',
+  'hoàn thành': 'completed',
+  'hoặc': 'or',
+  'không giới hạn': 'unlimited',
+  'label="Batch đã duyệt" value=': 'Approved batches',
+  'label="Nguồn dữ liệu" value=': 'Data Sources',
+  'lần': 'runs',
+  'mẫu': 'samples',
+  'mẫu dự báo': 'forecast samples',
+  'mẫu trên trang · Trang': 'samples on page · Page',
+  'mục': 'items',
+  'phiên': 'sessions',
+  'phiên ghi hình': 'recording sessions',
+  'phiên xử lý lỗi': 'failed sessions',
+  'phiên đã hoàn tất.': 'sessions completed.',
+  'phút': 'min',
+  'phút ·': 'min ·',
+  'phút.': 'min.',
+  'phương tiện/phút': 'veh/min',
+  'session đã chọn không thuộc dữ liệu của thí nghiệm này. Hãy đổi thí nghiệm hoặc chọn session khác.': 'The selected session does not belong to this experiment. Please select another experiment or session.',
+  'thí nghiệm': 'experiments',
+  'thí nghiệm hoàn thành': 'completed experiments',
+  'thí nghiệm và': 'experiments and',
+  'thí nghiệm ·': 'experiments ·',
+  'thí nghiệm · $': 'experiments ·',
+  'thí nghiệm đã chọn · Cùng Split': 'selected experiments · Same Split ID',
+  'title="Chia dữ liệu train/test" description=': 'Train/test split',
+  'title="Tạo lag features" description=': 'Generate lag features',
+  'title="Tổng hợp dữ liệu theo phút" description=': 'Minute-level data aggregation',
+  'tài nguyên · Trang': 'resources · Page',
+  'tập dữ liệu': 'datasets',
+  'tập dữ liệu chờ duyệt /': 'datasets pending review /',
+  'tập dữ liệu đang chờ phê duyệt trong batch.': 'datasets pending approval in this batch.',
+  'tập dữ liệu đang chờ trong batch.': 'datasets pending in this batch.',
+  'tệp ghi hình gốc': 'raw recording files',
+  '· Chọn dữ liệu và thí nghiệm để bắt đầu': '· Select dataset and experiment to start',
+  '· Giờ Athens': '· Athens local time',
+  '· Hiển thị': '· Showing',
+  '· Không thuộc thí nghiệm': '· Outside experiment',
+  '· Kết quả huấn luyện': '· Training results',
+  '· Mô hình:': '· Model:',
+  '· Trạng thái:': '· Status:',
+  '· Tổng hợp dữ liệu, tạo đặc trưng và huấn luyện Random Forest': '· Data aggregation, lag feature generation, and Random Forest training',
+  '· Tổng hợp theo từng phút': '· Minute-level aggregation',
+  '· Đang xử lý': '· Processing',
+  '· Đối chiếu cấu hình, MAE và RMSE trên cùng tập Test.': '· Compare hyperparameters, MAE, and RMSE on the same test set.',
+  'Ánh xạ cột đang áp dụng': 'Active column mapping',
+  'Áp dụng ánh xạ cột': 'Apply column mapping',
+  '×': '×',
+  'Đang chia sẻ': 'Sharing',
+  'Đang chia sẻ…': 'Sharing…',
+  'Đang chuẩn bị và đọc dữ liệu…': 'Preparing and reading data…',
+  'Đang chuẩn hóa': 'Normalizing',
+  'Đang chạy': 'Running',
+  'Đang chọn Best Overall…': 'Selecting Best Overall…',
+  'Đang dự báo…': 'Forecasting…',
+  'Đang gửi...': 'Submitting...',
+  'Đang huấn luyện…': 'Training…',
+  'Đang khởi tạo tổng hợp…': 'Initializing aggregation…',
+  'Đang kiểm tra session phù hợp với thí nghiệm...': 'Checking sessions compatible with experiment...',
+  'Đang kiểm tra session phù hợp với thí nghiệm…': 'Checking sessions compatible with experiment…',
+  'Đang so sánh...': 'Comparing...',
+  'Đang tìm thí nghiệm tốt nhất trong các thí nghiệm đã chọn…': 'Searching for best experiment among selected…',
+  'Đang tải batch…': 'Loading batch…',
+  'Đang tải biểu đồ…': 'Loading chart…',
+  'Đang tải bảng tổng hợp…': 'Loading aggregation table…',
+  'Đang tải chi tiết chia sẻ…': 'Loading share details…',
+  'Đang tải chi tiết…': 'Loading details…',
+  'Đang tải chia sẻ…': 'Loading shares…',
+  'Đang tải các mốc thời gian…': 'Loading timestamps…',
+  'Đang tải dữ liệu biểu đồ…': 'Loading chart data…',
+  'Đang tải dữ liệu dự báo…': 'Loading forecast data…',
+  'Đang tải dữ liệu đã chuẩn hóa...': 'Loading normalized data...',
+  'Đang tải dữ liệu…': 'Loading data…',
+  'Đang tải kết quả dự báo Test…': 'Loading test set forecast results…',
+  'Đang tải kết quả dự báo…': 'Loading forecast results…',
+  'Đang tải lag features…': 'Loading lag features…',
+  'Đang tải lần tổng hợp đã lưu…': 'Loading saved aggregation…',
+  'Đang tải preview…': 'Loading preview…',
+  'Đang tải sessions…': 'Loading sessions…',
+  'Đang tải session…': 'Loading session…',
+  'Đang tải thí nghiệm…': 'Loading experiments…',
+  'Đang tải thông tin tập dữ liệu...': 'Loading dataset information...',
+  'Đang tải thông tin xác thực...': 'Loading authentication info...',
+  'Đang tải tập Train/Test…': 'Loading train/test split…',
+  'Đang xem': 'Viewing',
+  'Đang xem dữ liệu đã chọn': 'Viewing selected data',
+  'Đang xử lý': 'Processing',
+  'Đang đăng xuất...': 'Signing out...',
+  'Đang đối chiếu chỉ số MAE / RMSE của các thí nghiệm…': 'Comparing MAE / RMSE metrics across experiments…',
+  'Điểm quỹ đạo đầu ra': 'Output trajectory points',
+  'Đánh dấu ít nhất': 'Select at least',
+  'Đánh giá theo mô hình và mốc dự báo': 'Evaluation by model and forecast horizon',
+  'Đã bỏ qua ô rỗng cuối dòng': 'Skipped trailing empty fields',
+  'Đã chia sẻ': 'Shared',
+  'Đã chia sẻ session': 'Shared sessions',
+  'Đã chuẩn hóa': 'Normalized',
+  'Đã chọn session': 'Session selected',
+  'Đã chọn session · Chọn thí nghiệm': 'Session selected · Choose experiment',
+  'Đã duyệt': 'Approved',
+  'Đã lưu lựa chọn thí nghiệm và 3 mô hình theo horizon.': 'Saved selected experiment and 3 models by horizon.',
+  'Đã thu hồi': 'Revoked',
+  'Đã tổng hợp xong dữ liệu theo phút.': 'Completed minute-level data aggregation.',
+  'Đã từ chối': 'Rejected',
+  'Đã xuất tệp': 'Files exported',
+  'Đã xử lý': 'Processed',
+  'Đã được phê duyệt': 'Approved',
+  'Đóng': 'Close',
+  'Đóng thông báo': 'Dismiss notification',
+  'Đúng / sai': 'Boolean',
+  'Đặc trưng': 'Features',
+  'Đặc trưng trễ': 'Lag features',
+  'Để trống nếu không giới hạn': 'Leave blank if unlimited',
+  'Định dạng:': 'Format:',
+  'Đọc các tệp CSV trong từng tập dữ liệu.': 'Read CSV files in each dataset.',
+  'Đọc tệp nguồn': 'Read source files',
+  'Đối tượng': 'Object',
+  'Đồng hạng': 'Tied',
+  'Độ sâu': 'Depth',
+  'Độ sâu tối đa': 'Max depth',
+  'Độ sâu tối đa (max_depth)': 'Max depth (max_depth)',
+  'Δ +1 veh/min': 'Δ +1 veh/min',
+  'Δ -1 veh/min': 'Δ -1 veh/min',
+  'Δ -2 veh/min (Valid)': 'Δ -2 veh/min (Valid)',
+  'Ảnh hưởng của Forecast Horizon đến sai số Random Forest': 'Impact of Forecast Horizon on Random Forest error',
+  'Ẩn tiến độ tổng hợp': 'Hide aggregation progress',
+})
+
 for (const [sourceText, vietnameseText] of Object.entries(translations.vi)) {
   const englishText = englishTranslations[sourceText]
   if (englishText && sourceText !== vietnameseText) {
@@ -1074,69 +1741,339 @@ for (const [vietnameseText, englishText] of Object.entries(englishTranslations))
   }
 }
 
-export function translateText(text, language) {
-  if (typeof text !== 'string') return text ?? ''
-
-  const normalizedText = text
-    .replaceAll('&amp;', '&')
-    .replaceAll('&ldquo;', '"')
-    .replaceAll('&rdquo;', '"')
+function translateCore(text, language) {
+  if (!text) return text
 
   if (language === 'vi') {
-    if (translations.vi[normalizedText]) return translations.vi[normalizedText]
-    const previewLoadingMatch = normalizedText.match(/^Loading (normalized|raw) preview data\.\.\.$/)
+    if (translations.vi[text]) return translations.vi[text]
+
+    if (text.endsWith(':') && translations.vi[text.slice(0, -1)]) {
+      return translations.vi[text.slice(0, -1)] + ':'
+    }
+    if (text.endsWith('…') && translations.vi[text.slice(0, -1)]) {
+      return translations.vi[text.slice(0, -1)] + '…'
+    }
+    if (text.endsWith('...') && translations.vi[text.slice(0, -3)]) {
+      return translations.vi[text.slice(0, -3)] + '...'
+    }
+
+    if (text.startsWith('"') && text.endsWith('"')) {
+      const inner = text.slice(1, -1)
+      const res = translateCore(inner, 'vi')
+      if (res !== inner) return `"${res}"`
+    }
+
+    const previewLoadingMatch = text.match(/^Loading (normalized|raw) preview data\.\.\.$/)
     if (previewLoadingMatch) {
       return `Đang tải dữ liệu xem trước (${previewLoadingMatch[1] === 'raw' ? 'thô' : 'đã chuẩn hóa'})...`
     }
-    if (normalizedText.startsWith('Enter the 6-digit code sent to ') &&
-      normalizedText.endsWith('. The code expires in 5 minutes.')) {
-      const email = normalizedText.slice(
+    if (text.startsWith('Enter the 6-digit code sent to ') &&
+      text.endsWith('. The code expires in 5 minutes.')) {
+      const email = text.slice(
         'Enter the 6-digit code sent to '.length,
         -'. The code expires in 5 minutes.'.length
       )
       return `Nhập mã gồm 6 chữ số đã gửi đến ${email}. Mã hết hạn sau 5 phút.`
     }
-    const automaticSplitMatch = normalizedText.match(/^Automatic by dataset \((\d+) splits?\)$/)
+    const automaticSplitMatch = text.match(/^Automatic by dataset \((\d+) splits?\)$/)
     if (automaticSplitMatch) {
       return `Tự động theo dữ liệu tập dữ liệu (${automaticSplitMatch[1]} phân đoạn)`
     }
-    const automaticExperimentMatch = normalizedText.match(
+    const automaticExperimentMatch = text.match(
       /^Automatically select the best experiment by validation score \((\d+) experiments?\)$/
     )
     if (automaticExperimentMatch) {
       return `Tự động chọn thí nghiệm tốt nhất theo điểm Validation (${automaticExperimentMatch[1]} thí nghiệm)`
     }
-    const forecastHorizonMatch = normalizedText.match(/^Forecast Horizon \+(\d+) min$/)
+    const forecastHorizonMatch = text.match(/^Forecast Horizon \+(\d+) min$/)
     if (forecastHorizonMatch) return `Khoảng dự báo +${forecastHorizonMatch[1]} phút`
-    const horizonMatch = normalizedText.match(/^Horizon \+(\d+) minutes$/)
+    const horizonMatch = text.match(/^Horizon \+(\d+) (?:minutes|min)$/)
     if (horizonMatch) return `Khoảng dự báo +${horizonMatch[1]} phút`
-    const minuteMatch = normalizedText.match(/^\+(\d+) minutes$/)
+    const minuteMatch = text.match(/^\+(\d+) (?:minutes|min)$/)
     if (minuteMatch) return `+${minuteMatch[1]} phút`
-    const resendMatch = normalizedText.match(/^Resend in (\d+)s$/)
+    const resendMatch = text.match(/^Resend in (\d+)s$/)
     if (resendMatch) return `Gửi lại sau ${resendMatch[1]} giây`
-    return normalizedText
+
+    let m = text.match(/^Batches awaiting approval \((\d+)\)$/)
+    if (m) return `Batch chờ phê duyệt (${m[1]})`
+    m = text.match(/^Batch: (.+)$/)
+    if (m) return `Batch: ${m[1]}`
+    m = text.match(/^Revoke bundle \((\d+)\)$/)
+    if (m) return `Thu hồi gói (${m[1]})`
+    m = text.match(/^Compare selected \((\d+)\)$/)
+    if (m) return `So sánh đã chọn (${m[1]})`
+    m = text.match(/^(\d+) records · Page (\d+)$/)
+    if (m) return `${m[1]} bản ghi · Trang ${m[2]}`
+    m = text.match(/^(\d+) resources · Page (\d+)$/)
+    if (m) return `${m[1]} tài nguyên · Trang ${m[2]}`
+    m = text.match(/^(\d+) samples on page · Page (\d+)\/(\d+)$/)
+    if (m) return `${m[1]} mẫu trên trang · Trang ${m[2]}/${m[3]}`
+    m = text.match(/^(\d+) rows \/ page$/)
+    if (m) return `${m[1]} dòng / trang`
+    m = text.match(/^(\d+) timestamps$/)
+    if (m) return `${m[1]} mốc thời gian`
+    m = text.match(/^(\d+) completed experiments$/)
+    if (m) return `${m[1]} thí nghiệm hoàn thành`
+    m = text.match(/^(\d+) experiments$/)
+    if (m) return `${m[1]} thí nghiệm`
+    m = text.match(/^(\d+) sessions$/)
+    if (m) return `${m[1]} sessions`
+    m = text.match(/^(\d+) recording sessions$/)
+    if (m) return `${m[1]} phiên ghi hình`
+    m = text.match(/^(\d+) datasets$/)
+    if (m) return `${m[1]} dataset`
+    m = text.match(/^(\d+) pending review$/)
+    if (m) return `${m[1]} chờ duyệt`
+    m = text.match(/^(\d+) test samples$/)
+    if (m) return `${m[1]} mẫu Test`
+    m = text.match(/^(\d+) train samples$/)
+    if (m) return `${m[1]} mẫu Train`
+    m = text.match(/^(\d+) samples$/)
+    if (m) return `${m[1]} mẫu`
+    m = text.match(/^(\d+) trees · Max depth (.+)$/)
+    if (m) return `${m[1]} cây · Độ sâu tối đa ${translateCore(m[2], 'vi')}`
+    m = text.match(/^(\d+) trees, depth (.+)$/)
+    if (m) return `${m[1]} cây, sâu ${m[2]}`
+    m = text.match(/^Shared (\d+)\/(\d+) datasets$/)
+    if (m) return `Đã chia sẻ ${m[1]}/${m[2]} dataset`
+    m = text.match(/^(\d+)\/(\d+) sessions completed$/)
+    if (m) return `${m[1]}/${m[2]} phiên hoàn tất`
+    m = text.match(/^(\d+)% processed$/)
+    if (m) return `${m[1]}% đã xử lý`
+    m = text.match(/^Aggregating: (.+)$/)
+    if (m) return `Đang tổng hợp: ${m[1]}`
+    m = text.match(/^Processing: (.+)$/)
+    if (m) return `Đang xử lý: ${m[1]}`
+    m = text.match(/^Inspect data · (.+)$/)
+    if (m) return `Kiểm tra dữ liệu · ${m[1]}`
+    m = text.match(/^Dataset content: (.+)$/)
+    if (m) return `Nội dung dataset ${m[1]}`
+    m = text.match(/^List of (.+)$/)
+    if (m) return `Danh sách ${m[1]}`
+    m = text.match(/^View details: (.+)$/)
+    if (m) return `Xem chi tiết ${m[1]}`
+    m = text.match(/^View experiment: (.+)$/)
+    if (m) return `Xem thí nghiệm ${m[1]}`
+    m = text.match(/^Experiment configuration: (.+)$/)
+    if (m) return `Cấu hình thí nghiệm ${m[1]}`
+    m = text.match(/^Analyze experiment: (.+)$/)
+    if (m) return `Phân tích thí nghiệm ${m[1]}`
+    m = text.match(/^Suggest Random Forest config from (.+)$/)
+    if (m) return `Gợi ý cấu hình Random Forest từ ${m[1]}`
+    m = text.match(/^Explain forecast result #(.+)$/)
+    if (m) return `Giải thích kết quả dự báo #${m[1]}`
+    m = text.match(/^Compare experiments: (.+)$/)
+    if (m) return `So sánh các thí nghiệm: ${m[1]}`
+    m = text.match(/^Lag flow (\d+) min$/)
+    if (m) return `Lưu lượng trễ ${m[1]} phút`
+    m = text.match(/^Observed: (.+)$/)
+    if (m) return `Quan sát: ${m[1]}`
+    m = text.match(/^Actual: (.+)$/)
+    if (m) return `Thực tế: ${m[1]}`
+    m = text.match(/^Absolute error: (.+)$/)
+    if (m) return `Sai số tuyệt đối: ${m[1]}`
+    m = text.match(/^Forecasted vehicles: (.+)$/)
+    if (m) return `Số xe dự báo: ${m[1]}`
+    m = text.match(/^Forecast · (.+)$/)
+    if (m) return `Dự báo · ${m[1]}`
+    m = text.match(/^Forecast (.+)$/)
+    if (m) return `Dự báo ${m[1]}`
+    m = text.match(/^Experiment · (.+)$/)
+    if (m) return `Thí nghiệm · ${m[1]}`
+    m = text.match(/^Experiment (.+)$/)
+    if (m) return `Thí nghiệm ${m[1]}`
+    m = text.match(/^Session (\d+)$/)
+    if (m) return `Phiên ${m[1]}`
+    m = text.match(/^Dataset (\d+)$/)
+    if (m) return `Tập dữ liệu ${m[1]}`
+    m = text.match(/^Page (\d+)$/)
+    if (m) return `Trang ${m[1]}`
+    m = text.match(/^Page (\d+)\/(\d+)$/)
+    if (m) return `Trang ${m[1]}/${m[2]}`
+
+    return text
   }
 
-  const forecastHorizonMatch = normalizedText.match(/^Dự báo Horizon \+(\d+) phút$/)
-  if (forecastHorizonMatch) return `Forecast Horizon +${forecastHorizonMatch[1]} min`
-  const automaticSplitMatch = normalizedText.match(/^Tự động theo Dataset File \((\d+) split\)$/)
+  if (englishTranslations[text]) return englishTranslations[text]
+
+  if (text.endsWith(':') && englishTranslations[text.slice(0, -1)]) {
+    return englishTranslations[text.slice(0, -1)] + ':'
+  }
+  if (text.endsWith('…') && englishTranslations[text.slice(0, -1)]) {
+    return englishTranslations[text.slice(0, -1)] + '…'
+  }
+  if (text.endsWith('...') && englishTranslations[text.slice(0, -3)]) {
+    return englishTranslations[text.slice(0, -3)] + '...'
+  }
+
+  if (text.startsWith('"') && text.endsWith('"')) {
+    const inner = text.slice(1, -1)
+    const res = translateCore(inner, 'en')
+    if (res !== inner) return `"${res}"`
+  }
+
+  let m = text.match(/^Dự báo Horizon \+(\d+) phút$/)
+  if (m) return `Forecast Horizon +${m[1]} min`
+  m = text.match(/^Horizon \+(\d+) phút$/)
+  if (m) return `Horizon +${m[1]} min`
+  m = text.match(/^\+(\d+) phút$/)
+  if (m) return `+${m[1]} min`
+
+  const automaticSplitMatch = text.match(/^Tự động theo Dataset File \((\d+) split\)$/)
   if (automaticSplitMatch) {
     const count = Number(automaticSplitMatch[1])
     return `Automatic by dataset (${count} ${count === 1 ? 'split' : 'splits'})`
   }
-  const automaticExperimentMatch = normalizedText.match(
+  const automaticExperimentMatch = text.match(
     /^Tự động chọn Ex tốt nhất theo điểm Validation \((\d+) Ex\)$/
   )
   if (automaticExperimentMatch) {
     const count = Number(automaticExperimentMatch[1])
     return `Automatically select the best experiment by validation score (${count} ${count === 1 ? 'experiment' : 'experiments'})`
   }
-  const historyOffsetMatch = normalizedText.match(/^Quan sát lịch sử \(([^)]+)\)$/)
+  const historyOffsetMatch = text.match(/^Quan sát lịch sử \(([^)]+)\)$/)
   if (historyOffsetMatch) return `Historical observation (${historyOffsetMatch[1]})`
-  const horizonMatch = normalizedText.match(/^Horizon \+(\d+) phút$/)
-  if (horizonMatch) return `Horizon +${horizonMatch[1]} minutes`
-  const minuteMatch = normalizedText.match(/^\+(\d+) phút$/)
-  if (minuteMatch) return `+${minuteMatch[1]} minutes`
 
-  return englishTranslations[normalizedText] ?? normalizedText
+  m = text.match(/^Batch chờ phê duyệt \((\d+)\)$/)
+  if (m) return `Batches awaiting approval (${m[1]})`
+  m = text.match(/^Batch: (.+)$/)
+  if (m) return `Batch: ${m[1]}`
+
+  m = text.match(/^Thu hồi gói \((\d+)\)$/)
+  if (m) return `Revoke bundle (${m[1]})`
+  m = text.match(/^So sánh đã chọn \((\d+)\)$/)
+  if (m) return `Compare selected (${m[1]})`
+
+  m = text.match(/^Bỏ qua (\d+) thí nghiệm thiếu kết quả hoặc mô hình hợp lệ\.?$/)
+  if (m) return `Skipped ${m[1]} experiments lacking valid results or models.`
+
+  m = text.match(/^Chia sẻ cũ này gồm (\d+) tài nguyên\. Thu hồi sẽ ngừng quyền xem toàn bộ gói\.?$/)
+  if (m) return `This legacy share contains ${m[1]} resources. Revoking will stop access to the entire bundle.`
+
+  m = text.match(/^(\d+) bản ghi · Trang (\d+)$/)
+  if (m) return `${m[1]} records · Page ${m[2]}`
+  m = text.match(/^(\d+) tài nguyên · Trang (\d+)$/)
+  if (m) return `${m[1]} resources · Page ${m[2]}`
+  m = text.match(/^(\d+) mẫu trên trang · Trang (\d+)\/(\d+)$/)
+  if (m) return `${m[1]} samples on page · Page ${m[2]}/${m[3]}`
+  m = text.match(/^(\d+) dòng \/ trang$/)
+  if (m) return `${m[1]} rows / page`
+
+  m = text.match(/^(\d+) mốc thời gian$/)
+  if (m) return `${m[1]} timestamps`
+  m = text.match(/^(\d+) thí nghiệm hoàn thành$/)
+  if (m) return `${m[1]} completed experiments`
+  m = text.match(/^(\d+) thí nghiệm$/)
+  if (m) return `${m[1]} experiments`
+  m = text.match(/^(\d+) session$/)
+  if (m) return `${m[1]} sessions`
+  m = text.match(/^(\d+) phiên ghi hình$/)
+  if (m) return `${m[1]} recording sessions`
+  m = text.match(/^(\d+) dataset$/)
+  if (m) return `${m[1]} datasets`
+  m = text.match(/^(\d+) chờ duyệt$/)
+  if (m) return `${m[1]} pending review`
+  m = text.match(/^(\d+) mẫu Test$/)
+  if (m) return `${m[1]} test samples`
+  m = text.match(/^(\d+) mẫu Train$/)
+  if (m) return `${m[1]} train samples`
+  m = text.match(/^(\d+) mẫu$/)
+  if (m) return `${m[1]} samples`
+
+  m = text.match(/^(\d+) cây · Độ sâu tối đa (.+)$/)
+  if (m) return `${m[1]} trees · Max depth ${translateCore(m[2], 'en')}`
+  m = text.match(/^(\d+) cây, sâu (.+)$/)
+  if (m) return `${m[1]} trees, depth ${m[2]}`
+
+  m = text.match(/^(\d+) tập dữ liệu chờ duyệt \/ (\d+) tập dữ liệu$/)
+  if (m) return `${m[1]} datasets pending review / ${m[2]} datasets`
+  m = text.match(/^Đã chia sẻ (\d+)\/(\d+) dataset$/)
+  if (m) return `Shared ${m[1]}/${m[2]} datasets`
+  m = text.match(/^(\d+)\/(\d+) phiên hoàn tất$/)
+  if (m) return `${m[1]}/${m[2]} sessions completed`
+  m = text.match(/^(\d+)% đã xử lý$/)
+  if (m) return `${m[1]}% processed`
+
+  m = text.match(/^Đang tổng hợp: (.+)$/)
+  if (m) return `Aggregating: ${m[1]}`
+  m = text.match(/^Đang xử lý: (.+)$/)
+  if (m) return `Processing: ${m[1]}`
+  m = text.match(/^Kiểm tra dữ liệu · (.+)$/)
+  if (m) return `Inspect data · ${m[1]}`
+  m = text.match(/^Nội dung dataset (.+)$/)
+  if (m) return `Dataset content: ${m[1]}`
+  m = text.match(/^Danh sách (.+)$/)
+  if (m) return `List of ${m[1]}`
+  m = text.match(/^Xem chi tiết (.+)$/)
+  if (m) return `View details: ${m[1]}`
+  m = text.match(/^Xem thí nghiệm (.+)$/)
+  if (m) return `View experiment: ${m[1]}`
+  m = text.match(/^Cấu hình thí nghiệm (.+)$/)
+  if (m) return `Experiment configuration: ${m[1]}`
+  m = text.match(/^Phân tích thí nghiệm (.+)$/)
+  if (m) return `Analyze experiment: ${m[1]}`
+  m = text.match(/^Gợi ý cấu hình Random Forest từ (.+)$/)
+  if (m) return `Suggest Random Forest config from ${m[1]}`
+  m = text.match(/^Giải thích kết quả dự báo #(.+)$/)
+  if (m) return `Explain forecast result #${m[1]}`
+  m = text.match(/^So sánh các thí nghiệm: (.+)$/)
+  if (m) return `Compare experiments: ${m[1]}`
+
+  m = text.match(/^Lưu lượng trễ (\d+) phút$/)
+  if (m) return `Lag flow ${m[1]} min`
+  m = text.match(/^Quan sát: (.+)$/)
+  if (m) return `Observed: ${m[1]}`
+  m = text.match(/^Thực tế: (.+)$/)
+  if (m) return `Actual: ${m[1]}`
+  m = text.match(/^Sai số tuyệt đối: (.+)$/)
+  if (m) return `Absolute error: ${m[1]}`
+  m = text.match(/^Số xe dự báo: (.+)$/)
+  if (m) return `Forecasted vehicles: ${m[1]}`
+
+  m = text.match(/^Không có dữ liệu thực tế và dự báo Random Forest cho mốc \+(.+)$/)
+  if (m) return `No actual and Random Forest forecast data for horizon +${m[1]}`
+  m = text.match(/^RMSE thấp nhất · Horizon \+(.+)$/)
+  if (m) return `Lowest RMSE · Horizon +${m[1]}`
+  m = text.match(/^Gộp các dataset đã duyệt trong (.+) thành dữ liệu theo phút\.?$/)
+  if (m) return `Aggregate approved datasets in ${m[1]} into minute-level data.`
+
+  m = text.match(/^Dự báo · (.+)$/)
+  if (m) return `Forecast · ${m[1]}`
+  m = text.match(/^Dự báo (.+)$/)
+  if (m) return `Forecast ${m[1]}`
+  m = text.match(/^Thí nghiệm · (.+)$/)
+  if (m) return `Experiment · ${m[1]}`
+  m = text.match(/^Thí nghiệm (.+)$/)
+  if (m) return `Experiment ${m[1]}`
+  m = text.match(/^Phiên (\d+)$/)
+  if (m) return `Session ${m[1]}`
+  m = text.match(/^Tập dữ liệu (\d+)$/)
+  if (m) return `Dataset ${m[1]}`
+  m = text.match(/^Trang (\d+)$/)
+  if (m) return `Page ${m[1]}`
+  m = text.match(/^Trang (\d+)\/(\d+)$/)
+  if (m) return `Page ${m[1]}/${m[2]}`
+
+  return text
+}
+
+export function translateText(text, language) {
+  if (typeof text !== 'string') return text ?? ''
+
+  const leadingWhitespace = text.match(/^\s*/)?.[0] ?? ''
+  const trailingWhitespace = text.match(/\s*$/)?.[0] ?? ''
+  const trimmed = text.slice(
+    leadingWhitespace.length,
+    text.length - trailingWhitespace.length
+  )
+  if (!trimmed) return text
+
+  const normalizedText = trimmed
+    .replaceAll('&amp;', '&')
+    .replaceAll('&ldquo;', '"')
+    .replaceAll('&rdquo;', '"')
+    .replaceAll('\u00A0', ' ')
+
+  const result = translateCore(normalizedText, language)
+  return `${leadingWhitespace}${result}${trailingWhitespace}`
 }
