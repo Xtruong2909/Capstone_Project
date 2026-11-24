@@ -123,3 +123,43 @@ test('share dialog shows named recipients and prevents continuing without a batc
   assert.match(markup, /Chọn người nhận để tải danh sách batch/)
   assert.match(markup, /disabled=""[^>]*>Tiếp tục/)
 })
+
+async function renderManagedShares(recipients) {
+  const jsx = source('features/scientist/pages/ScientistSharesPage.jsx')
+  const { code } = await transformWithOxc(jsx, 'ScientistSharesPage.jsx', { jsx: { runtime: 'classic' } })
+  const Icon = () => null
+  const context = vm.createContext({
+    React, useState: React.useState,
+    Check: Icon, ChevronLeft: Icon, ChevronRight: Icon, Eye: Icon, Inbox: Icon,
+    Plus: Icon, Search: Icon, Share2: Icon,
+    useManagedResourceShares: () => ({
+      loading: false, error: '', total_records: 1, active_count: 1, unshared_count: 0,
+      revoked_count: 0, reload() {}, data: [{
+        share_id: 'share-a', resource_id: 'dataset-a', name: 'Batch 01', resource_type: 'DATASET',
+        shared_at: '2026-11-23T13:42:29Z', status: 'PUBLISHED', item_count: 4, recipients,
+      }],
+    }),
+  })
+  vm.runInContext(code, context)
+  return renderToStaticMarkup(React.createElement(context.ScientistSharesPage))
+}
+
+test('managed table aligns recipients, dates, status and actions under six matching headers', async () => {
+  const markup = await renderManagedShares(users)
+  const headings = [...markup.match(/<thead>([\s\S]*?)<\/thead>/)[1].matchAll(/<th\b[^>]*>(.*?)<\/th>/g)].map((m) => m[1])
+  const cells = [...markup.match(/<tbody>([\s\S]*?)<\/tbody>/)[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1])
+  assert.deepEqual(headings, ['Tài nguyên', 'Loại', 'Người nhận', 'Ngày chia sẻ', 'Trạng thái', 'Thao tác'])
+  assert.equal(cells.length, headings.length)
+  assert.match(cells[2], /Business A/)
+  assert.match(cells[2], /a@example.com/)
+  assert.match(cells[2], /Business B/)
+  assert.match(cells[3], /23\/11\/2026/)
+  assert.match(cells[4], /Đang chia sẻ/)
+  assert.match(cells[5], /Thu hồi gói \(4\)/)
+})
+
+test('empty recipients use correctly encoded Vietnamese fallback', async () => {
+  const markup = await renderManagedShares([])
+  assert.match(markup, /Chưa chọn người nhận/)
+  assert.doesNotMatch(markup, /Ch\?a/)
+})
