@@ -1,0 +1,122 @@
+/* Shared auto-expanding rail for Scientist and Business workspaces. */
+.admin-sidebar.workspace-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 80px;
+  height: 100dvh;
+  overflow: hidden;
+  z-index: 50;
+  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-sidebar:hover,
+.workspace-sidebar:focus-within {
+  width: 268px;
+  overflow-y: auto;
+}
+
+.workspace-sidebar + .admin-main {
+  margin-left: 80px;
+  transition: margin-left 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.workspace-sidebar:is(:hover, :focus-within) + .admin-main {
+  margin-left: 268px;
+}
+
+.workspace-sidebar .admin-sidebar__header {
+  flex-shrink: 0;
+  padding: 1.3rem 19px;
+}
+
+.workspace-sidebar .admin-sidebar__logo-badge {
+  flex-shrink: 0;
+}
+
+.workspace-sidebar .admin-sidebar__nav {
+  padding: 1.15rem 10px;
+}
+
+.workspace-sidebar .admin-nav-item {
+  min-height: 46px;
+  padding: 0.72rem 19px;
+  white-space: nowrap;
+}
+
+.workspace-sidebar .admin-sidebar__footer {
+  flex-shrink: 0;
+  padding: 1rem 10px;
+}
+
+.workspace-sidebar .admin-user-profile {
+  width: 100%;
+  min-height: 50px;
+  padding: 0.5rem 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-sidebar .admin-user-profile:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.workspace-sidebar .admin-logout-btn {
+  justify-content: flex-start;
+  padding: 0.6rem 20px;
+  white-space: nowrap;
+}
+
+.workspace-sidebar__role {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.workspace-sidebar:is(:hover, :focus-within) .workspace-sidebar__role {
+  justify-content: space-between;
+}
+
+.workspace-sidebar .admin-sidebar__brand-text,
+.workspace-sidebar .admin-nav-item > span,
+.workspace-sidebar .admin-user-info,
+.workspace-sidebar .admin-logout-btn > span {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.workspace-sidebar:is(:hover, :focus-within) :is(
+  .admin-sidebar__brand-text,
+  .admin-nav-item > span,
+  .admin-user-info,
+  .admin-logout-btn > span
+) {
+  opacity: 1;
+}
+
+.workspace-sidebar .admin-sidebar__brand-text {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.workspace-sidebar:not(:hover):not(:focus-within) :is(.sci-role-label, .workspace-sidebar__role-full),
+.workspace-sidebar:is(:hover, :focus-within) .workspace-sidebar__role-short {
+  display: none;
+}
+
+/* On touch screens the rail overlays content instead of squeezing the page. */
+@media (max-width: 640px) {
+  .workspace-sidebar:is(:hover, :focus-within) + .admin-main {
+    margin-left: 80px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-sidebar.workspace-sidebar,
+  .workspace-sidebar + .admin-main,
+  .workspace-sidebar :is(.admin-sidebar__brand-text, .admin-nav-item > span, .admin-user-info, .admin-logout-btn > span) {
+    transition: none;
+  }
+}

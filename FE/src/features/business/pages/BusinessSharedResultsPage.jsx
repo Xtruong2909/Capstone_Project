@@ -2,12 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, BarChart3, Building2, ChevronLeft, ChevronRight, Database,
-  Eye, FileSpreadsheet, FlaskConical, LogOut, Search, Share2, TrendingUp, UserCheck,
+  Eye, FileSpreadsheet, FlaskConical, LogOut, Search, Share2, TrendingUp,
 } from 'lucide-react'
 
-const BIZ_SIDEBAR_KEY = 'sidebar_collapsed_business'
 import { useAuth } from '../../../hooks/useAuth'
-import { useLanguage } from '../../../hooks/useLanguage'
 import { useSharedResults, useSharedResultDetail, useSharedItemRows } from '../../../hooks/useSharedResults'
 import LanguageSwitcher from '../../../components/LanguageSwitcher'
 import ScientistProfileModal from '../../scientist/components/ScientistProfileModal'
@@ -19,6 +17,7 @@ import { sharedResourceName } from '../utils/sharedResourceNames'
 import '../../admin/AdminLayout.css'
 import '../../scientist/ScientistPages.css'
 import './BusinessSharedResultsPage.css'
+import '../../../components/WorkspaceSidebar.css'
 
 const PAGED_SECTIONS = new Set(['sessions', 'traffic_flow_chart', 'prediction_rows', 'forecast_results', 'forecast_chart'])
 const RESOURCE_TYPES = ['DATASET', 'EXPERIMENT', 'PREDICTION']
@@ -109,7 +108,6 @@ function SharedSection({ shareId, itemId, section, value }) {
 
 export default function BusinessSharedResultsPage() {
   const { user, logout } = useAuth()
-  const { t } = useLanguage()
   const navigate = useNavigate()
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -140,18 +138,6 @@ export default function BusinessSharedResultsPage() {
 
   const displayName = user?.full_name?.replace(/\s*\(business\s+user\)\s*$/i, '').trim() || 'Business User'
 
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    try { return localStorage.getItem(BIZ_SIDEBAR_KEY) === 'true' } catch { return false }
-  })
-
-  const toggleSidebar = () => {
-    setIsCollapsed((prev) => {
-      const next = !prev
-      try { localStorage.setItem(BIZ_SIDEBAR_KEY, String(next)) } catch { /* ignore */ }
-      return next
-    })
-  }
-
   const handleLogout = async () => {
     await logout()
     navigate('/login')
@@ -160,29 +146,16 @@ export default function BusinessSharedResultsPage() {
   return (
     <div className="admin-shell biz-portal" data-resource-type={resourceType}>
       {/* ── Sidebar ── */}
-      <aside className={`admin-sidebar ${isCollapsed ? 'admin-sidebar--collapsed' : ''}`}>
-        <div className="admin-sidebar__edge-zone">
-          <button
-            type="button"
-            className="admin-sidebar__floating-toggle"
-            onClick={toggleSidebar}
-            aria-label={isCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-            title={isCollapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-          >
-            {isCollapsed ? <ChevronRight size={18} strokeWidth={2.6} /> : <ChevronLeft size={18} strokeWidth={2.6} />}
-          </button>
-        </div>
+      <aside className="admin-sidebar workspace-sidebar">
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
             <div className="admin-sidebar__logo-badge biz-logo-badge">
               <Building2 size={20} />
             </div>
-            {!isCollapsed && (
-              <div className="admin-sidebar__brand-text">
-                <h2>Urban Traffic</h2>
-                <span className="biz-brand-sub">Business Portal</span>
-              </div>
-            )}
+            <div className="admin-sidebar__brand-text">
+              <h2>Urban Traffic</h2>
+              <span className="biz-brand-sub">Business Portal</span>
+            </div>
           </div>
         </div>
 
@@ -196,30 +169,31 @@ export default function BusinessSharedResultsPage() {
               aria-current={resourceType === type ? 'page' : undefined}
               onClick={() => handleResourceChange(type)}>
               <Icon size={19} style={{ flexShrink: 0 }} aria-hidden="true" />
-              {!isCollapsed && <span>{RESOURCE_TYPE_LABELS[type]}</span>}
+              <span>{RESOURCE_TYPE_LABELS[type]}</span>
             </button>
           })}
         </nav>
 
         <div className="admin-sidebar__footer">
-          <div style={{ display: 'flex', justifyContent: isCollapsed ? 'center' : 'space-between', alignItems: 'center' }}>
-            {!isCollapsed && <span className="sci-role-label">Vai trò</span>}
-            <span className="sci-role-badge biz-role-badge">{isCollapsed ? 'BU' : 'Người dùng nghiệp vụ'}</span>
+          <div className="workspace-sidebar__role">
+            <span className="sci-role-label">Vai trò</span>
+            <span className="sci-role-badge biz-role-badge">
+              <span className="workspace-sidebar__role-short" aria-hidden="true">BU</span>
+              <span className="workspace-sidebar__role-full">Người dùng nghiệp vụ</span>
+            </span>
           </div>
           <button type="button" className="admin-user-profile biz-profile-trigger" onClick={() => setIsProfileModalOpen(true)} title="Xem hồ sơ và bảo mật tài khoản">
             <div className="admin-avatar biz-avatar">
               {displayName.charAt(0).toUpperCase()}
             </div>
-            {!isCollapsed && (
-              <div className="admin-user-info">
-                <span className="admin-user-name">{displayName}</span>
-                <span className="admin-user-email">{user?.email || ''}</span>
-              </div>
-            )}
+            <div className="admin-user-info">
+              <span className="admin-user-name">{displayName}</span>
+              <span className="admin-user-email">{user?.email || ''}</span>
+            </div>
           </button>
           <button type="button" className="admin-logout-btn" onClick={handleLogout} title="Đăng xuất">
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isCollapsed && <span>Đăng xuất</span>}
+            <span>Đăng xuất</span>
           </button>
         </div>
       </aside>
@@ -232,9 +206,6 @@ export default function BusinessSharedResultsPage() {
           </div>
           <div className="admin-header__actions">
             <LanguageSwitcher />
-            <button type="button" className="btn-secondary biz-account-button" onClick={() => setIsProfileModalOpen(true)} title={t('Manage account profile and change password')}>
-              <UserCheck size={15} /> <span>{t('Account & Security')}</span>
-            </button>
           </div>
         </header>
 

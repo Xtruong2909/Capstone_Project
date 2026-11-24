@@ -5,9 +5,6 @@ import {
   LayoutDashboard,
   FileSpreadsheet,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
-  UserCheck,
   Share2,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
@@ -17,8 +14,7 @@ import ScientistProfileModal from './components/ScientistProfileModal'
 import AiAssistantChatWidget from './components/AiAssistantChatWidget'
 import '../admin/AdminLayout.css'
 import './ScientistPages.css'
-
-const STORAGE_KEY = 'sidebar_collapsed_scientist'
+import '../../components/WorkspaceSidebar.css'
 
 function profileDisplayName(fullName, fallback) {
   if (!fullName) return fallback
@@ -48,26 +44,6 @@ export default function ScientistLayout() {
   const location = useLocation()
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
 
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
-
-  const toggleSidebar = () => {
-    setIsCollapsed((prev) => {
-      const next = !prev
-      try {
-        localStorage.setItem(STORAGE_KEY, String(next))
-      } catch {
-        // ignore storage error
-      }
-      return next
-    })
-  }
-
   const handleLogout = async () => {
     await logout()
     navigate('/login')
@@ -75,34 +51,16 @@ export default function ScientistLayout() {
 
   return (
     <div className="admin-shell">
-      <aside className={`admin-sidebar ${isCollapsed ? 'admin-sidebar--collapsed' : ''}`}>
-        <div className="admin-sidebar__edge-zone">
-          <button
-            type="button"
-            className="admin-sidebar__floating-toggle"
-            onClick={toggleSidebar}
-            aria-label={t(isCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
-            title={t(isCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
-          >
-            {isCollapsed ? (
-              <ChevronRight size={18} strokeWidth={2.6} />
-            ) : (
-              <ChevronLeft size={18} strokeWidth={2.6} />
-            )}
-          </button>
-        </div>
-
+      <aside className="admin-sidebar workspace-sidebar">
         <div className="admin-sidebar__header">
           <div className="admin-sidebar__brand">
             <div className="admin-sidebar__logo-badge" title={t('Urban Traffic - Data Scientist')}>
               <FlaskConical size={20} />
             </div>
-            {!isCollapsed && (
-              <div className="admin-sidebar__brand-text">
-                <h2>Urban Traffic</h2>
-                <span>Data Science Lab</span>
-              </div>
-            )}
+            <div className="admin-sidebar__brand-text">
+              <h2>Urban Traffic</h2>
+              <span>Data Science Lab</span>
+            </div>
           </div>
         </div>
 
@@ -125,15 +83,17 @@ export default function ScientistLayout() {
         </nav>
 
         <div className="admin-sidebar__footer">
-          <div style={{ display: 'flex', justifyContent: isCollapsed ? 'center' : 'space-between' }}>
-            {!isCollapsed && <span className="sci-role-label">{t('Role')}</span>}
+          <div className="workspace-sidebar__role">
+            <span className="sci-role-label">{t('Role')}</span>
             <span className="badge badge--scientist sci-role-badge">
-              {isCollapsed ? 'DS' : t('Data Scientist')}
+              <span className="workspace-sidebar__role-short" aria-hidden="true">DS</span>
+              <span className="workspace-sidebar__role-full">{t('Data Scientist')}</span>
             </span>
           </div>
 
           {/* User Profile Card - Click to open Profile & Password Modal */}
-          <div
+          <button
+            type="button"
             className="admin-user-profile"
             onClick={() => setIsProfileModalOpen(true)}
             style={{ cursor: 'pointer', transition: 'background 0.2s', borderRadius: '10px' }}
@@ -142,19 +102,17 @@ export default function ScientistLayout() {
             <div className="admin-avatar">
               {displayName.charAt(0).toUpperCase()}
             </div>
-            {!isCollapsed && (
-              <div className="admin-user-info">
-                <span className="admin-user-name" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  {displayName}
-                </span>
-                <span className="admin-user-email">{user?.email || ''}</span>
-              </div>
-            )}
-          </div>
+            <div className="admin-user-info">
+              <span className="admin-user-name" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                {displayName}
+              </span>
+              <span className="admin-user-email">{user?.email || ''}</span>
+            </div>
+          </button>
 
           <button type="button" className="admin-logout-btn" onClick={handleLogout} title={t('Sign Out')}>
             <LogOut size={16} style={{ flexShrink: 0 }} />
-            {!isCollapsed && <span>{t('Sign Out')}</span>}
+            <span>{t('Sign Out')}</span>
           </button>
         </div>
       </aside>
@@ -167,16 +125,6 @@ export default function ScientistLayout() {
 
           <div className="admin-header__actions">
             <LanguageSwitcher />
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setIsProfileModalOpen(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.82rem', fontWeight: 600 }}
-              title={t('Manage account profile and change password')}
-            >
-              <UserCheck size={15} style={{ color: '#1668e3' }} />
-              <span>{t('Account & Security')}</span>
-            </button>
           </div>
         </header>
 
