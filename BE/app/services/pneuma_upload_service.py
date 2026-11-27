@@ -34,7 +34,9 @@ from app.schemas.dataset import (
 from app.services.audit_log_service import record_audit_event
 from app.services.dataset_multipart_service import StreamedUploadFile
 from app.services.storage_service import (
+    StorageUnavailableError,
     cleanup_failed_file,
+    dataset_file_checksum,
     discard_local_file,
     persist_dataset_file,
 )
@@ -175,9 +177,36 @@ def _persist_group(
     try:
         crud_dataset.lock_dataset_upload(db, name)
         dataset = crud_dataset.get_dataset_by_name(db, name)
+        metadata = staged[0].metadata
+        effective_source = dataset.source if dataset is not None else (source or "pNEUMA")
+        group = None
+        if group_name is not None:
+            group_name = group_name.strip()
+            if not group_name:
+                raise ValueError("Tên batch không được để trống")
+            group = crud_dataset.get_named_upload_group(
+                db, effective_source, metadata.drone_id, group_name, creator_id,
+            )
+        if group is None:
+            group = crud_dataset.get_or_create_dataset_group(db, effective_source, metadata.drone_id)
+            if group_name is not None:
+                if ((group.name is not None and group.name.casefold() != group_name.casefold())
+                        or crud_dataset.group_has_other_owners(db, group.id, creator_id)):
+                    scope = hashlib.sha256(f"{creator_id}:{group_name.casefold()}".encode()).hexdigest()
+                    group = crud_dataset.get_or_create_dataset_group(
+                        db, effective_source, metadata.drone_id, upload_scope=scope,
+                    )
+                if group.name is None:
+                    group.name = group_name
+        # The same recording may exist in separate named batches. Keep catalog
+        # names unique without changing the original uploaded filename.
+        if dataset is None or dataset.group_id != group.id:
+            scoped_name = f"{name}--{group.id.hex}"
+            scoped_dataset = crud_dataset.get_dataset_by_name(db, scoped_name)
+            if dataset is not None or scoped_dataset is not None:
+                name, dataset = scoped_name, scoped_dataset
         if dataset is not None and dataset.created_by != creator_id:
             raise ValueError("Dataset đã thuộc tài khoản khác; không thể thêm hoặc thay đổi dữ liệu")
-        metadata = staged[0].metadata
         if dataset is not None and (
             (dataset.drone_id is None and dataset.source.lower() != "pneuma")
             or (dataset.recording_date or dataset.capture_date) != metadata.recording_date
@@ -187,15 +216,6 @@ def _persist_group(
         if dataset is not None:
             dataset.recording_date = metadata.recording_date
             dataset.drone_id = metadata.drone_id
-        group = crud_dataset.get_or_create_dataset_group(
-            db, dataset.source if dataset is not None else (source or "pNEUMA"),
-            metadata.drone_id,
-        )
-        if group_name is not None:
-            if (group.name != group_name
-                    and crud_dataset.group_has_other_owners(db, group.id, creator_id)):
-                raise ValueError("Không thể đổi tên batch đang chứa Dataset của tài khoản khác")
-            group.name = group_name
         if dataset is None:
             dataset_id = uuid4()
             dataset = Dataset(
@@ -216,6 +236,27 @@ def _persist_group(
         by_checksum = {item.checksum: item for item in existing if item.checksum is not None}
         for item in staged:
             named = by_name.get(item.filename)
+            # Browser-to-S3 uploads may have no stored SHA-256. Compare bytes
+            # only on a filename retry; normal first uploads stay disk-free.
+            if (named is not None and item.remote_reference != named.file_path
+                    and (named.checksum is None or item.checksum is None)):
+                try:
+                    existing_checksum = named.checksum or dataset_file_checksum(
+                        named.file_path, upload_root=DATASET_UPLOAD_DIR,
+                    )
+                    if item.checksum is None and item.remote_reference is not None:
+                        item.checksum = dataset_file_checksum(
+                            item.remote_reference, upload_root=DATASET_UPLOAD_DIR,
+                        )
+                    if item.checksum == existing_checksum:
+                        named.checksum = existing_checksum
+                        by_checksum[existing_checksum] = named
+                except (OSError, StorageUnavailableError):
+                    item.result.status = "ERROR"
+                    item.result.error_message = "Không thể kiểm tra tệp đã có; vui lòng tải lại."
+                    if file_processed is not None:
+                        file_processed()
+                    continue
             checked = by_checksum.get(item.checksum) if item.checksum is not None else None
             if (named is not None and (named.checksum is None or item.checksum is None)
                     and item.remote_reference != named.file_path):

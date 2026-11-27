@@ -1,6 +1,7 @@
 """Browser multipart control plane and disk-free catalog registration."""
 import hashlib
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -157,7 +158,12 @@ def test_completion_and_queue_retries_are_idempotent(direct: SimpleNamespace) ->
     assert not service.queue_direct_upload(direct.db, direct.owner, ticket.job_id)[1]
 
 
-def test_existing_filename_is_preserved_without_claiming_content_was_compared(direct: SimpleNamespace) -> None:
+def test_existing_filename_retry_compares_bytes_and_reuses_session(
+    direct: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(direct.s3, 'get_object', lambda **kw: {
+        'Body': BytesIO(direct.s3.objects[kw['Key']]['body']),
+    })
     for _ in range(2):
         ticket = start(direct, '20181024_d1_0830_0900.csv', b'content')
         parts = browser_upload(direct, ticket, b'content')
@@ -165,8 +171,46 @@ def test_existing_filename_is_preserved_without_claiming_content_was_compared(di
         service.queue_direct_upload(direct.db, direct.owner, ticket.job_id)
         service.run_direct_upload(ticket.job_id, None)
     assert len(direct.db.sessions) == len(direct.s3.objects) == 1
-    assert direct.jobs[ticket.job_id].result['failed_count'] == 1
+    assert direct.jobs[ticket.job_id].status == 'COMPLETED'
+    assert direct.jobs[ticket.job_id].result['failed_count'] == 0
+    assert direct.jobs[ticket.job_id].result['duplicate_count'] == 1
+    assert direct.jobs[ticket.job_id].result['files'][0]['status'] == 'DUPLICATE'
+    assert direct.jobs[ticket.job_id].result['files'][0]['session_id'] == str(direct.db.sessions[0].id)
+    assert direct.db.sessions[0].checksum == hashlib.sha256(b'content').hexdigest()
+
+
+def test_same_size_changed_content_preserves_existing_recording(
+    direct: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(direct.s3, 'get_object', lambda **kw: {
+        'Body': BytesIO(direct.s3.objects[kw['Key']]['body']),
+    })
+    for content in (b'original', b'modified'):
+        ticket = start(direct, '20181024_d1_0830_0900.csv', content)
+        parts = browser_upload(direct, ticket, content)
+        service.complete_direct_file(direct.db, direct.owner, ticket.job_id, ticket.files[0].file_id, parts)
+        service.queue_direct_upload(direct.db, direct.owner, ticket.job_id)
+        service.run_direct_upload(ticket.job_id, None)
+    assert len(direct.db.sessions) == len(direct.s3.objects) == 1
+    assert next(iter(direct.s3.objects.values()))['body'] == b'original'
     assert direct.jobs[ticket.job_id].result['files'][0]['status'] == 'CONFLICT'
+
+
+def test_retry_storage_failure_does_not_accept_unverified_content(
+    direct: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(**kwargs: object) -> dict:
+        raise ClientError({'Error': {'Code': 'AccessDenied'}}, 'GetObject')
+
+    monkeypatch.setattr(direct.s3, 'get_object', unavailable)
+    for _ in range(2):
+        ticket = start(direct, '20181024_d1_0830_0900.csv', b'content')
+        parts = browser_upload(direct, ticket, b'content')
+        service.complete_direct_file(direct.db, direct.owner, ticket.job_id, ticket.files[0].file_id, parts)
+        service.queue_direct_upload(direct.db, direct.owner, ticket.job_id)
+        service.run_direct_upload(ticket.job_id, None)
+    assert len(direct.db.sessions) == len(direct.s3.objects) == 1
+    assert direct.jobs[ticket.job_id].result['files'][0]['status'] == 'ERROR'
 
 
 def test_upload_defers_csv_content_checks_until_processing(direct: SimpleNamespace) -> None:

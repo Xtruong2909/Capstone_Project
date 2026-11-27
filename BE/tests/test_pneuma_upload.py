@@ -65,13 +65,24 @@ def storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MemoryDB:
     monkeypatch.setattr(crud, "group_has_other_owners", lambda _db, gid, uid: any(
         item.group_id == gid and item.created_by != uid for item in db.datasets.values()
     ))
-    def get_or_create_group(_db: MemoryDB, source: str, drone_id: str) -> object:
+    def get_or_create_group(
+        _db: MemoryDB, source: str, drone_id: str, *, upload_scope: str = "",
+    ) -> object:
         return db.groups.setdefault(
-            (source.lower(), drone_id.lower()),
-            SimpleNamespace(id=uuid4(), name=None, source=source.lower(), drone_id=drone_id.lower()),
+            (source.lower(), drone_id.lower(), upload_scope),
+            SimpleNamespace(id=uuid4(), name=None, source=source.lower(),
+                            drone_id=drone_id.lower(), upload_scope=upload_scope),
         )
 
     monkeypatch.setattr(crud, "get_or_create_dataset_group", get_or_create_group)
+    monkeypatch.setattr(crud, "get_named_upload_group", lambda _db, source, drone, name, owner: next(
+        (group for group in db.groups.values()
+         if group.source == source.lower() and group.drone_id == drone.lower()
+         and (group.name or "").casefold() == name.casefold()
+         and any(d.group_id == group.id and d.created_by == owner for d in db.datasets.values())
+         and not any(d.group_id == group.id and d.created_by != owner for d in db.datasets.values())),
+        None,
+    ))
     monkeypatch.setattr(crud, "get_recording_sessions",
                         lambda _db, dataset_id: [s for s in db.sessions if s.dataset_id == dataset_id])
     monkeypatch.setattr(crud, "add_recording_session", lambda _db, item: db.add(item))
@@ -200,6 +211,41 @@ def test_group_name_rejects_multiple_drones(storage: MemoryDB) -> None:
     assert not storage.datasets
 
 
+def test_different_batch_name_creates_independent_copy_and_keeps_original(
+    storage: MemoryDB,
+) -> None:
+    filename = "20181024_d1_0830_0900.csv"
+    original = service.upload_pneuma_batch(
+        storage, [(filename, BytesIO(b"original"))], creator_id=storage.creator_id,
+        group_name="Batch 01",
+    )
+    original_file = storage.dataset_files[0]
+    original_file.approval_status = "APPROVED"
+    copied = service.upload_pneuma_batch(
+        storage, [(filename, BytesIO(b"original"))], creator_id=storage.creator_id,
+        group_name="test 01",
+    )
+    assert copied.uploaded_count == 1
+    assert copied.group_id != original.group_id
+    assert copied.datasets[0].dataset_id != original.datasets[0].dataset_id
+    assert copied.files[0].session_id != original.files[0].session_id
+    assert original_file.approval_status == "APPROVED"
+    assert next(g for g in storage.groups.values() if g.id == original.group_id).name == "Batch 01"
+    assert storage.dataset_files[1].approval_status == "PENDING"
+    again = service.upload_pneuma_batch(
+        storage, [(filename, BytesIO(b"original"))], creator_id=storage.creator_id,
+        group_name="test 01",
+    )
+    assert again.duplicate_count == 1
+    assert again.group_id == copied.group_id
+    assert len(storage.sessions) == 2
+    appended = service.upload_pneuma_batch(
+        storage, [("20181029_d1_0830_0900.csv", BytesIO(b"day2"))],
+        creator_id=storage.creator_id, group_name="test 01",
+    )
+    assert appended.group_id == copied.group_id
+
+
 def test_api_can_name_group_during_upload(storage: MemoryDB) -> None:
     app = FastAPI()
     app.include_router(dataset_endpoint.upload_router, prefix="/api/v1/datasets")
@@ -251,6 +297,24 @@ def test_duplicate_conflict_and_supplemental_file(storage: MemoryDB) -> None:
     assert len(storage.links[storage.dataset_files[0].id]) == 2
 
 
+def test_retry_of_legacy_recording_without_checksum(storage: MemoryDB) -> None:
+    filename = "20181024_d1_0830_0900.csv"
+    first = upload(storage, (filename, b"original"))
+    session = storage.sessions[0]
+    session.checksum = None
+    original_path = session.file_path
+    dataset_file = storage.dataset_files[0]
+    dataset_file.approval_status = "APPROVED"
+    again = upload(storage, (filename, b"original"))
+    assert again.duplicate_count == 1
+    assert again.failed_count == 0
+    assert again.files[0].session_id == first.files[0].session_id
+    assert session.checksum is not None
+    assert session.file_path == original_path
+    assert dataset_file.approval_status == "APPROVED"
+    assert len(storage.sessions) == len(storage.dataset_files) == 1
+
+
 def test_another_engineer_cannot_append_to_an_existing_dataset(storage: MemoryDB) -> None:
     upload(storage, ("20181024_d1_0830_0900.csv", b"owner-data"))
     dataset = storage.datasets["20181024-d1"]
@@ -273,7 +337,8 @@ def test_another_engineer_cannot_rename_a_shared_drone_group(storage: MemoryDB) 
         storage, [("20181029_d1_0830_0900.csv", BytesIO(b"two"))],
         creator_id=storage.creator_id, group_name="Changed batch",
     )
-    assert result.failed_count == 1 and result.uploaded_count == 0
+    assert result.failed_count == 0 and result.uploaded_count == 1
+    assert len(storage.groups) == 2
     assert next(iter(storage.groups.values())).name == "Original batch"
 
 

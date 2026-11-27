@@ -194,7 +194,8 @@ def run_direct_upload(job_id: UUID, ip_address: str | None) -> None:
                 result.error_message = 'Tệp chưa được xác nhận hoàn tất trên S3.'
                 continue
             # complete_direct_file already checked multipart ETags, object size
-            # and ownership metadata. Do not GET/download/hash the object here.
+            # and ownership metadata. First uploads need no body read; filename
+            # retries are verified by the shared persistence service.
             recording = StagedRecording(metadata=metadata, filename=item['filename'], path=None,
                 size=item['size'], checksum=None, result=result, remote_reference=_reference(item))
             staged.append(recording)

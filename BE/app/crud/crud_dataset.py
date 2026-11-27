@@ -27,17 +27,33 @@ def get_dataset_by_name(db: Session, name: str) -> Dataset | None:
     return db.query(Dataset).filter(Dataset.name == name).first()
 
 
-def get_or_create_dataset_group(db: Session, source: str, drone_id: str) -> DatasetGroup:
+def get_named_upload_group(
+    db: Session, source: str, drone_id: str, name: str, owner_id: UUID,
+) -> DatasetGroup | None:
+    """Find an owned upload batch without renaming a different batch."""
+    return db.query(DatasetGroup).filter(
+        DatasetGroup.source == source.strip().lower(),
+        DatasetGroup.drone_id == drone_id.strip().lower(),
+        func.lower(DatasetGroup.name) == name.strip().lower(),
+        DatasetGroup.datasets.any(Dataset.created_by == owner_id),
+        ~DatasetGroup.datasets.any(or_(Dataset.created_by != owner_id, Dataset.created_by.is_(None))),
+    ).with_for_update().first()
+
+
+def get_or_create_dataset_group(
+    db: Session, source: str, drone_id: str, *, upload_scope: str = "",
+) -> DatasetGroup:
     """Return the persistent group shared by recording dates from one drone."""
     normalized_source = source.strip().lower()
     normalized_drone = drone_id.strip().lower()
     statement = insert(DatasetGroup).values(
-        source=normalized_source, drone_id=normalized_drone,
-    ).on_conflict_do_nothing(index_elements=["source", "drone_id"])
+        source=normalized_source, drone_id=normalized_drone, upload_scope=upload_scope,
+    ).on_conflict_do_nothing(index_elements=["source", "drone_id", "upload_scope"])
     db.execute(statement)
     group = db.query(DatasetGroup).filter(
         DatasetGroup.source == normalized_source,
         DatasetGroup.drone_id == normalized_drone,
+        DatasetGroup.upload_scope == upload_scope,
     ).with_for_update().one()
     return group
 

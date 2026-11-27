@@ -21,12 +21,14 @@ from app.database.database import Base
 
 class DatasetGroup(Base):
     __tablename__ = "dataset_groups"
-    __table_args__ = (UniqueConstraint("source", "drone_id", name="uq_dataset_group_source_drone"),)
+    __table_args__ = (UniqueConstraint("source", "drone_id", "upload_scope",
+                                        name="uq_dataset_group_upload_scope"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(128), nullable=True)
     source = Column(String(255), nullable=False)
     drone_id = Column(String(32), nullable=False)
+    upload_scope = Column(String(64), nullable=False, default="", server_default="")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     first_submitted_at = Column(DateTime(timezone=True), nullable=True)
 

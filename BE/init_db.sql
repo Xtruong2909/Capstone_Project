@@ -65,7 +65,8 @@ CREATE TABLE dataset_groups (
     source VARCHAR(255) NOT NULL,
     drone_id VARCHAR(32) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_dataset_group_source_drone UNIQUE(source, drone_id)
+    upload_scope VARCHAR(64) NOT NULL DEFAULT '',
+    CONSTRAINT uq_dataset_group_upload_scope UNIQUE(source, drone_id, upload_scope)
 );
 
 CREATE TABLE datasets (

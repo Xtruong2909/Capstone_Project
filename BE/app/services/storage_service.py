@@ -133,6 +133,31 @@ def persist_dataset_file(path: Path, *, upload_root: Path) -> str:
     return reference
 
 
+def dataset_file_checksum(stored_path: str, *, upload_root: Path) -> str:
+    """Hash an authorized recording in bounded memory without a disk cache."""
+    digest = hashlib.sha256()
+    if not stored_path.startswith("s3://"):
+        with _local_path(stored_path, upload_root).open("rb") as source:
+            while chunk := source.read(1024**2):
+                digest.update(chunk)
+        return digest.hexdigest()
+    bucket, key = _object(stored_path)
+    try:
+        body = get_s3_client().get_object(Bucket=bucket, Key=key)["Body"]
+        try:
+            while chunk := body.read(1024**2):
+                digest.update(chunk)
+        finally:
+            body.close()
+    except ClientError as exc:
+        if _missing(exc):
+            raise FileNotFoundError("Không tìm thấy file dữ liệu trên S3.") from exc
+        raise StorageUnavailableError("Không thể kiểm tra nội dung tệp trên S3.") from exc
+    except (Boto3Error, BotoCoreError, OSError) as exc:
+        raise StorageUnavailableError("Không thể kiểm tra nội dung tệp; hãy thử lại.") from exc
+    return digest.hexdigest()
+
+
 def resolve_dataset_file(stored_path: str | None, *, upload_root: Path) -> Path:
     """Materialize an authorized DB reference; never accepts arbitrary web URLs."""
     if not stored_path:
