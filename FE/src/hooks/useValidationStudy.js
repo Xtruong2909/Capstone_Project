@@ -21,7 +21,7 @@ export function useValidationStudy(featureGenerationId, preferredStudyId = '') {
       const rows = await validationService.list(featureGenerationId)
       if (activeGeneration.current !== featureGenerationId) return
       setStudies(rows)
-      setSelectedId((id) => rows.some((item) => item.id === id) ? id : rows[0]?.id || '')
+      setSelectedId((id) => rows.some((item) => item.id === id) ? id : '')
     } catch (err) { setError(extractErrorMessage(err, 'Không tải được validation.')) }
     finally { setLoading(false) }
   }, [featureGenerationId])
@@ -30,7 +30,7 @@ export function useValidationStudy(featureGenerationId, preferredStudyId = '') {
     validationService.list(featureGenerationId).then((rows) => {
       if (activeGeneration.current !== featureGenerationId) return
       setStudies(rows)
-      setSelectedId(rows.some((item) => item.id === preferredStudyId) ? preferredStudyId : rows[0]?.id || '')
+      setSelectedId(rows.some((item) => item.id === preferredStudyId) ? preferredStudyId : '')
     }).catch((err) => {
       if (activeGeneration.current === featureGenerationId) setError(extractErrorMessage(err, 'Không tải được validation.'))
     }).finally(() => {

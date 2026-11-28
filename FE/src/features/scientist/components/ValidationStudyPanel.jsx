@@ -64,7 +64,7 @@ export default function ValidationStudyPanel({ featureGenerationId, groupId, ref
     </form>}
     {!workflow.loading && <h3>Lịch sử Validation</h3>}
     {!workflow.loading && workflow.studies.length === 0 && <p className="validation-note">Chưa có lượt Validation đã lưu cho batch này.</p>}
-    {workflow.studies.length > 0 && <label className="validation-study-select">Lượt đã lưu<select disabled={running} value={workflow.selectedId} onChange={(event) => { workflow.setSelectedId(event.target.value); setDetailIndex(null) }}>{workflow.studies.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString('vi-VN')} · {label(item.status)}</option>)}</select></label>}
+    {workflow.studies.length > 0 && <label className="validation-study-select">Lượt đã lưu<select disabled={running} value={workflow.selectedId} onChange={(event) => { workflow.setSelectedId(event.target.value); setDetailIndex(null) }}><option value="" disabled>Chọn lượt đã lưu để xem chi tiết</option>{workflow.studies.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString('vi-VN')} · {label(item.status)}</option>)}</select></label>}
     {study && <>
       <div className="validation-partitions">{[['train', '1. Train'], ['validation', '2. Validation'], ['test', '3. Test']].map(([key, title]) => {
         const partition = study.protocol.partitions[key]
