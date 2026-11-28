@@ -84,7 +84,7 @@ def _training_run():
     )
 
 
-def test_experiments_are_numbered_per_split_and_only_rf_models_are_persisted(
+def test_experiments_are_numbered_per_batch_and_only_rf_models_are_persisted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     split_id = uuid4()
@@ -98,7 +98,7 @@ def test_experiments_are_numbered_per_split_and_only_rf_models_are_persisted(
     )
     monkeypatch.setattr(service, "get_accessible_split", lambda *_: (split, object()))
     reserve = MagicMock(side_effect=[1, 2])
-    monkeypatch.setattr(service.repository, "reserve_split_experiment_number", reserve)
+    monkeypatch.setattr(service.repository, "reserve_batch_experiment_number", reserve)
     group_id = uuid4()
     monkeypatch.setattr(service.repository, "get_experiment_group_id", lambda *_: group_id)
     monkeypatch.setattr(service, "fit_saved_split", lambda *_args, **_kwargs: _training_run())
@@ -151,7 +151,7 @@ def test_failed_training_keeps_reserved_name_and_failed_record(
     events = []
     monkeypatch.setattr(service, "record_audit_event", lambda **event: events.append(event))
     monkeypatch.setattr(service, "get_accessible_split", lambda *_: (split, object()))
-    monkeypatch.setattr(service.repository, "reserve_split_experiment_number", lambda *_: 1)
+    monkeypatch.setattr(service.repository, "reserve_batch_experiment_number", lambda *_: 1)
     monkeypatch.setattr(service.repository, "get_experiment_group_id", lambda *_: uuid4())
 
     def capture_add(record):
@@ -282,6 +282,24 @@ def test_comparison_requires_same_split_and_test_rows_and_reports_deltas(
             ExperimentComparisonRequest(experiment_ids=[first_id, second_id]),
         )
     assert error.value.status_code == 422
+
+    # Different IDs and selection paths are comparable only with a verified
+    # partition fingerprint. Counts alone must never unlock a comparison.
+    for result in results.values():
+        result.comparison_key = "verified-identical-partition"
+    results[second_id].evaluation_policy = "manual-refit"
+    response = service.compare_experiments(
+        MagicMock(), SimpleNamespace(id=uuid4()),
+        ExperimentComparisonRequest(experiment_ids=[first_id, second_id]),
+    )
+    assert len(response.experiments) == 2
+    results[second_id].comparison_key = "different-train-membership"
+    with pytest.raises(HTTPException) as mismatch:
+        service.compare_experiments(
+            MagicMock(), SimpleNamespace(id=uuid4()),
+            ExperimentComparisonRequest(experiment_ids=[first_id, second_id]),
+        )
+    assert mismatch.value.status_code == 422
 
 
 def test_comparison_rejects_misaligned_method_test_rows(

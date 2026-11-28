@@ -31,6 +31,7 @@ import ScientistApprovedDatasetsPage from './features/scientist/pages/ScientistA
 import ScientistDatasetSessionsPage from './features/scientist/pages/ScientistDatasetSessionsPage'
 import ScientistDatasetPreviewPage from './features/scientist/pages/ScientistDatasetPreviewPage'
 import ScientistTrainingPage from './features/scientist/pages/ScientistTrainingPage'
+import ScientistValidationCandidatePage from './features/scientist/pages/ScientistValidationCandidatePage'
 import ScientistAggregationChartsPage from './features/scientist/pages/ScientistAggregationChartsPage'
 import ScientistPredictionPage from './features/scientist/pages/ScientistPredictionPage'
 import ScientistForecastDetailPage from './features/scientist/pages/ScientistForecastDetailPage'
@@ -84,6 +85,9 @@ export default function App() {
           <Route path="datasets" element={<ScientistApprovedDatasetsPage />} />
           <Route path="datasets/groups/:groupId" element={<ScientistApprovedDatasetsPage />} />
           <Route path="datasets/groups/:groupId/train" element={<ScientistTrainingPage />} />
+          <Route path="validation-studies/:studyId/candidates/:candidateIndex" element={<ScientistValidationCandidatePage />} />
+          <Route path="datasets/groups/:groupId/train/validation" element={<ScientistTrainingPage trainingMode="validation" />} />
+          <Route path="datasets/groups/:groupId/train/reference" element={<ScientistTrainingPage trainingMode="reference" />} />
           <Route path="datasets/groups/:groupId/train/aggregation-charts" element={<ScientistAggregationChartsPage />} />
           <Route path="datasets/groups/:groupId/predict" element={<ScientistPredictionPage />}>
             <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
@@ -102,6 +106,8 @@ export default function App() {
           <Route path="datasets/:datasetId/files/:fileId" element={<ScientistDatasetSessionsPage />} />
           <Route path="datasets/:datasetId/files/:fileId/sessions/:sessionId/preview" element={<ScientistDatasetPreviewPage />} />
           <Route path="datasets/:datasetId/files/:fileId/train" element={<ScientistTrainingPage />} />
+          <Route path="datasets/:datasetId/files/:fileId/train/validation" element={<ScientistTrainingPage trainingMode="validation" />} />
+          <Route path="datasets/:datasetId/files/:fileId/train/reference" element={<ScientistTrainingPage trainingMode="reference" />} />
           <Route path="datasets/:datasetId/files/:fileId/predict" element={<ScientistPredictionPage />}>
             <Route path="forecasts/:forecastId" element={<ScientistForecastDetailPage />} />
           </Route>

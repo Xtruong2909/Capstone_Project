@@ -121,6 +121,9 @@ def test_incompatible_or_incomplete_comparisons_are_rejected(candidates: list[Si
 def setup_selection(
     monkeypatch: pytest.MonkeyPatch, candidates: list[SimpleNamespace],
 ) -> tuple[MagicMock, MagicMock]:
+    monkeypatch.setattr(service, "get_accessible_split", lambda _db, _user, key: (
+        SimpleNamespace(id=key, purpose="STANDARD"), SimpleNamespace(),
+    ))
     repo = service.repository
     query = MagicMock(return_value=[SimpleNamespace(id=item.experiment_id) for item in candidates])
     monkeypatch.setattr(repo, "list_experiments", query)

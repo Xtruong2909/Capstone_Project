@@ -1,0 +1,12 @@
+# Optional local test data. Original CSV files are mounted read-only; writes stay local.
+services:
+  backend:
+    environment:
+      STORAGE_BACKEND: local
+    volumes:
+      - type: bind
+        source: ${PNEUMA_DATASET_DIR:?Set PNEUMA_DATASET_DIR to your pNEUMA CSV directory}
+        target: /app/uploads/datasets/local-source
+        read_only: true
+        bind:
+          create_host_path: false

@@ -273,6 +273,8 @@ class TrainingLogEntry(BaseModel):
 
 
 class TrainingExperimentResponse(BaseModel):
+    comparison_key: str | None = None
+    evaluation_subset: Literal["VALIDATION", "TEST"] = "TEST"
     experiment_id: UUID
     experiment_name: str
     name: str | None = None

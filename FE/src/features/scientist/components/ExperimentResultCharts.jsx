@@ -60,7 +60,7 @@ export function ForecastHorizonErrorChart({ metrics }) {
   </section>
 }
 
-export function ActualPredictedChart({ predictions = [], sessionsById = {} }) {
+export function ActualPredictedChart({ predictions = [], sessionsById = {}, subsetLabel = 'Test' }) {
   const [horizon, setHorizon] = useState(1)
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const sessionSeries = useMemo(() => {
@@ -96,7 +96,7 @@ export function ActualPredictedChart({ predictions = [], sessionsById = {} }) {
 
   return <section className="sci-experiment-chart-card">
     <div className="sci-experiment-chart-card__heading sci-experiment-chart-card__heading--filter">
-      <div><h3>Thực tế và dự báo Random Forest trên tập Test</h3><p>Mỗi phiên ghi hình là một chuỗi riêng để không nối qua khoảng thời gian gián đoạn.</p></div>
+      <div><h3>Thực tế và dự báo Random Forest trên tập {subsetLabel}</h3><p>Mỗi phiên ghi hình là một chuỗi riêng để không nối qua khoảng thời gian gián đoạn.</p></div>
       <div className="sci-experiment-chart-card__filters">
         <label>Phiên ghi hình<select value={sessionId} onChange={(event) => setSelectedSessionId(event.target.value)}>
           {sessionSeries.map((session) => <option key={session.sessionId} value={session.sessionId}>{session.sessionName}</option>)}

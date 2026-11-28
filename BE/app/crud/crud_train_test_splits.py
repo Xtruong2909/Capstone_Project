@@ -21,6 +21,7 @@ def get_split(db: Session, split_id: UUID) -> LagFeatureSplit | None:
 def get_latest_split(db: Session, feature_generation_id: UUID) -> LagFeatureSplit | None:
     return db.query(LagFeatureSplit).filter(
         LagFeatureSplit.feature_generation_id == feature_generation_id,
+        LagFeatureSplit.purpose == "STANDARD",
     ).order_by(LagFeatureSplit.created_at.desc(), LagFeatureSplit.id.desc()).first()
 
 

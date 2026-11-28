@@ -78,8 +78,12 @@ def fit_saved_split(
     parameters: dict,
     *,
     persist: bool,
+    validation_stage: str | None = None,
 ) -> ForestTrainingRun:
     split, generation = get_accessible_split(db, user, split_id)
+    purpose = getattr(split, "purpose", "STANDARD") or "STANDARD"
+    if purpose != "STANDARD" and validation_stage != purpose:
+        raise HTTPException(409, "Use the validation study workflow for this reserved partition")
     if split.leakage_check.get("has_leakage") is not False:
         raise HTTPException(409, "Train/Test Split failed its Data Leakage check")
     if split.forecast_horizons != list(HORIZONS):

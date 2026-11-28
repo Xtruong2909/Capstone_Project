@@ -24,6 +24,33 @@ from app.services.ai_intent_service import (
 )
 
 
+def test_group_context_accepts_real_uploaded_dataset_schema(monkeypatch):
+    from datetime import date
+    from app.schemas.dataset import GroupDatasetListResponse, UploadedDatasetSummary
+
+    group_id, dataset_id, file_id, session_id = (uuid4() for _ in range(4))
+    user = SimpleNamespace(id=uuid4(), role_id="data_scientist")
+    dataset = UploadedDatasetSummary(
+        dataset_id=dataset_id, group_id=group_id, name="20181030-d3",
+        file_id=file_id, drone_id="d3", recording_date=date(2018, 10, 30),
+        total_sessions=1, approval_status="APPROVED",
+    )
+    group = GroupDatasetListResponse(group_id=group_id, group_name="Batch 03", datasets=[dataset], total=1)
+    session = SimpleNamespace(
+        session_id=session_id, dataset_id=dataset_id, original_filename="20181030_d3_0800_0830.csv",
+        scheduled_start=datetime(2018, 10, 30, 6, tzinfo=UTC),
+        scheduled_end=datetime(2018, 10, 30, 6, 30, tzinfo=UTC),
+    )
+    monkeypatch.setattr(service, "list_datasets_in_group", lambda *args: group)
+    monkeypatch.setattr(service, "list_recording_sessions", lambda *args, **kwargs: SimpleNamespace(sessions=[session]))
+    context = service._group_context(None, group_id, user)
+    assert context["datasets"][0]["name"] == dataset.name
+    answer = service._session_list_answer({"group": context})
+    assert "Batch 03" in answer
+    assert dataset.name in answer
+    assert session.original_filename in answer
+
+
 def _experiment(experiment_id, split_id, *, mae=12.0, eligible=False, test_origin=None):
     origin = test_origin or datetime(2018, 10, 24, 6, 41, tzinfo=UTC)
     metrics = {str(h): {name: {"mae": mae + h, "rmse": mae + h + 1,

@@ -17,6 +17,7 @@ CLARIFICATION_MESSAGE = (
 )
 
 _PROJECT_TERMS = (
+    "validation", "validations", "tập xác thực", "mse", "cấu hình", "cau hinh",
     "pneuma",
     "dataset",
     "dữ liệu",
@@ -83,6 +84,7 @@ _FOLLOW_UP_PREFIXES = (
 )
 _DOCUMENT_ROOT = Path(__file__).resolve().parents[2] / "docs"
 _KNOWLEDGE_FILES = (
+    "ai_validation_knowledge.md",
     "ai_assistant_knowledge.md",
     "model_training.md",
     "prediction.md",

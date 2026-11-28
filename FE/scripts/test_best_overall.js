@@ -157,7 +157,9 @@ test('the page shares checkbox selection with Best Overall and has no tabs or se
     useScienceExperiments: () => ({ experiments: ['exp-1', 'exp-2', 'exp-3'].map((id) => ({
       experiment_id: id, group_id: 'batch', split_id: 'split-1', status: 'COMPLETED',
     })), loading: false }),
-    useScienceExperimentComparison: () => ({ selectBestOverall: (ids, splitId) => { sent = { ids, splitId } } }),
+    useScienceExperimentComparison: () => ({ compareExperiments: async (ids, mode, groupId) => { sent = { ids, mode, groupId } } }),
+    useComparisonHistory: () => ({ rows: [], loading: false, opening: false, reload: async () => {} }),
+    ComparisonHistoryPanel: () => null,
     ScientistBackLink: ({ children }) => React.createElement('a', null, children),
     ExperimentComparePanel: (props) => { captured = props; return React.createElement('p', null, 'Shared selection') },
     GitCompareArrows: icon, Layers3: icon,
@@ -165,7 +167,7 @@ test('the page shares checkbox selection with Best Overall and has no tabs or se
   vm.runInContext(code, context)
   const html = renderToStaticMarkup(React.createElement(context.ScientistExperimentComparisonPage))
   assert.ok(!html.includes('role="tablist"') && !html.includes('<select'))
-  captured.onSelectBestOverall(['exp-1', 'exp-3'])
-  assert.deepEqual(JSON.parse(JSON.stringify(sent)), { ids: ['exp-1', 'exp-3'], splitId: 'split-1' })
+  await captured.onSelectBestOverall(['exp-1', 'exp-3'])
+  assert.deepEqual(JSON.parse(JSON.stringify(sent)), { ids: ['exp-1', 'exp-3'], mode: 'overall', groupId: 'batch' })
 })
 

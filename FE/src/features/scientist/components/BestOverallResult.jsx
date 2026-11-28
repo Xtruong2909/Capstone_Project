@@ -30,14 +30,14 @@ export default function BestOverallResult({ result, onViewExperiment, onUseForPr
     <section className="admin-card">
       <div className="admin-card__header"><div><h2 className="admin-card__title">Bảng xếp hạng Best Overall</h2><p className="admin-card__subtitle">Xếp tăng dần theo RMSE trung bình của đủ 3 horizon.</p></div></div>
       <div className="sci-table-wrap"><table className="sci-table">
-        <thead><tr>{['Hạng', 'Thí nghiệm', 'RMSE +1', 'RMSE +3', 'RMSE +5', 'Average Test RMSE', 'Average Test MAE', 'Dự báo (ms)'].map((label) => <th key={label}>{label}</th>)}</tr></thead>
+        <thead><tr>{['Hạng', 'Thí nghiệm', 'RMSE +1', 'RMSE +3', 'RMSE +5', 'Average Test RMSE', 'Average Test MAE'].map((label) => <th key={label}>{label}</th>)}</tr></thead>
         <tbody>{best.ranking.map((score, index) => {
           const experiment = experiments.get(String(score.experiment_id))
           return <tr key={score.experiment_id} className={index === 0 ? 'sci-best-overall-row' : ''}>
             <td>{index === 0 ? <span className="sci-compare-best-badge"><Trophy size={12} />1</span> : index + 1}</td>
             <td><strong>{score.experiment_name}</strong></td>
             {[1, 3, 5].map((horizon) => <td key={horizon}>{metric(experiment?.performance_by_model_and_horizon?.RANDOM_FOREST?.[horizon]?.rmse)}</td>)}
-            <td><strong>{metric(score.average_rmse)}</strong></td><td>{metric(score.average_mae)}</td><td>{metric(score.prediction_time_ms)}</td>
+            <td><strong>{metric(score.average_rmse)}</strong></td><td>{metric(score.average_mae)}</td>
           </tr>
         })}</tbody>
       </table></div>

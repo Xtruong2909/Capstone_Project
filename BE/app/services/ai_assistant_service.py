@@ -74,7 +74,7 @@ def _group_context(db: Session, group_id: UUID, user: User) -> dict:
                 "dataset_id": str(item.dataset_id), "name": item.name,
                 "recording_date": item.recording_date.isoformat(),
                 "drone_id": item.drone_id, "file_id": str(item.file_id),
-                "dataset_file": item.dataset_file, "total_sessions": item.total_sessions,
+                "total_sessions": item.total_sessions,
                 "approval_status": item.approval_status,
             }
             for item in datasets

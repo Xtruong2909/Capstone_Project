@@ -1,5 +1,7 @@
 """Split-scoped experiment training, evaluation, and result APIs."""
 
+import hashlib
+import json
 import logging
 import math
 import platform
@@ -46,6 +48,27 @@ from app.services.train_test_splits_service import get_accessible_split
 
 logger = logging.getLogger(__name__)
 SUPPORTED_HORIZONS = (1, 3, 5)
+EQUIVALENT_TEST_POLICIES = {
+    "persisted-lag-feature-split; test set is evaluation-only",
+    "frozen validation selection; refit Train + Validation; final Test evaluation",
+}
+
+
+def _comparison_key(db: Session, experiment: ModelTrainingExperiment) -> str | None:
+    evaluation = experiment.evaluation or {}
+    if (experiment.lag_feature_split_id is None
+        or evaluation.get("evaluation_subset", "TEST") != "TEST"
+        or evaluation.get("evaluation_policy") not in EQUIVALENT_TEST_POLICIES):
+        return None
+    partition = repository.get_comparison_partition(db, experiment.lag_feature_split_id)
+    if partition is None:
+        return None
+    signature = (
+        partition, evaluation.get("evaluation_mode", "exploratory"),
+        experiment.configuration.get("forecast_horizons"),
+        experiment.library_versions or {},
+    )
+    return hashlib.sha256(json.dumps(signature, sort_keys=True).encode()).hexdigest()
 
 
 def _audit_finished_experiment(experiment: ModelTrainingExperiment, user: User) -> None:
@@ -107,6 +130,7 @@ def _new_experiment_response(
         prediction_time_ms=experiment.prediction_time_ms,
         execution_time_sec=experiment.execution_time_sec,
         evaluation_mode=evaluation.get("evaluation_mode", "exploratory"),
+        evaluation_subset=evaluation.get("evaluation_subset", "TEST"),
         official_evaluation_eligible=evaluation.get("official_evaluation_eligible", False),
         evaluation_policy=evaluation.get("evaluation_policy", "persisted-lag-feature-split"),
         performance_by_horizon=experiment.performance_by_horizon or {},
@@ -129,15 +153,24 @@ def create_experiment(
     db: Session,
     user: User,
     payload: TrainingExperimentCreateRequest,
+    *,
+    validation_stage: str | None = None,
 ) -> TrainingExperimentResponse:
     split, _generation = get_accessible_split(db, user, payload.split_id)
+    purpose = getattr(split, "purpose", "STANDARD") or "STANDARD"
+    if purpose != "STANDARD" and validation_stage != purpose:
+        raise HTTPException(409, "Use the validation study workflow for this reserved partition")
     if tuple(payload.forecast_horizons) != SUPPORTED_HORIZONS:
         raise HTTPException(
             422, "All forecast horizons 1, 3 and 5 are required for prediction compatibility"
         )
 
     try:
-        number = repository.reserve_split_experiment_number(db, split.id)
+        reserve_number = (
+            repository.reserve_split_experiment_number if validation_stage == "VALIDATION"
+            else repository.reserve_batch_experiment_number
+        )
+        number = reserve_number(db, split.id)
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(503, "Could not reserve the next experiment number") from exc
@@ -170,8 +203,14 @@ def create_experiment(
         },
         evaluation={
             "evaluation_mode": "exploratory",
-            "official_evaluation_eligible": split.leakage_check.get("has_leakage") is False,
-            "evaluation_policy": "persisted-lag-feature-split; test set is evaluation-only",
+            "evaluation_subset": "VALIDATION" if validation_stage == "VALIDATION" else "TEST",
+            "official_evaluation_eligible": validation_stage is None and split.leakage_check.get("has_leakage") is False,
+            "evaluation_policy": (
+                "validation-only model selection" if validation_stage == "VALIDATION" else
+                "frozen validation selection; refit Train + Validation; final Test evaluation"
+                if validation_stage == "FINAL_TEST" else
+                "persisted-lag-feature-split; test set is evaluation-only"
+            ),
             "warnings": list(split.warnings or []),
         },
         status="QUEUED",
@@ -232,6 +271,7 @@ def create_experiment(
             split.id,
             payload.hyperparameters.model_dump(),
             persist=False,
+            **({"validation_stage": validation_stage} if validation_stage else {}),
         )
         model_ids: dict[str, str] = {}
         trained_models = []
@@ -318,7 +358,7 @@ def create_experiment(
                 "timestamp": datetime.now(UTC).isoformat(),
                 "level": "INFO",
                 "message": (
-                    "Random Forest and both baselines were evaluated on the same saved Test samples "
+                    f"Random Forest and both baselines were evaluated on the same saved {validation_stage or 'Test'} samples "
                     "for all forecast horizons."
                 ),
             },
@@ -408,7 +448,9 @@ def get_experiment(
     require_scientist_owner(user, experiment.created_by)
     if experiment.lag_feature_split_id is not None:
         get_accessible_split(db, user, experiment.lag_feature_split_id)
-        return _new_experiment_response(experiment, repository.get_experiment_group_id(db, experiment))
+        response = _new_experiment_response(experiment, repository.get_experiment_group_id(db, experiment))
+        response.comparison_key = _comparison_key(db, experiment)
+        return response
     response = legacy_service.get_detail(db, experiment_id, user)
     response.group_id = repository.get_experiment_group_id(db, experiment)
     selection = (experiment.evaluation or {}).get("best_overall_selection")
@@ -510,18 +552,19 @@ def _compare_results(
         raise HTTPException(409, "Only completed experiments can be compared")
     signatures = {
         (
-            result.split_id,
+            ("partition", result.comparison_key) if getattr(result, "comparison_key", None)
+            else ("split", result.split_id, result.evaluation_policy),
             getattr(result, "dataset_file_id", None),
             tuple(result.forecast_horizons),
-            result.evaluation_policy,
             result.evaluation_mode,
+            getattr(result, "evaluation_subset", "TEST"),
         )
         for result in results
     }
     if len(signatures) != 1:
         raise HTTPException(
             422,
-            "Comparison requires the same split, horizons and evaluation rules",
+            "Comparison requires identical Train/Test samples, features, horizons and evaluation rules",
         )
 
     compared = []
@@ -649,6 +692,9 @@ def select_best_overall(
     db: Session, user: User, split_id: UUID, *, experiment_ids: list[UUID] | None = None,
 ) -> ExperimentComparisonResponse:
     """Rank the explicit selection, or all owned completed forests when no IDs are supplied."""
+    split, _ = get_accessible_split(db, user, split_id)
+    if getattr(split, "purpose", "STANDARD") not in (None, "STANDARD"):
+        raise HTTPException(409, "Validation studies freeze their selection through the Finalize action")
     if user.role_id not in ("admin", "data_scientist"):
         raise HTTPException(403, "Chỉ Data Scientist hoặc Admin được chọn Best Overall")
     if experiment_ids is not None:

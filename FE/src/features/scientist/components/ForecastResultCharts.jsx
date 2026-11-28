@@ -1,20 +1,9 @@
 import { useMemo } from 'react'
 import {
-  Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart,
+  Bar, BarChart, CartesianGrid, LabelList,
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { formatAthensRecordingDateTime, formatRecordingTime, formatTrafficFlow } from '../utils/formatters'
-
-function FlowTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null
-  const point = payload[0].payload
-  return <div className="sci-experiment-chart-tooltip">
-    <strong>{formatAthensRecordingDateTime(point.timestamp)}</strong>
-    {point.observed != null && <span>Thực tế: <b>{formatTrafficFlow(point.observed)} xe/phút</b></span>}
-    {point.predicted != null && <span>Dự báo: <b>{formatTrafficFlow(point.predicted)} xe/phút</b></span>}
-    {point.horizon != null && <span>Mốc dự báo: <b>+{point.horizon} phút</b></span>}
-  </div>
-}
 
 function HorizonTooltip({ active, payload }) {
   if (!active || !payload?.length) return null
@@ -26,7 +15,7 @@ function HorizonTooltip({ active, payload }) {
 }
 
 export default function ForecastResultCharts({ chart }) {
-  const { timeline, horizonData, lastObserved } = useMemo(() => {
+  const { horizonData, lastObserved } = useMemo(() => {
     const historical = [...(chart?.historical || [])]
       .filter((point) => point.timestamp && point.traffic_flow != null && Number.isFinite(Number(point.traffic_flow)))
       .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
@@ -54,30 +43,11 @@ export default function ForecastResultCharts({ chart }) {
     }
   }, [chart])
 
-  if (!timeline.length && !horizonData.length) {
+  if (!horizonData.length) {
     return <div className="sci-prediction-empty">Không có dữ liệu để hiển thị biểu đồ.</div>
   }
 
   return <div className="sci-prediction-charts">
-    <div className="sci-experiment-chart-card">
-      <div className="sci-experiment-chart-card__heading"><div>
-        <h3>Lưu lượng quan sát và dự báo</h3>
-        <p>Năm mốc quan sát gần nhất và dự báo Random Forest tại +1, +3, +5 phút.</p>
-      </div></div>
-      <div className="sci-experiment-chart-canvas" role="img" aria-label="Biểu đồ đường lưu lượng quan sát và dự báo theo thời gian">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={timeline} margin={{ top: 18, right: 22, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke="#dce8f6" strokeDasharray="4 4" />
-            <XAxis dataKey="offset" type="number" domain={['dataMin', 'dataMax']} ticks={timeline.map((point) => point.offset)} tickFormatter={(offset) => timeline.find((point) => point.offset === offset)?.label || ''} tick={{ fontSize: 11 }} />
-            <YAxis width={48} tick={{ fontSize: 11 }} tickFormatter={formatTrafficFlow} allowDecimals={false} domain={['auto', 'auto']} />
-            <Tooltip content={<FlowTooltip />} />
-            <Legend />
-            <Line type="linear" dataKey="observed" name="Quan sát" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-            <Line type="linear" dataKey="predicted" name="Dự báo" stroke="#059669" strokeWidth={2.5} dot={{ r: 4 }} connectNulls={false} isAnimationActive={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
     <div className="sci-experiment-chart-card">
       <div className="sci-experiment-chart-card__heading"><div>
         <h3>Dự báo theo mốc +1, +3, +5 phút</h3>

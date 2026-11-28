@@ -3,3 +3,5 @@
 20261205_browser_sessions.sql
 20261206_share_recipients.sql
 20261205_isolated_upload_batches.sql
+20261127_validation_studies.sql
+20261128_comparison_history.sql

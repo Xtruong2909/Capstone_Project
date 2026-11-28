@@ -894,7 +894,7 @@ export function useAiAssistant(defaultFileId, defaultGroupId, defaultAggregation
       } catch (err) {
         const errText = extractErrorMessage(
           err,
-          'Không thể kết nối với Trợ lý AI Gemini. Vui lòng thử lại.'
+          'Trợ lý AI gặp lỗi xử lý yêu cầu. Vui lòng thử lại.'
         )
         setAssistantError(errText)
         setMessages((prev) => [

@@ -38,7 +38,9 @@ export const dataScienceService = {
     return data
   },
   async createSplit(featureGenerationId) {
-    const { data } = await apiClient.post('/train-test-splits', { feature_generation_id: featureGenerationId }, config)
+    const { data } = await apiClient.post('/train-test-splits', {
+      feature_generation_id: featureGenerationId, split_strategy: 'DAY_BASED', train_ratio: 0.75,
+    }, config)
     return data
   },
   async getSplit(splitId) {
@@ -78,6 +80,20 @@ export const dataScienceService = {
     const { data } = await apiClient.post('/model-training/experiments/compare', {
       experiment_ids: experimentIds,
     }, config)
+    return data
+  },
+  async createComparisonHistory(groupId, experimentIds, mode) {
+    const { data } = await apiClient.post('/comparison-history', {
+      group_id: groupId, experiment_ids: experimentIds, mode,
+    }, config)
+    return data
+  },
+  async listComparisonHistory(groupId) {
+    const { data } = await apiClient.get('/comparison-history', { ...config, params: { group_id: groupId } })
+    return data
+  },
+  async getComparisonHistory(historyId) {
+    const { data } = await apiClient.get(`/comparison-history/${historyId}`, config)
     return data
   },
   async selectBestOverall(experimentIds, splitId) {

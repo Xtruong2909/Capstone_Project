@@ -116,11 +116,23 @@ const DEFAULT_EXPERIMENT_CONFIG = {
   min_samples_leaf: '1', max_features: 'all', bootstrap: true, random_state: '42',
 }
 
-export function useExperimentSetup(splitId, groupId) {
+export function useExperimentSetup(splitId, groupId, initialHyperparameters = null) {
   const session = getScientistSession()
   const storageKey = scientistWorkflowKey(groupId)
   const [split, setSplit] = useState(null)
-  const [configuration, setConfiguration] = useState(DEFAULT_EXPERIMENT_CONFIG)
+  const [configuration, setConfiguration] = useState(() => {
+    if (!initialHyperparameters) return DEFAULT_EXPERIMENT_CONFIG
+    const source = initialHyperparameters
+    return {
+      n_estimators: String(source.n_estimators),
+      max_depth: source.max_depth == null ? '' : String(source.max_depth),
+      min_samples_split: String(source.min_samples_split),
+      min_samples_leaf: String(source.min_samples_leaf),
+      max_features: source.max_features == null || source.max_features === 1 ? 'all' : String(source.max_features),
+      bootstrap: source.bootstrap,
+      random_state: String(source.random_state),
+    }
+  })
   const [loading, setLoading] = useState(Boolean(splitId))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -132,7 +144,12 @@ export function useExperimentSetup(splitId, groupId) {
     setSplit(null)
     setError('')
     dataScienceService.getSplit(splitId)
-      .then((data) => { if (!cancelled) setSplit(data) })
+      .then(async (data) => {
+        if (cancelled) return
+        const corrected = data.split_strategy === 'DAY_BASED' && data.train_ratio_requested === 0.75
+          ? data : await dataScienceService.createSplit(data.feature_generation_id)
+        if (!cancelled) setSplit(corrected)
+      })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được cấu hình Train/Test.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -158,7 +175,10 @@ export function useExperimentSetup(splitId, groupId) {
         hyperparameters.max_features = ['sqrt', 'log2'].includes(configuration.max_features)
           ? configuration.max_features : Number(configuration.max_features)
       }
-      const result = await dataScienceService.createExperiment(splitId, hyperparameters)
+      if (!split || split.split_strategy !== 'DAY_BASED' || split.train_ratio_requested !== 0.75) {
+        throw new Error('Chưa có tập Train/Test 75/25 theo ngày. Hãy tải lại trang.')
+      }
+      const result = await dataScienceService.createExperiment(split.split_id, hyperparameters)
       session.experiments = null
       if (groupId) {
         try {
@@ -588,12 +608,20 @@ export function useScienceExperimentComparison(groupKey) {
     }
   }
 
-  const compareExperiments = async (experimentIds) => {
+  const compareExperiments = async (experimentIds, mode = 'compare', historyGroupId = null) => {
     if (!Array.isArray(experimentIds) || experimentIds.length < 2) {
       setCompareError('Vui lòng chọn ít nhất 2 thí nghiệm hoàn thành để so sánh.')
       return null
     }
-    return runComparison(() => dataScienceService.compareExperiments(experimentIds))
+    return runComparison(async () => historyGroupId
+      ? (await dataScienceService.createComparisonHistory(historyGroupId, experimentIds, mode)).result
+      : dataScienceService.compareExperiments(experimentIds), mode)
+  }
+
+  const restoreComparison = (result, mode) => {
+    clearComparison()
+    setResultMode(mode)
+    setComparisonData(result)
   }
 
   const selectBestOverall = (experimentIds, splitId) => {
@@ -607,5 +635,5 @@ export function useScienceExperimentComparison(groupKey) {
     isComparing: operationScope === scopeKey && isComparing,
     compareError: operationScope === scopeKey ? compareError : '',
     resultMode: operationScope === scopeKey ? resultMode : 'compare',
-    compareExperiments, selectBestOverall, clearComparison }
+    compareExperiments, selectBestOverall, clearComparison, restoreComparison }
 }

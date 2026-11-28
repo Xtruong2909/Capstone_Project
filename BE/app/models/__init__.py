@@ -1,5 +1,6 @@
 from app.models import sharing as sharing
 from app.models.audit import AuditLog
+from app.models.comparison_history import ComparisonHistory
 from app.models.data_quality import DataQualityCheck, DataQualityIssue
 from app.models.dataset import (
     DataCleaningHistory,
@@ -37,9 +38,11 @@ from app.models.traffic import (
     TrafficTimeSeries,
 )
 from app.models.user import Role, User
+from app.models.validation_study import ValidationStudy
 
 __all__ = [
     "AuditLog",
+    "ComparisonHistory",
     "DataCleaningHistory",
     "DataQualityCheck",
     "DataQualityIssue",
@@ -74,4 +77,5 @@ __all__ = [
     "TrafficAggregationSessionResult",
     "TrafficTimeSeries",
     "User",
+    "ValidationStudy",
 ]

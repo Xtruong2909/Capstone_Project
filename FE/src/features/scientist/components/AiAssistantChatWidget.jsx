@@ -19,9 +19,10 @@ import {
 import { useAiAssistant, useModelTrainingExperiments } from '../../../hooks/useTrafficForecast'
 
 const QUICK_PROMPTS = [
-  'Random Forest dự báo lưu lượng như thế nào?',
-  'Lag features 5 bước và horizon +1, +3, +5 phút hoạt động ra sao?',
-  'Sự khác nhau giữa chỉ số MAE và RMSE trong đánh giá mô hình?',
+  'Train, Validation và Test khác nhau như thế nào?',
+  'Vì sao dùng RMSE validation để chọn cấu hình tốt nhất?',
+  'Một mẫu gồm những gì? Vì sao 7 mẫu tạo ra 21 dự báo?',
+  'Tính MAE và RMSE từng phiên rồi gộp toàn tập như thế nào?',
 ]
 
 function extractFileIdFromPath(pathname = '') {

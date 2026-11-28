@@ -97,6 +97,7 @@ class LagFeatureSplit(Base):
     configuration_hash = Column(String(64), nullable=False)
     status = Column(String(16), nullable=False, default="COMPLETED")
     split_strategy = Column(String(16), nullable=False)
+    purpose = Column(String(16), nullable=False, default="STANDARD", server_default="STANDARD")
     train_ratio_requested = Column(Float, nullable=False)
     train_ratio_actual = Column(Float, nullable=False)
     shuffle = Column(Boolean, nullable=False, default=False)

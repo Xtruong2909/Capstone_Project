@@ -1,0 +1,64 @@
+.validation-panel { position: relative; min-width: 0; background: #fff; border: 1px solid #cdddee; border-radius: 18px; padding: 24px; margin: 22px 0; color: #19334b; font-size: 14px; line-height: 1.6; }
+.validation-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.validation-results-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; }
+.validation-results-heading h3 { margin: 0; }
+.validation-results-heading button { flex-shrink: 0; }
+.validation-setup .validation-actions > button[type="submit"] { margin-left: auto; }
+.validation-actions > .validation-finalize-button { margin-left: auto; }
+.validation-heading > div, .validation-fields > label { min-width: 0; }
+.validation-heading h2 { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; font-size: 20px; font-weight: 700; line-height: 1.4; letter-spacing: -0.02em; }
+.validation-heading h2 svg { flex: none; width: 21px; height: 21px; }
+.validation-panel h3 { margin: 24px 0 8px; font-size: 15px; font-weight: 700; line-height: 1.5; }
+.validation-panel p { max-width: 100ch; margin: 8px 0 14px; font-size: 13px; line-height: 1.65; color: #60738b; }
+.validation-heading p { margin: 0; }
+.validation-panel .sci-training-button { font-size: 13px; font-weight: 600; min-height: 40px; line-height: 1.4; }
+.validation-eyebrow { color: #1764cc; font-size: 11px; font-weight: 750; letter-spacing: .1em; }
+.validation-setup { border-top: 1px solid #e0e8f0; margin-top: 22px; padding-top: 22px; }
+.validation-fields { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 14px; }
+.validation-fields label, .validation-study-select { display: grid; gap: 8px; font-size: 13px; font-weight: 600; line-height: 1.5; }
+.validation-panel input[type=number], .validation-panel input[readonly], .validation-panel select { width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid #bdccdc; border-radius: 8px; background: #fff; color: #19334b; box-sizing: border-box; font-family: inherit; font-size: 13px; font-weight: 400; line-height: 1.5; }
+.validation-fields + p { margin: 12px 0 18px; }
+.validation-panel input[readonly] { background: #f1f5f9; }
+.validation-check { display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 10px; font-size: 13px; font-weight: 500; line-height: 1.6; }
+.validation-check input { flex: none; width: 16px; height: 16px; margin: 2px 0 0; accent-color: #2563eb; }
+.validation-panel .validation-note { max-width: none; margin: 12px 0 20px; background: #f2f6fc; padding: 12px 15px; border-radius: 10px; font-size: 12px; line-height: 1.65; }
+.validation-table-scroll { overflow-x: auto; border: 1px solid #dbe5ee; border-radius: 10px; margin: 16px 0; }
+.validation-table { border-collapse: collapse; width: 100%; white-space: nowrap; font-size: 13px; }
+.validation-table th { background: #edf4fc; text-align: left; font-size: 12px; font-weight: 600; }
+.validation-table td, .validation-table th { padding: 10px 14px; border-bottom: 1px solid #e1e8ef; vertical-align: middle; line-height: 1.5; }
+.validation-table td { font-size: 13px; font-variant-numeric: tabular-nums; }
+.validation-table input[type=number] { min-width: 80px; max-width: 140px; min-height: 36px; padding: 7px 10px; }
+.validation-table button { border: 0; background: transparent; color: #1764cc; cursor: pointer; }
+.validation-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
+.validation-study-select { margin-top: 24px; }
+.validation-partitions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 20px; }
+.validation-partitions article { background: #f7fafe; border: 1px solid #d9e6f4; border-radius: 12px; padding: 16px; }
+.validation-partitions h3 { font-size: 13px; margin: 0 0 10px; }
+.validation-partitions strong { display: block; font-size: 24px; margin-bottom: 8px; }
+.validation-partitions span { color: #61768a; font-size: 13px; }
+.validation-partitions p { margin-bottom: 0; font-size: 12px; overflow-wrap: anywhere; }
+.validation-winner { background: #eaf8ef; }
+.validation-final { border-top: 2px solid #b4dfc4; margin-top: 24px; padding-top: 14px; }
+.validation-metrics th { background: #173d68; color: #fff; border-bottom-color: #173d68; }
+.validation-metric-row--random_forest { --method-color: #1e40af; --method-background: #dbeafe; background: #eff6ff; }
+.validation-metric-row--persistence { --method-color: #115e59; --method-background: #ccfbf1; background: #f0fdfa; }
+.validation-metric-row--historical_average { --method-color: #92400e; --method-background: #fef3c7; background: #fffbeb; }
+.validation-metrics .validation-metric-group-start td { border-top: 3px solid #b8cce0; }
+.validation-metrics tbody tr:last-child td { border-bottom: 0; }
+.validation-metrics td:first-child { border-left: 4px solid var(--method-color); }
+.validation-method { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 6px; background: var(--method-background); color: var(--method-color); font-size: 12px; font-weight: 650; }
+.validation-method::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.validation-horizon { font-weight: 600; }
+.validation-metric-value { font-weight: 650; }
+.validation-metrics .validation-metric-row--h1 { --method-color: #1e40af; --method-background: #dbeafe; background: #eff6ff; }
+.validation-metrics .validation-metric-row--h3 { --method-color: #115e59; --method-background: #ccfbf1; background: #f0fdfa; }
+.validation-metrics .validation-metric-row--h5 { --method-color: #6b21a8; --method-background: #f3e8ff; background: #faf5ff; }
+.validation-metrics .validation-horizon { display: inline-block; padding: 5px 10px; border-radius: 6px; color: var(--method-color); background: var(--method-background); }
+.validation-metrics .validation-metric-value { color: var(--method-color); }
+@media (max-width: 760px) { .validation-panel { padding: 16px; } .validation-heading { align-items: flex-start; flex-direction: column; } .validation-fields { grid-template-columns: 1fr 1fr; } .validation-partitions { grid-template-columns: 1fr; } }
+.validation-candidate-status { display: inline-flex; align-items: center; gap: 32px; }
+.validation-candidate-info { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid #b8cef5; border-radius: 7px; background: #eff6ff; color: #1d4ed8; text-decoration: none; font-size: 12px; font-weight: 600; }
+.validation-candidate-info:hover { background: #dbeafe; }
+.validation-candidate-info:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.validation-panel .sci-experiment-results-filters { gap: 1.25rem; margin-bottom: .5rem; }
+.validation-panel .sci-experiment-results-filters label { gap: .5rem; }

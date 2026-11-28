@@ -3,12 +3,12 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.dataset import Dataset, DatasetFile
-from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit
+from app.models.lag_feature import LagFeatureGeneration, LagFeatureSplit, LagFeatureSplitSample
 from app.models.model_training import (
     ExperimentTrainedModel,
     ModelTrainingExperiment,
@@ -16,6 +16,63 @@ from app.models.model_training import (
     ModelTrainingSplitExperimentCounter,
 )
 from app.models.traffic import TrafficAggregationJob
+
+
+def get_comparison_partition(db: Session, split_id: UUID) -> tuple | None:
+    """Return persisted membership, never infer equivalence from sample counts."""
+    split = db.get(LagFeatureSplit, split_id)
+    if split is None:
+        return None
+    rows = db.execute(select(
+        LagFeatureSplitSample.subset, LagFeatureSplitSample.sample_id,
+    ).where(LagFeatureSplitSample.split_id == split_id).order_by(
+        LagFeatureSplitSample.subset, LagFeatureSplitSample.sample_id,
+    ))
+    memberships = tuple((subset, sample_id) for subset, sample_id in rows)
+    if not memberships or {row[0] for row in memberships} != {"TRAIN", "TEST"}:
+        return None
+    return str(split.feature_generation_id), tuple(split.forecast_horizons), memberships
+
+
+def reserve_batch_experiment_number(db: Session, split_id: UUID) -> int:
+    """Keep visible experiment names unique across all splits of a dataset batch.
+
+    Validation candidates use their own split counter and do not consume the
+    visible sequence. The transaction lock serializes reservations across splits.
+    """
+    group_id = get_experiment_group_id(
+        db, ModelTrainingExperiment(lag_feature_split_id=split_id),
+    )
+    if group_id is None:
+        return reserve_split_experiment_number(db, split_id)
+    db.execute(select(func.pg_advisory_xact_lock(
+        func.hashtextextended(f"experiment-number:{group_id}", 0),
+    )))
+    group_splits = (
+        select(LagFeatureSplit.id)
+        .join(LagFeatureGeneration, LagFeatureGeneration.id == LagFeatureSplit.feature_generation_id)
+        .join(TrafficAggregationJob, TrafficAggregationJob.id == LagFeatureGeneration.aggregation_id)
+        .join(Dataset, Dataset.id == TrafficAggregationJob.dataset_id)
+        .where(
+            func.coalesce(
+                cast(TrafficAggregationJob.job_metadata["group_id"].as_string(), Dataset.group_id.type),
+                Dataset.group_id,
+            ) == group_id,
+            LagFeatureSplit.purpose != "VALIDATION",
+        )
+    )
+    last_saved = db.scalar(select(func.max(ModelTrainingExperiment.experiment_number)).where(
+        ModelTrainingExperiment.lag_feature_split_id.in_(group_splits),
+    )) or 0
+    last_reserved = db.scalar(select(func.max(ModelTrainingSplitExperimentCounter.last_number)).where(
+        ModelTrainingSplitExperimentCounter.split_id.in_(group_splits),
+    )) or 0
+    split_number = reserve_split_experiment_number(db, split_id)
+    number = max(split_number, last_saved + 1, last_reserved + 1)
+    counter = db.get(ModelTrainingSplitExperimentCounter, split_id)
+    counter.last_number = number
+    db.flush()
+    return number
 
 
 def reserve_split_experiment_number(db: Session, split_id: UUID) -> int:
@@ -54,7 +111,10 @@ def list_experiments(
     limit: int | None,
     owner_id: UUID | None = None,
 ) -> list[ModelTrainingExperiment]:
-    statement = select(ModelTrainingExperiment)
+    statement = select(ModelTrainingExperiment).where(
+        (ModelTrainingExperiment.evaluation["evaluation_subset"].astext.is_(None))
+        | (ModelTrainingExperiment.evaluation["evaluation_subset"].astext != "VALIDATION")
+    )
     if owner_id is not None:
         statement = statement.where(ModelTrainingExperiment.created_by == owner_id)
     if split_id is not None:

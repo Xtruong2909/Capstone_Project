@@ -27,6 +27,9 @@ function getRandomForestMetric(experiment, horizon) {
 function isCompatibleWithAnchor(exp, anchor) {
   if (!exp || exp.status !== 'COMPLETED') return false
   if (!anchor) return true
+  if (exp.comparison_key && anchor.comparison_key) {
+    return exp.comparison_key === anchor.comparison_key
+  }
   return (
     String(exp.dataset_file_id) === String(anchor.dataset_file_id) &&
     String(exp.split_id) === String(anchor.split_id) &&
@@ -45,6 +48,7 @@ export default function ExperimentComparePanel({
   onChangeCompareIds,
   onRunCompare,
   onSelectBestOverall,
+  rankingOnly = false,
   resultMode = 'compare',
   comparisonData,
   isComparing,
@@ -55,7 +59,8 @@ export default function ExperimentComparePanel({
   onUseForPrediction,
 }) {
   const completedExperiments = useMemo(
-    () => experiments.filter((e) => e.status === 'COMPLETED'),
+    () => experiments.filter((e) => e.status === 'COMPLETED'
+      && e.evaluation_subset !== 'VALIDATION'),
     [experiments]
   )
 
@@ -69,6 +74,10 @@ export default function ExperimentComparePanel({
     const firstId = String(selectedCompareIds[0])
     return completedExperiments.find((e) => String(e.experiment_id) === firstId) || null
   }, [completedExperiments, selectedCompareIds])
+  const canSaveBest = selectedCompareIds.length >= 2 && completedExperiments
+    .filter((item) => selectedSet.has(String(item.experiment_id)))
+    .every((item) => item.split_id === anchorExperiment?.split_id
+      && !item.evaluation_policy?.includes('frozen validation selection'))
 
   const handleToggleChip = (exp) => {
     const idStr = String(exp.experiment_id)
@@ -163,9 +172,9 @@ export default function ExperimentComparePanel({
         <div className="sci-compare-picker">
           <div className="sci-compare-picker__top">
             <div>
-              <strong>Chọn ít nhất 2 thí nghiệm hoàn thành cùng Split:</strong>
+              <strong>Chọn ít nhất 2 thí nghiệm trên cùng dữ liệu:</strong>
               <p>
-                Chỉ so sánh các thí nghiệm có cùng dữ liệu Dataset, ROI, Split ID, tập Test, horizon và quy tắc đánh giá. Backend sẽ đối chiếu chính xác các mốc Test trước khi trả kết quả.
+                Gồm kết quả test cuối sau validation và các lượt Train/Test nhập tay. Chỉ chọn chung khi cùng mẫu huấn luyện, mẫu test, bộ đặc trưng và cách tính chỉ số.
               </p>
             </div>
             <div className="sci-train-actions">
@@ -187,7 +196,8 @@ export default function ExperimentComparePanel({
               </span>
             </button>
             <button type="button" className="btn-action btn-action--primary sci-train-btn"
-              disabled={selectedCompareIds.length < 2 || isComparing}
+              disabled={(rankingOnly ? selectedCompareIds.length < 2 : !canSaveBest) || isComparing}
+              title={rankingOnly ? 'Xếp hạng kết quả test của các thí nghiệm đã chọn, không thay đổi lựa chọn validation.' : !canSaveBest ? 'Best Overall chỉ lưu lựa chọn trong cùng Split tham chiếu.' : undefined}
               onClick={() => onSelectBestOverall?.(selectedCompareIds)}>
               {isComparing && resultMode === 'overall' ? <Loader2 size={16} className="sci-spin" /> : <Trophy size={16} />}
               <span>{isComparing && resultMode === 'overall' ? 'Đang chọn Best Overall…' : `Best Overall (${selectedCompareIds.length})`}</span>
@@ -219,7 +229,7 @@ export default function ExperimentComparePanel({
                     title={
                       enabled
                         ? `${exp.experiment_name} · Split ${String(exp.split_id).slice(0, 8)}`
-                        : 'Khác dữ liệu Dataset, Split ID, horizon hoặc quy tắc đánh giá với thí nghiệm đã chọn'
+                        : 'Khác mẫu Train/Test, đặc trưng hoặc cách đánh giá với thí nghiệm đã chọn'
                     }
                   >
                     <input
@@ -233,9 +243,6 @@ export default function ExperimentComparePanel({
                       ({exp.hyperparameters?.n_estimators} cây, sâu{' '}
                       {exp.hyperparameters?.max_depth ?? '∞'})
                     </span>
-                    <code className="sci-mono">
-                      {String(exp.split_id || '').slice(0, 6)}
-                    </code>
                   </button>
                 )
               })}
@@ -265,8 +272,8 @@ export default function ExperimentComparePanel({
               Chưa có bảng kết quả so sánh
             </div>
             <div style={{ fontSize: '0.84rem' }}>
-              Đánh dấu ít nhất <strong>2 thí nghiệm COMPLETED</strong> cùng Split ID ở trên rồi nhấn{' '}
-              <strong>&ldquo;So sánh đã chọn&rdquo;</strong> hoặc <strong>&ldquo;Best Overall&rdquo;</strong>.
+              Đánh dấu ít nhất <strong>2 thí nghiệm hoàn thành trên cùng dữ liệu</strong> ở trên rồi nhấn{' '}
+              <strong>&ldquo;So sánh đã chọn&rdquo;</strong>.
             </div>
           </div>
         )}

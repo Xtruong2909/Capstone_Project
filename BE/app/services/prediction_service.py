@@ -84,6 +84,8 @@ def _experiment_scope(
     if experiment is None:
         raise _error("EXPERIMENT_NOT_FOUND", "Không tìm thấy thí nghiệm", 404)
     require_scientist_owner(user, experiment.created_by)
+    if (experiment.evaluation or {}).get("evaluation_subset") == "VALIDATION":
+        raise HTTPException(409, "Validation candidate models are reserved for model selection; use the refitted final model")
     if experiment.status != "COMPLETED" or experiment.lag_feature_split_id is None:
         raise _error("EXPERIMENT_NOT_COMPLETED", "Thí nghiệm Lag Features chưa hoàn thành")
     split, generation = get_accessible_split(db, user, experiment.lag_feature_split_id)

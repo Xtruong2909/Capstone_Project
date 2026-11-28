@@ -2737,12 +2737,23 @@
 .sci-training-hero__progress strong { color: #1758c1; font-size: 1.5rem; line-height: 1.2; }
 .sci-training-hero__progress span { color: #63758c; font-size: 0.72rem; }
 .sci-training-alert { padding: 0.8rem 1rem; color: #a92828; background: #fff4f2; border: 1px solid #f6c8c3; border-radius: 10px; font-size: 0.85rem; }
-.sci-training-flow { position: relative; display: grid; gap: 0.85rem; }
+.sci-training-content { display: grid; gap: 0.85rem; min-width: 0; }
+.sci-training-flow { position: relative; display: grid; gap: 0.85rem; min-width: 0; }
 .sci-training-flow::before { content: ''; position: absolute; top: 30px; bottom: 30px; left: 37px; width: 2px; background: #d9e5f2; }
 .sci-training-experiments-cta { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; min-height: 70px; padding: 0.75rem 5.5rem 0.75rem 1.3rem; border: 1px solid #c7dbfa; border-radius: 14px; background: #fff; box-shadow: 0 5px 16px rgba(15, 44, 83, 0.05); }
 .sci-training-experiments-cta__marker { position: relative; z-index: 1; flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #1e65d8; background: #e7f0ff; }
 .sci-training-experiments-cta__label { margin-right: auto; color: #2663b5; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.08em; }
 .sci-training-experiments-cta .sci-training-button { min-height: 40px; }
+.sci-training-experiments-cta--preset { gap: 1rem; padding-top: 1.25rem; padding-bottom: 1.25rem; background: linear-gradient(110deg, #eff6ff 0%, #fff 75%); border-color: #bad3fa; }
+.sci-training-experiments-cta--preset .sci-training-experiments-cta__marker { width: 48px; height: 48px; border: 1px solid #c7dbfa; border-radius: 14px; background: #dbeafe; }
+.sci-training-experiments-cta__copy { flex: 1 1 260px; min-width: 0; }
+.sci-training-experiments-cta__copy h3 { margin: 4px 0; font-size: 1.05rem; line-height: 1.5; color: #173d68; }
+.sci-training-experiments-cta__copy p { margin: 0; color: #60738b; font-size: .85rem; line-height: 1.6; }
+.sci-training-experiments-cta--preset > .sci-training-button { margin-left: auto; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .sci-training-experiments-cta--preset { padding: 1rem; }
+  .sci-training-experiments-cta--preset > .sci-training-button { width: 100%; justify-content: center; }
+}
 .sci-experiments-header-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 0.7rem; }
 .sci-experiment-toolbar > input { flex: 1; min-width: 200px; }
 .sci-training-step {
@@ -3215,7 +3226,7 @@
 .sci-prediction-submit:disabled { border-color: #ccd6e2; background: #e6ebf1; color: #96a4b4; box-shadow: none; cursor: not-allowed; }
 .sci-prediction-result-session + .sci-prediction-result-session { margin-top: 1rem; }
 .sci-prediction-result-session h3 { margin: 0 0 0.55rem; color: #294a68; font-size: 0.84rem; }
-.sci-prediction-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+.sci-prediction-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-top: 1rem; }
 .sci-prediction-charts .sci-experiment-chart-card { min-width: 0; }
 @media (max-width: 900px) { .sci-prediction-charts { grid-template-columns: 1fr; } }
 .sci-prediction-results .sci-table-wrap, .sci-prediction-history .sci-table-wrap { border: 1px solid #dce5ee; border-radius: 10px; overflow: auto; }
