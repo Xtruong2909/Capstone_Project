@@ -7,7 +7,7 @@ import { MetricsTable, PredictionDetailsTable } from '../components/ExperimentDe
 import ScientistBackLink from '../components/ScientistBackLink'
 import { ActualPredictedChart } from '../components/ExperimentResultCharts'
 import ForecastOriginAnalysis from '../components/ForecastOriginAnalysis'
-import { experimentSource } from '../utils/experimentPreset'
+import { isTrainTestExperiment } from '../utils/experimentPreset'
 
 const UNASSIGNED_GROUP = 'unassigned'
 export default function ScientistExperimentsPage() {
@@ -26,6 +26,7 @@ export default function ScientistExperimentsPage() {
   const grouped = useMemo(() => {
     const byGroup = new Map()
     for (const experiment of experiments) {
+      if (!isTrainTestExperiment(experiment)) continue
       const id = experiment.group_id || UNASSIGNED_GROUP
       if (!byGroup.has(id)) byGroup.set(id, [])
       byGroup.get(id).push(experiment)
@@ -55,7 +56,7 @@ export default function ScientistExperimentsPage() {
     {!experimentId && <section className="admin-card" style={{ marginTop: selectedGroupId ? '1rem' : 0 }}>
       <div className="admin-card__header"><div>
         <h2 className="admin-card__title">{selectedGroupId ? `Thí nghiệm · ${groupName(selectedGroupId)}` : 'Thí nghiệm theo batch'}</h2>
-        <p className="admin-card__subtitle">{selectedGroupId ? 'Tất cả thí nghiệm của batch được hiển thị trên cùng một trang.' : 'Chọn batch để xem các thí nghiệm đã tạo.'}</p>
+        <p className="admin-card__subtitle">{selectedGroupId ? 'Các thí nghiệm Train/Test của batch.' : 'Chọn batch để xem các thí nghiệm Train/Test đã tạo.'}</p>
       </div><div className="sci-experiments-header-actions">
         {groupId && groupExperiments.some((item) => item.status === 'COMPLETED') && <Link className="sci-training-button sci-training-button--secondary" to={`/scientist/experiments/groups/${groupId}/compare`}><GitCompareArrows size={16} /> So sánh thí nghiệm</Link>}
         {groupId && selectedSplitId && <Link className="sci-training-button" to={`/scientist/experiments/groups/${groupId}/new${splitQuery}`}><FlaskConical size={16} /> Tạo thí nghiệm mới</Link>}
@@ -81,10 +82,9 @@ export default function ScientistExperimentsPage() {
       <div className="sci-state">{query ? 'Không tìm thấy thí nghiệm phù hợp.' : 'Batch này chưa có thí nghiệm.'}</div>}
     {!loading && !error && !experimentId && selectedGroupId && visibleExperiments.length > 0 && <section className="admin-card" style={{ marginTop: '1rem' }}>
       <div className="sci-table-wrap"><table className="sci-table"><thead><tr>
-        <th>Thí nghiệm</th><th>Nguồn lần chạy</th><th>Cây / sâu / lá / chia</th><th>Trạng thái</th><th>Train/Test</th><th>Ngày tạo</th><th>Thao tác</th>
+        <th>Thí nghiệm</th><th>Cây / sâu / lá / chia</th><th>Trạng thái</th><th>Train/Test</th><th>Ngày tạo</th><th>Thao tác</th>
       </tr></thead><tbody>{visibleExperiments.map((item) => <tr key={item.experiment_id}>
         <td><FlaskConical size={15} style={{ verticalAlign: 'middle', marginRight: '.4rem' }} />{item.experiment_name}</td>
-        <td>{experimentSource(item)}</td>
         <td>{[item.hyperparameters?.n_estimators, item.hyperparameters?.max_depth ?? '∞', item.hyperparameters?.min_samples_leaf, item.hyperparameters?.min_samples_split].join(' / ')}</td>
         <td>{item.status}</td><td>{item.train_samples ?? '—'} / {item.test_samples ?? '—'}</td>
         <td>{new Date(item.created_at).toLocaleString('vi-VN')}</td>
@@ -99,7 +99,6 @@ export default function ScientistExperimentsPage() {
           ? <p role="alert" className="sci-state--error">Thí nghiệm này không thuộc batch đã chọn.</p>
           : activeDetail && <><h2>{activeDetail.experiment_name} · Kết quả huấn luyện</h2>
         <p>Trạng thái: <strong>{activeDetail.status}</strong> · Mô hình: {activeDetail.model}</p>
-        <p>Nguồn lần chạy: <strong>{experimentSource(activeDetail)}</strong></p>
         <div className="sci-experiment-detail__summary"><span>Train <b>{activeDetail.train_samples ?? '—'} mẫu</b></span><span>Test <b>{activeDetail.test_samples ?? '—'} mẫu</b></span><span>Mốc dự báo <b>+1, +3, +5 phút</b></span></div>
         {activeDetail.error && <p role="alert" className="sci-state--error">{activeDetail.error}</p>}
         <PredictionDetailsTable rows={activeDetail.result_tables?.prediction_details?.length

@@ -7,6 +7,7 @@ import ExperimentComparePanel from '../components/ExperimentComparePanel'
 import ScientistBackLink from '../components/ScientistBackLink'
 import ComparisonHistoryPanel from '../components/ComparisonHistoryPanel'
 import { useComparisonHistory } from '../../../hooks/useComparisonHistory'
+import { isTrainTestExperiment } from '../utils/experimentPreset'
 
 export default function ScientistExperimentComparisonPage() {
   const { groupId } = useParams()
@@ -31,7 +32,7 @@ export default function ScientistExperimentComparisonPage() {
   const group = groups.find((item) => String(item.group_id) === String(groupId))
   const groupExperiments = useMemo(() => experiments
     .filter((item) => String(item.group_id) === String(groupId))
-    .filter((item) => item.evaluation_subset !== 'VALIDATION')
+    .filter(isTrainTestExperiment)
     .sort((left, right) => new Date(right.created_at) - new Date(left.created_at)),
   [experiments, groupId])
   const completedCount = groupExperiments.filter((item) => item.status === 'COMPLETED').length

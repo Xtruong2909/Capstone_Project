@@ -34,3 +34,8 @@ export function experimentSource(experiment) {
   return experiment.evaluation_policy?.startsWith('frozen validation selection;')
     ? 'Test cuối từ Validation' : 'Train/Test thủ công'
 }
+
+export function isTrainTestExperiment(experiment) {
+  return experiment.evaluation_subset !== 'VALIDATION'
+    && !experiment.evaluation_policy?.startsWith('frozen validation selection;')
+}

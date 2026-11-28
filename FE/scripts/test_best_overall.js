@@ -5,6 +5,7 @@ import { test } from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { transformWithOxc } from 'vite'
+import { isTrainTestExperiment } from '../src/features/scientist/utils/experimentPreset.js'
 
 const read = (path) => fs.readFileSync(new URL('../src/' + path, import.meta.url), 'utf8')
 const strip = (source) => source.replace(/import[\s\S]*?from\s+['"][^'"]+['"];?\r?\n/g, '')
@@ -162,7 +163,7 @@ test('the page shares checkbox selection with Best Overall and has no tabs or se
     ComparisonHistoryPanel: () => null,
     ScientistBackLink: ({ children }) => React.createElement('a', null, children),
     ExperimentComparePanel: (props) => { captured = props; return React.createElement('p', null, 'Shared selection') },
-    GitCompareArrows: icon, Layers3: icon,
+    GitCompareArrows: icon, Layers3: icon, isTrainTestExperiment,
   })
   vm.runInContext(code, context)
   const html = renderToStaticMarkup(React.createElement(context.ScientistExperimentComparisonPage))

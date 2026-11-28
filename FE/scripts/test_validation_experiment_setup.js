@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
 import { test } from 'node:test'
-import { experimentConfiguration, resolveExperimentPreset, experimentSource } from '../src/features/scientist/utils/experimentPreset.js'
+import { experimentConfiguration, resolveExperimentPreset, experimentSource, isTrainTestExperiment } from '../src/features/scientist/utils/experimentPreset.js'
 
 const parameters = { n_estimators: 200, max_depth: 15, min_samples_leaf: 4,
   min_samples_split: 10, max_features: 1, bootstrap: false, random_state: 19 }
@@ -81,6 +81,16 @@ test('explicit saved selection wins; another generation and unfinished studies c
 test('history identifies final Validation tests separately from manual Train/Test runs', () => {
   assert.equal(experimentSource({ evaluation_policy: 'frozen validation selection; refit Train + Validation; final Test evaluation' }), 'Test cuối từ Validation')
   assert.equal(experimentSource({ evaluation_policy: 'persisted-lag-feature-split; test set is evaluation-only' }), 'Train/Test thủ công')
+})
+
+test('Train/Test history excludes Validation candidates and final tests but retains manual runs', () => {
+  const runs = [
+    { id: 'candidate', evaluation_subset: 'VALIDATION' },
+    { id: 'final', evaluation_subset: 'TEST', evaluation_policy: 'frozen validation selection; refit Train + Validation; final Test evaluation' },
+    { id: 'manual', evaluation_subset: 'TEST', evaluation_policy: 'persisted-lag-feature-split; test set is evaluation-only' },
+  ]
+  assert.deepEqual(runs.filter(isTrainTestExperiment).map(item => item.id), ['manual'])
+  assert.equal(runs.length, 3, 'filtering history must not delete saved results')
 })
 
 test('restoring a legacy 70/30 workflow replaces the split with the current 75/25 partition', async () => {
