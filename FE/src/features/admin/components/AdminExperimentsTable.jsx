@@ -1,13 +1,22 @@
+import { useState } from 'react'
 import { FlaskConical, Layers } from 'lucide-react'
 import { useLanguage } from '../../../hooks/useLanguage'
 import { formatAggregationInterval, formatExperimentDate, formatExperimentMetric } from '../utils/experimentFormatters'
+import { AdminPagination } from './AdminUi'
 
 const MODEL_LABELS = { RANDOM_FOREST: 'Random forest', PERSISTENCE: 'Persistence baseline' }
 const TARGET_LABELS = { vehicle_count: 'Vehicle count', traffic_flow: 'Traffic flow', flow: 'Traffic flow' }
 const STATUS_TONES = { COMPLETED: 'emerald', FAILED: 'rose', RUNNING: 'blue' }
 
-export default function AdminExperimentsTable({ experiments, stats }) {
+export default function AdminExperimentsTable({ experiments = [], stats = {} }) {
   const { t, language } = useLanguage()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const items = Array.isArray(experiments) ? experiments : []
+  const lastPage = Math.max(1, Math.ceil(items.length / pageSize))
+  const currentPage = Math.min(page, lastPage)
+  const paginated = items.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
   return <section className="adm-panel admin-experiments">
     <header className="adm-panel__header">
       <div className="adm-panel__title-group">
@@ -21,7 +30,7 @@ export default function AdminExperimentsTable({ experiments, stats }) {
         <span className="adm-badge adm-badge--rose">{t('Failed')}: {stats.failed_count ?? 0}</span>
       </div>
     </header>
-    {experiments.length === 0 ? <div className="adm-empty">
+    {items.length === 0 ? <div className="adm-empty">
       <div className="adm-empty__icon adm-tone--purple"><FlaskConical size={24} /></div>
       <h4 className="adm-empty__title">{t('No experiments recorded yet')}</h4>
       <p className="adm-empty__desc">{t('Experiments trained by Data Scientists will automatically appear in this audit ledger.')}</p>
@@ -34,7 +43,7 @@ export default function AdminExperimentsTable({ experiments, stats }) {
           <th className="admin-experiments__metric"><abbr title={t('Root mean squared error')}>RMSE</abbr></th>
           <th>{t('Created Date')}</th>
         </tr></thead>
-        <tbody>{experiments.map((experiment) => <tr key={experiment.id}>
+        <tbody>{paginated.map((experiment) => <tr key={experiment.id}>
           <td className="admin-experiments__name">
             <strong>{experiment.name?.trim() || experiment.experiment_name?.trim() || t('Unnamed experiment')}</strong>
             {(experiment.group_name || experiment.dataset_name) && <small className="admin-cell-note">{experiment.group_name || experiment.dataset_name}</small>}
@@ -49,5 +58,12 @@ export default function AdminExperimentsTable({ experiments, stats }) {
         </tr>)}</tbody>
       </table>
     </div>}
+    {items.length > 0 && <AdminPagination
+      page={currentPage}
+      pageSize={pageSize}
+      total={items.length}
+      setPage={setPage}
+      setPageSize={setPageSize}
+    />}
   </section>
 }

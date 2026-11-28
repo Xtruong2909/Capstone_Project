@@ -44,7 +44,7 @@ export function useAdminResource(load, params = {}, enabled = true, cacheIdentit
 
 export function useAdminPage(load, filters = {}, enabled = true) {
   const filtersKey = JSON.stringify(filters)
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 20, filtersKey })
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 10, filtersKey })
   const requestedPage = pagination.filtersKey === filtersKey ? pagination.page : 1
   const pageSize = pagination.pageSize
   const loadPage = useMemo(() => async (params, signal) => {

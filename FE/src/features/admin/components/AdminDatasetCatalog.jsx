@@ -17,7 +17,7 @@ function SessionPreview({ dataset, session, onBack, cache }) {
   const [columnOffset, setColumnOffset] = useState(0)
   const preview = useAdminSessionPreview({
     dataset_id: dataset.dataset_id, file_id: dataset.id, session_id: session.session_id,
-    page, page_size: 20, representation: 'normalized', column_offset: columnOffset,
+    page, page_size: 10, representation: 'normalized', column_offset: columnOffset,
   }, cache)
   return <>
     <div className="admin-filters"><button className="btn-secondary" onClick={onBack}>← {t('Sessions')}</button><strong>{session.original_filename}</strong>

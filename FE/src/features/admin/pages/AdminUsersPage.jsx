@@ -13,6 +13,7 @@ import {
 import { adminService } from '../../../services/adminService'
 import { useLanguage } from '../../../hooks/useLanguage'
 import AdminCreateUserDialog from '../components/AdminCreateUserDialog'
+import { AdminPagination } from '../components/AdminUi'
 
 const ROLE_DESCRIPTIONS = {
   data_engineer:
@@ -37,6 +38,8 @@ export default function AdminUsersPage() {
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRole, setSelectedRole] = useState('ALL')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   // Modal create user
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -60,6 +63,10 @@ export default function AdminUsersPage() {
     const matchesRole = selectedRole === 'ALL' || u.role_id === selectedRole
     return matchesSearch && matchesRole
   })
+
+  const lastPage = Math.max(1, Math.ceil(filteredUsers.length / pageSize))
+  const currentPage = Math.min(page, lastPage)
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   const getRoleBadgeClass = (roleId) => {
     switch (roleId) {
@@ -207,14 +214,20 @@ export default function AdminUsersPage() {
               type="text"
               placeholder={t('Search by name or email...')}
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setPage(1)
+              }}
               className="adm-input adm-input--search"
             />
           </div>
 
           <select
             value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
+            onChange={(e) => {
+              setSelectedRole(e.target.value)
+              setPage(1)
+            }}
             className="adm-select"
             style={{ width: 'auto', minWidth: '180px' }}
           >
@@ -300,7 +313,7 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((u) => (
+                  {paginatedUsers.map((u) => (
                     <tr key={u.id}>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -368,6 +381,16 @@ export default function AdminUsersPage() {
                 </tbody>
               </table>
             </div>
+          )}
+          {filteredUsers.length > 0 && (
+            <AdminPagination
+              page={currentPage}
+              pageSize={pageSize}
+              total={filteredUsers.length}
+              setPage={setPage}
+              setPageSize={setPageSize}
+              loading={isLoading}
+            />
           )}
         </div>
       </div>

@@ -7,7 +7,7 @@ const ROUTE_RESOURCES = {
   '/admin': [adminService.getOverviewData, {}],
   '/admin/users': [adminService.getUserManagementData, {}],
   '/admin/datasets': [adminService.getDatasets, { limit: 100 }],
-  '/admin/datasets-available': [adminService.getDatasetGroups, { approval_status: 'APPROVED', page: 1, page_size: 20 }],
+  '/admin/datasets-available': [adminService.getDatasetGroups, { approval_status: 'APPROVED', page: 1, page_size: 10 }],
   '/admin/audit-logs': [adminService.getAuditLogs, {}],
 }
 

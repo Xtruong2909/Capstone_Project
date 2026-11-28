@@ -1,7 +1,7 @@
 import { AlertCircle, ChevronLeft, ChevronRight, Inbox, RefreshCw, X } from 'lucide-react'
 import { useLanguage } from '../../../hooks/useLanguage'
 
-export function AdminPagination({ page, pageSize, total, setPage, setPageSize, loading }) {
+export function AdminPagination({ page, pageSize = 10, total, setPage, loading }) {
   const { t } = useLanguage()
   const pages = Math.max(1, Math.ceil(total / pageSize))
   return (
@@ -10,19 +10,6 @@ export function AdminPagination({ page, pageSize, total, setPage, setPageSize, l
         {total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)} / {total}
       </span>
       <div className="admin-pagination__controls">
-        <select
-          className="admin-select"
-          aria-label={t('Rows per page')}
-          value={pageSize}
-          disabled={loading}
-          onChange={(event) => setPageSize(Number(event.target.value))}
-        >
-          {[10, 20, 50, 100].map((size) => (
-            <option key={size} value={size}>
-              {size} / {t('Page')}
-            </option>
-          ))}
-        </select>
         <button
           type="button"
           className="btn-secondary admin-pagination__btn"

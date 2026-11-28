@@ -15,10 +15,10 @@ export default function AdminReviewPreview({ item, onClose }) {
         <label>Tệp phiên ghi hình<select className="admin-select" value={data.session?.session_id || ''} onChange={(event) => data.setSession(event.target.value)}>
           {data.sessions.data.sessions.map((session) => <option key={session.session_id} value={session.session_id}>{session.original_filename}</option>)}
         </select></label>
-        {data.sessions.data.total > 20 && <div className="admin-actions">
+        {data.sessions.data.total > 10 && <div className="admin-actions">
           <button type="button" className="btn-secondary" disabled={data.sessions.loading || data.sessionPage <= 1} onClick={() => data.setSessionPage(data.sessionPage - 1)}>Tệp trước</button>
-          <span>Trang tệp {data.sessionPage} / {Math.ceil(data.sessions.data.total / 20)}</span>
-          <button type="button" className="btn-secondary" disabled={data.sessions.loading || data.sessionPage * 20 >= data.sessions.data.total} onClick={() => data.setSessionPage(data.sessionPage + 1)}>Tệp tiếp</button>
+          <span>Trang tệp {data.sessionPage} / {Math.ceil(data.sessions.data.total / 10)}</span>
+          <button type="button" className="btn-secondary" disabled={data.sessions.loading || data.sessionPage * 10 >= data.sessions.data.total} onClick={() => data.setSessionPage(data.sessionPage + 1)}>Tệp tiếp</button>
         </div>}
       </div> : <p>Không có phiên ghi hình được liên kết với tập dữ liệu này.</p>}
     </AdminState>
@@ -27,7 +27,7 @@ export default function AdminReviewPreview({ item, onClose }) {
         <div className="admin-review-preview__meta"><strong>{preview.original_filename}</strong><span>{preview.representation === 'normalized' ? 'Dữ liệu đã chuẩn hóa' : 'Dữ liệu gốc'}</span><span>{preview.columns.length} cột</span></div>
         <div className="admin-table-scroll"><table className="admin-table">
           <thead><tr><th>STT</th>{preview.columns.map((column) => <th key={column.name}><code>{column.name}</code><small className="admin-cell-note">{types[column.type] || column.type}</small></th>)}</tr></thead>
-          <tbody>{preview.rows.map((row, index) => <tr key={index}><td>{((pagination?.page || data.page) - 1) * (pagination?.page_size || 20) + index + 1}</td>{preview.columns.map((column) => <td key={column.name}>{row[column.name] == null ? '—' : typeof row[column.name] === 'object' ? JSON.stringify(row[column.name]) : String(row[column.name])}</td>)}</tr>)}</tbody>
+          <tbody>{preview.rows.map((row, index) => <tr key={index}><td>{((pagination?.page || data.page) - 1) * (pagination?.page_size || 10) + index + 1}</td>{preview.columns.map((column) => <td key={column.name}>{row[column.name] == null ? '—' : typeof row[column.name] === 'object' ? JSON.stringify(row[column.name]) : String(row[column.name])}</td>)}</tr>)}</tbody>
         </table>{preview.rows.length === 0 && <p className="empty-state">Tệp không có dòng dữ liệu để hiển thị.</p>}</div>
         <nav className="admin-pagination" aria-label="Phân trang dữ liệu xem trước">
           <span>Trang {pagination?.page || data.page} · Hiển thị {pagination?.returned_rows ?? preview.rows.length} dòng{pagination?.total_rows != null ? ` / ${count(pagination.total_rows)} dòng` : ''}</span>

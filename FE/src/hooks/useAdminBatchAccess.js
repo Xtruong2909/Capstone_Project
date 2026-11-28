@@ -7,7 +7,7 @@ export function useAdminBatchAccess(groupId, onGranted, revokeMode = false) {
   const [paging, setPaging] = useState({ search: '', page: 1 })
   const page = paging.search === search ? paging.page : 1
   const users = useAdminResource(revokeMode ? adminService.getBatchAccessUsers : adminService.getBatchEligibleUsers, {
-    group_id: groupId, search: revokeMode ? undefined : search || undefined, skip: (page - 1) * 20, limit: 20,
+    group_id: groupId, search: revokeMode ? undefined : search || undefined, skip: (page - 1) * 10, limit: 10,
   })
   const mutation = useAdminMutation()
   const grant = (user) => mutation.run(
@@ -21,6 +21,6 @@ export function useAdminBatchAccess(groupId, onGranted, revokeMode = false) {
   return {
     users, mutation, search, setSearch, page,
     setPage: (value) => setPaging({ search, page: value }), grant, revoke,
-    hasNextPage: (users.data || []).length === 20,
+    hasNextPage: (users.data || []).length === 10,
   }
 }

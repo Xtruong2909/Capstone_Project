@@ -10,7 +10,7 @@ export function useAdminDatasetReview() {
   const groupId = params.get('groupId')
   const [search, setSearchValue] = useState('')
   const [requestedPage, setPage] = useState(1)
-  const [pageSize, setSize] = useState(20)
+  const [pageSize, setSize] = useState(10)
   const [previewItem, setPreview] = useState(null)
   const [review, setReview] = useState(null)
   const [note, setNote] = useState('')
@@ -77,12 +77,12 @@ export function useAdminReviewPreview(item) {
   const [representation, setRepresentation] = useState('normalized')
   const [columnOffsets, setColumnOffsets] = useState([0])
   const sessions = useAdminResource(adminService.getReviewSessions,
-    { group_id: item.group_id, dataset_id: item.dataset_id, page: sessionPage, page_size: 20 })
+    { group_id: item.group_id, dataset_id: item.dataset_id, page: sessionPage, page_size: 10 })
   const session = sessions.data?.sessions.find((row) => row.session_id === selected) || sessions.data?.sessions[0]
   const columnOffset = columnOffsets[columnOffsets.length - 1]
   const preview = useAdminResource(adminService.getReviewSessionPreview, {
     group_id: item.group_id, dataset_id: item.dataset_id, session_id: session?.session_id,
-    page, limit: 20, representation, column_offset: columnOffset,
+    page, limit: 10, representation, column_offset: columnOffset,
   }, Boolean(session))
   const resetPage = () => { setPage(1); setColumnOffsets([0]) }
   return { sessions, sessionPage,

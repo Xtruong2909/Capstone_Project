@@ -412,9 +412,9 @@ export const adminService = {
   },
   getReviewDatasets: ({ group_id }, signal) =>
     get(`/admin/datasets/groups/${group_id}/datasets`, {}, signal),
-  getReviewSessions: ({ group_id, dataset_id, page = 1, page_size = 20 }, signal) =>
+  getReviewSessions: ({ group_id, dataset_id, page = 1, page_size = 10 }, signal) =>
     get(`/admin/datasets/groups/${group_id}/datasets/${dataset_id}/sessions`, { page, page_size }, signal),
-  getReviewSessionPreview: ({ group_id, dataset_id, session_id, page = 1, limit = 20,
+  getReviewSessionPreview: ({ group_id, dataset_id, session_id, page = 1, limit = 10,
     column_offset = 0, representation = 'normalized' }, signal) =>
     get(`/admin/datasets/groups/${group_id}/datasets/${dataset_id}/sessions/${session_id}/preview`,
       { page, limit, column_offset, representation }, signal),
@@ -422,7 +422,7 @@ export const adminService = {
     const result = await get(`/admin/datasets/${dataset_id}/files/${file_id}/sessions`, params, signal)
     return { ...result, items: result?.sessions || [] }
   },
-  getSessionPreview: ({ dataset_id, file_id, session_id, page_size = 20, ...params }, signal) =>
+  getSessionPreview: ({ dataset_id, file_id, session_id, page_size = 10, ...params }, signal) =>
     get(`/admin/datasets/${dataset_id}/files/${file_id}/sessions/${session_id}/preview`, { ...params, limit: page_size }, signal),
   getEligibleUsers: ({ dataset_id, ...params }, signal) =>
     get(`/admin/datasets/${dataset_id}/eligible-users`, params, signal),

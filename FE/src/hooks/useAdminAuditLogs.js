@@ -10,7 +10,7 @@ export function useAdminAuditLogs(t) {
   const totalCount = resource.data?.total ?? logs.length
   const [searchQuery, setSearchQuery] = useState('')
   const [actionFilter, setActionFilter] = useState('ALL')
-  const [paging, setPaging] = useState({ page: 1, pageSize: 20, filtersKey: '' })
+  const [paging, setPaging] = useState({ page: 1, pageSize: 10, filtersKey: '' })
   const summary = useMemo(() => {
     let createCount = 0, securityCount = 0
     logs.forEach((log) => {
