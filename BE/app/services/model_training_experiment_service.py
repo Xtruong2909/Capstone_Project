@@ -167,7 +167,7 @@ def create_experiment(
 
     try:
         reserve_number = (
-            repository.reserve_split_experiment_number if validation_stage == "VALIDATION"
+            repository.reserve_split_experiment_number if validation_stage is not None
             else repository.reserve_batch_experiment_number
         )
         number = reserve_number(db, split.id)

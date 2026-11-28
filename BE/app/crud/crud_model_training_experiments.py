@@ -37,7 +37,7 @@ def get_comparison_partition(db: Session, split_id: UUID) -> tuple | None:
 def reserve_batch_experiment_number(db: Session, split_id: UUID) -> int:
     """Keep visible experiment names unique across all splits of a dataset batch.
 
-    Validation candidates use their own split counter and do not consume the
+    Validation candidates and final tests use their own split counters, not the
     visible sequence. The transaction lock serializes reservations across splits.
     """
     group_id = get_experiment_group_id(
@@ -58,7 +58,7 @@ def reserve_batch_experiment_number(db: Session, split_id: UUID) -> int:
                 cast(TrafficAggregationJob.job_metadata["group_id"].as_string(), Dataset.group_id.type),
                 Dataset.group_id,
             ) == group_id,
-            LagFeatureSplit.purpose != "VALIDATION",
+            LagFeatureSplit.purpose == "STANDARD",
         )
     )
     last_saved = db.scalar(select(func.max(ModelTrainingExperiment.experiment_number)).where(

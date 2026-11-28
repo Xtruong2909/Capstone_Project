@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from app.crud import crud_model_training_experiments as repository
+from sqlalchemy.dialects import postgresql
 
 
 def test_batch_sequence_continues_across_new_splits(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -21,6 +22,10 @@ def test_batch_sequence_continues_across_new_splits(monkeypatch: pytest.MonkeyPa
     assert counter.last_number == 8
     assert "pg_advisory_xact_lock" in str(db.execute.call_args.args[0])
     assert "purpose" in str(db.scalar.call_args_list[0].args[0])
+    statement = str(db.scalar.call_args_list[0].args[0].compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True},
+    ))
+    assert "lag_feature_splits.purpose = 'STANDARD'" in statement
 
 
 def test_new_batch_starts_at_one(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -84,6 +84,31 @@ def _training_run():
     )
 
 
+def test_final_validation_test_does_not_consume_first_train_test_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    split = SimpleNamespace(
+        id=uuid4(), purpose="FINAL_TEST", train_sample_count=4, test_sample_count=2,
+        leakage_check={"has_leakage": False}, warnings=[],
+    )
+    monkeypatch.setattr(service, "get_accessible_split", lambda *_: (split, object()))
+    final_counter, manual_counter = MagicMock(return_value=1), MagicMock(return_value=1)
+    monkeypatch.setattr(service.repository, "reserve_split_experiment_number", final_counter)
+    monkeypatch.setattr(service.repository, "reserve_batch_experiment_number", manual_counter)
+    monkeypatch.setattr(service.repository, "get_experiment_group_id", lambda *_: uuid4())
+    monkeypatch.setattr(service, "fit_saved_split", lambda *_args, **_kwargs: _training_run())
+    monkeypatch.setattr(service, "record_audit_event", lambda **_kwargs: None)
+    db, user = MagicMock(), SimpleNamespace(id=uuid4())
+    payload = TrainingExperimentCreateRequest(split_id=split.id)
+    final = service.create_experiment(db, user, payload, validation_stage="FINAL_TEST")
+    manual_counter.assert_not_called()
+    final_counter.assert_called_once()
+    split.id, split.purpose = uuid4(), "STANDARD"
+    manual = service.create_experiment(db, user, TrainingExperimentCreateRequest(split_id=split.id))
+    manual_counter.assert_called_once()
+    assert final.name == manual.name == "Ex-01"
+
+
 def test_experiments_are_numbered_per_batch_and_only_rf_models_are_persisted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
