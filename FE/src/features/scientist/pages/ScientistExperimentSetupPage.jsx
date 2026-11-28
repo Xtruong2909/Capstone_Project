@@ -8,10 +8,10 @@ export default function ScientistExperimentSetupPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const validationPreset = location.state?.validationPreset?.groupId === groupId
+  const incomingPreset = location.state?.validationPreset?.groupId === groupId
     ? location.state.validationPreset : null
   const splitId = searchParams.get('split_id')
-  const { split, configuration, updateConfiguration, loading, busy, error, createExperiment } = useExperimentSetup(splitId, groupId, validationPreset?.hyperparameters)
+  const { split, configuration, validationPreset, updateConfiguration, loading, busy, error, createExperiment } = useExperimentSetup(splitId, groupId, incomingPreset)
 
   const submit = async (event) => {
     event.preventDefault()

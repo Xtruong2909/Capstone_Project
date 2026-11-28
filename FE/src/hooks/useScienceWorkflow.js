@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getScientistSession, scientistWorkflowKey, readScientistWorkflow, writeScientistWorkflow } from '../services/scientistSession'
 import { dataScienceService } from '../services/dataScienceService'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
+import { validationService } from '../services/validationService'
+import { experimentConfiguration, resolveExperimentPreset } from '../features/scientist/utils/experimentPreset'
 
 export function useScienceTraining(groupId) {
   const storageKey = scientistWorkflowKey(groupId)
@@ -111,28 +113,14 @@ export function useScienceTraining(groupId) {
   }
 }
 
-const DEFAULT_EXPERIMENT_CONFIG = {
-  n_estimators: '100', max_depth: '10', min_samples_split: '2',
-  min_samples_leaf: '1', max_features: 'all', bootstrap: true, random_state: '42',
-}
-
-export function useExperimentSetup(splitId, groupId, initialHyperparameters = null) {
+export function useExperimentSetup(splitId, groupId, initialPreset = null) {
   const session = getScientistSession()
   const storageKey = scientistWorkflowKey(groupId)
   const [split, setSplit] = useState(null)
-  const [configuration, setConfiguration] = useState(() => {
-    if (!initialHyperparameters) return DEFAULT_EXPERIMENT_CONFIG
-    const source = initialHyperparameters
-    return {
-      n_estimators: String(source.n_estimators),
-      max_depth: source.max_depth == null ? '' : String(source.max_depth),
-      min_samples_split: String(source.min_samples_split),
-      min_samples_leaf: String(source.min_samples_leaf),
-      max_features: source.max_features == null || source.max_features === 1 ? 'all' : String(source.max_features),
-      bootstrap: source.bootstrap,
-      random_state: String(source.random_state),
-    }
-  })
+  const [configuration, setConfiguration] = useState(() => experimentConfiguration(initialPreset?.hyperparameters))
+  const [validationPreset, setValidationPreset] = useState(null)
+  const pending = useRef(false)
+  const presetKey = JSON.stringify(initialPreset)
   const [loading, setLoading] = useState(Boolean(splitId))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -142,24 +130,35 @@ export function useExperimentSetup(splitId, groupId, initialHyperparameters = nu
     let cancelled = false
     setLoading(true)
     setSplit(null)
+    setValidationPreset(null)
     setError('')
     dataScienceService.getSplit(splitId)
       .then(async (data) => {
         if (cancelled) return
         const corrected = data.split_strategy === 'DAY_BASED' && data.train_ratio_requested === 0.75
           ? data : await dataScienceService.createSplit(data.feature_generation_id)
-        if (!cancelled) setSplit(corrected)
+        if (cancelled) return
+        const incoming = JSON.parse(presetKey)
+        const studies = incoming?.featureGenerationId === corrected.feature_generation_id
+          ? [] : await validationService.list(corrected.feature_generation_id)
+        if (cancelled) return
+        const preset = resolveExperimentPreset(studies, incoming, corrected.feature_generation_id)
+        setConfiguration(experimentConfiguration(preset?.hyperparameters))
+        setValidationPreset(preset)
+        setSplit(corrected)
       })
       .catch((err) => { if (!cancelled) setError(extractErrorMessage(err, 'Không tải được cấu hình Train/Test.')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [splitId])
+  }, [splitId, groupId, presetKey])
 
   const updateConfiguration = (name, value) => {
     setConfiguration((current) => ({ ...current, [name]: value }))
   }
 
   const createExperiment = async () => {
+    if (pending.current || loading || !split) return null
+    pending.current = true
     setBusy(true)
     setError('')
     try {
@@ -198,11 +197,12 @@ export function useExperimentSetup(splitId, groupId, initialHyperparameters = nu
       setError(extractErrorMessage(err, 'Không tạo được thí nghiệm.'))
       return null
     } finally {
+      pending.current = false
       setBusy(false)
     }
   }
 
-  return { split, configuration, updateConfiguration, loading, busy, error, createExperiment }
+  return { split, configuration, validationPreset, updateConfiguration, loading, busy, error, createExperiment }
 }
 
 export function useAggregationResults(aggregationId, enabled, initialSessionId = '') {

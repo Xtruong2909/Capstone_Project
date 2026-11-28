@@ -78,6 +78,7 @@ export default function ValidationStudyPanel({ featureGenerationId, groupId, ref
       </tbody></table></div>
       {detailIndex !== null && study.candidates[detailIndex]?.metrics && <><h3>Validation · C{detailIndex + 1}</h3><Metrics metrics={study.candidates[detailIndex].metrics} /></>}
       <div className="validation-actions">
+        {study.status === 'VALIDATED' && <p className="validation-note">Chọn cấu hình tốt nhất sẽ huấn luyện lại và tạo 1 thí nghiệm Test cuối trong lịch sử. Nếu tiếp tục chạy ở trang Train/Test, đó là một lần chạy mới riêng biệt.</p>}
         {['READY', 'VALIDATED'].includes(study.status) && <button type="button" className="sci-training-button" disabled={running || study.status === 'VALIDATED'} onClick={workflow.run}><Play size={16} /> {busy ? 'Đang chạy…' : 'Chạy các cấu hình validation'}</button>}
         {busy && study.status !== 'FINALIZING' && <button type="button" className="sci-training-button sci-training-button--secondary" onClick={workflow.stop}>Dừng sau cấu hình hiện tại</button>}
         {!running && bestCandidate && study.result?.selected_candidate_index === bestCandidate.index && referencePath && <Link className="sci-training-button"
