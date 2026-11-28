@@ -82,3 +82,30 @@ test('history identifies final Validation tests separately from manual Train/Tes
   assert.equal(experimentSource({ evaluation_policy: 'frozen validation selection; refit Train + Validation; final Test evaluation' }), 'Test cuối từ Validation')
   assert.equal(experimentSource({ evaluation_policy: 'persisted-lag-feature-split; test set is evaluation-only' }), 'Train/Test thủ công')
 })
+
+test('restoring a legacy 70/30 workflow replaces the split with the current 75/25 partition', async () => {
+  let stored = {}, created = 0
+  const context = vm.createContext({
+    scientistWorkflowKey: () => 'workflow', readScientistWorkflow: () => ({}),
+    writeScientistWorkflow: (_key, value) => { stored = value },
+    extractErrorMessage: error => error.message,
+    dataScienceService: {
+      getLatestAggregation: async () => ({ aggregation_id: 'aggregation', status: 'COMPLETED' }),
+      getLatestFeatures: async () => ({ feature_generation_id: 'features', status: 'COMPLETED' }),
+      getLatestSplit: async () => ({ ...split, split_id: 'old', train_ratio_requested: 0.7 }),
+      createSplit: async generation => { assert.equal(generation, 'features'); created++; return split },
+    },
+    useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useRef: initial => ({ current: initial }), useCallback: callback => callback,
+    useEffect: callback => { callback() },
+  })
+  const source = fs.readFileSync(new URL('../src/hooks/useScienceWorkflow.js', import.meta.url), 'utf8')
+    .split('export function useScienceTraining')[1].split('export function useExperimentSetup')[0]
+  vm.runInContext('function useScienceTraining' + source, context)
+  context.useScienceTraining('group')
+  await flush()
+  assert.equal(created, 1)
+  assert.equal(stored.split.train_ratio_requested, 0.75)
+  assert.equal(stored.split.split_id, 'split')
+  assert.equal(stored.experiment, null)
+})

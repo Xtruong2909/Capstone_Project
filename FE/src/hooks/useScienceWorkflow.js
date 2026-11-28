@@ -45,9 +45,13 @@ export function useScienceTraining(groupId) {
       const aggregation = await dataScienceService.getLatestAggregation(groupId)
       const features = aggregation?.status === 'COMPLETED'
         ? await dataScienceService.getLatestFeatures(aggregation.aggregation_id) : null
-      const split = features?.status === 'COMPLETED'
+      let split = features?.status === 'COMPLETED'
         ? await dataScienceService.getLatestSplit(features.feature_generation_id) : null
       if (cancelled) return
+      if (split?.train_ratio_requested === 0.7) {
+        split = await dataScienceService.createSplit(features.feature_generation_id)
+        if (cancelled) return
+      }
       const experiment = split?.split_id === cached.split?.split_id ? cached.experiment : null
       const next = { aggregation, features, split, experiment }
       setWorkflow(next)

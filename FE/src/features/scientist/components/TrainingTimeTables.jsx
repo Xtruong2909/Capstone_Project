@@ -106,6 +106,9 @@ export function FeaturePreviewTable({ result, sessionsById, page, setPage, isLoa
 }
 
 export function ChronologicalSplitTable({ split, datasets, sessionsById }) {
+  const requestedRatio = split.train_ratio_requested
+  const ratioLabel = Number.isFinite(requestedRatio)
+    ? `${Math.round(requestedRatio * 100)}/${Math.round((1 - requestedRatio) * 100)}` : '—'
   const names = new Map(datasets.map((item) => [item.dataset_id, item.dataset_name]))
   const rows = [
     ...(split.train_sessions || []).map((item) => ({ ...item, partition: 'Train' })),
@@ -114,7 +117,7 @@ export function ChronologicalSplitTable({ split, datasets, sessionsById }) {
 
   return <div className="sci-training-table-block sci-training-split-block">
     <div className="sci-training-table-heading__title"><Clock3 size={18} /><div><h3>Phân chia theo thời gian</h3>
-      <p>Giữ nguyên thứ tự ngày và session · Train/Test 70/30</p></div></div>
+      <p>Giữ nguyên thứ tự ngày và session · Tỷ lệ yêu cầu Train/Test {ratioLabel}</p></div></div>
     {rows.length === 0 ? <div className="sci-training-table-state">API chưa trả về danh sách session đã chia.</div> : <div className="sci-training-table-scroll sci-training-split-scroll"><table className="sci-training-table"><thead><tr><th>Ngày ghi hình</th><th>Dataset</th><th>Phiên ghi hình</th><th>Tập</th><th>Số mẫu</th></tr></thead>
       <tbody>{rows.map((row, index) => <tr key={`${row.partition}:${row.session_id}`}><td>{row.recording_date || '—'}</td>
         <td title={row.dataset_id}>{names.get(row.dataset_id) || shortId(row.dataset_id)}</td>
