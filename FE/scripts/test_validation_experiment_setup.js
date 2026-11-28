@@ -10,7 +10,7 @@ const study = { id: 'study', feature_generation_id: 'features', status: 'COMPLET
   created_at: '2026-11-28T10:00:00Z', result: { selected_candidate_index: 10, hyperparameters: parameters } }
 const split = { split_id: 'split', feature_generation_id: 'features', split_strategy: 'DAY_BASED', train_ratio_requested: 0.75 }
 
-function harness({ list = async () => [study], create = async () => ({ experiment_id: 'created' }) } = {}) {
+function harness({ list = async () => [study], initialPreset = null, create = async () => ({ experiment_id: 'created' }) } = {}) {
   const slots = [], effects = [], requests = []
   let cursor = 0, effectCursor = 0
   const context = vm.createContext({
@@ -32,15 +32,17 @@ function harness({ list = async () => [study], create = async () => ({ experimen
   const source = fs.readFileSync(new URL('../src/hooks/useScienceWorkflow.js', import.meta.url), 'utf8')
     .split('export function useExperimentSetup')[1].split('export function useAggregationResults')[0]
   vm.runInContext('function useExperimentSetup' + source, context)
-  return { requests, render: (incoming = null) => {
+  return { requests, render: (incoming = initialPreset) => {
     cursor = 0; effectCursor = 0
     return context.useExperimentSetup('split', 'group', incoming)
   } }
 }
 const flush = () => new Promise(resolve => setImmediate(resolve))
 
-test('opening from history restores the persisted Validation winner and sends its exact parameters', async () => {
-  const h = harness()
+test('the explicit Use configuration action fills the selected Validation parameters exactly', async () => {
+  const h = harness({ initialPreset: {
+    featureGenerationId: 'features', studyId: 'study', candidateIndex: 10, hyperparameters: parameters,
+  } })
   h.render(); await flush()
   const form = h.render()
   assert.equal(form.validationPreset.studyId, 'study')
@@ -62,20 +64,34 @@ test('a double submit while training is pending sends exactly one request', asyn
   assert.equal(h.render().busy, false)
 })
 
-test('failure to retrieve the winner blocks training instead of silently running defaults', async () => {
-  const h = harness({ list: async () => { throw new Error('Cannot load Validation') } })
+test('independent Train/Test uses defaults and never retrieves a Validation recommendation', async () => {
+  const h = harness({ list: async () => { assert.fail('Independent setup must not load Validation') } })
   h.render(); await flush()
   const form = h.render()
-  assert.equal(form.error, 'Cannot load Validation')
-  assert.equal(await form.createExperiment(), null)
-  assert.equal(h.requests.length, 0)
+  assert.equal(form.error, '')
+  assert.equal(form.validationPreset, null)
+  assert.equal(form.configuration.min_samples_leaf, '1')
+  assert.equal(form.configuration.min_samples_split, '2')
+  await form.createExperiment()
+  assert.equal(h.requests.length, 1)
+  assert.equal(h.requests[0][1].min_samples_leaf, 1)
 })
 
 test('explicit saved selection wins; another generation and unfinished studies cannot replace it', () => {
   const incoming = { featureGenerationId: 'features', hyperparameters: { ...parameters, n_estimators: 500 } }
-  assert.equal(resolveExperimentPreset([study], incoming, 'features'), incoming)
-  assert.equal(resolveExperimentPreset([study], incoming, 'other'), null)
-  assert.equal(resolveExperimentPreset([{ ...study, status: 'VALIDATED' }], null, 'features'), null)
+  assert.equal(resolveExperimentPreset(incoming, 'features'), incoming)
+  assert.equal(resolveExperimentPreset(incoming, 'other'), null)
+  assert.equal(resolveExperimentPreset(null, 'features'), null)
+})
+
+test('leaving the explicit preset route resets the form to independent defaults', async () => {
+  const h = harness()
+  const incoming = { featureGenerationId: 'features', hyperparameters: parameters }
+  h.render(incoming); await flush()
+  assert.equal(h.render(incoming).configuration.min_samples_leaf, '4')
+  h.render(null); await flush()
+  assert.equal(h.render(null).validationPreset, null)
+  assert.equal(h.render(null).configuration.min_samples_leaf, '1')
 })
 
 test('history identifies final Validation tests separately from manual Train/Test runs', () => {

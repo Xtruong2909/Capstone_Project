@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getScientistSession, scientistWorkflowKey, readScientistWorkflow, writeScientistWorkflow } from '../services/scientistSession'
 import { dataScienceService } from '../services/dataScienceService'
 import { extractErrorMessage } from '../features/scientist/utils/formatters'
-import { validationService } from '../services/validationService'
 import { experimentConfiguration, resolveExperimentPreset } from '../features/scientist/utils/experimentPreset'
 
 export function useScienceTraining(groupId) {
@@ -143,10 +142,7 @@ export function useExperimentSetup(splitId, groupId, initialPreset = null) {
           ? data : await dataScienceService.createSplit(data.feature_generation_id)
         if (cancelled) return
         const incoming = JSON.parse(presetKey)
-        const studies = incoming?.featureGenerationId === corrected.feature_generation_id
-          ? [] : await validationService.list(corrected.feature_generation_id)
-        if (cancelled) return
-        const preset = resolveExperimentPreset(studies, incoming, corrected.feature_generation_id)
+        const preset = resolveExperimentPreset(incoming, corrected.feature_generation_id)
         setConfiguration(experimentConfiguration(preset?.hyperparameters))
         setValidationPreset(preset)
         setSplit(corrected)

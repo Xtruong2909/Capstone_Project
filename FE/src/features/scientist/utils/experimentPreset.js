@@ -16,17 +16,8 @@ export function experimentConfiguration(source) {
   }
 }
 
-export function resolveExperimentPreset(studies, incoming, generationId) {
-  if (incoming?.featureGenerationId === generationId && incoming.hyperparameters) return incoming
-  const study = [...studies].filter(item => item.feature_generation_id === generationId
-    && item.status === 'COMPLETED' && item.result?.hyperparameters
-    && Number.isInteger(item.result.selected_candidate_index))
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
-  return study ? {
-    featureGenerationId: generationId, studyId: study.id,
-    candidateIndex: study.result.selected_candidate_index,
-    hyperparameters: study.result.hyperparameters,
-  } : null
+export function resolveExperimentPreset(incoming, generationId) {
+  return incoming?.featureGenerationId === generationId && incoming.hyperparameters ? incoming : null
 }
 
 export function experimentSource(experiment) {
