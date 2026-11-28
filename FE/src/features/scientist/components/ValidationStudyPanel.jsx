@@ -62,8 +62,10 @@ export default function ValidationStudyPanel({ featureGenerationId, groupId, ref
       <div className="validation-actions"><button type="button" className="sci-training-button sci-training-button--secondary" disabled={candidates.length >= 20} onClick={() => setCandidates((rows) => [...rows, { ...BASE, n_estimators: 400 + rows.length }])}><Plus size={16} /> Thêm cấu hình</button>
         <button type="submit" className="sci-training-button" disabled={running || train + validation >= 100}>{busy ? 'Đang tạo…' : 'Chốt cấu hình và chia dữ liệu'}</button></div>
     </form>}
-    {workflow.studies.length > 0 && <label className="validation-study-select">Lượt đã lưu<select disabled={running} value={creating ? '' : workflow.selectedId} onChange={(event) => { workflow.setSelectedId(event.target.value); setDetailIndex(null); setCreating(false) }}>{creating && <option value="" disabled>Chọn lượt đã lưu để xem lịch sử</option>}{workflow.studies.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString('vi-VN')} · {label(item.status)}</option>)}</select></label>}
-    {!creating && study && <>
+    {!workflow.loading && <h3>Lịch sử Validation</h3>}
+    {!workflow.loading && workflow.studies.length === 0 && <p className="validation-note">Chưa có lượt Validation đã lưu cho batch này.</p>}
+    {workflow.studies.length > 0 && <label className="validation-study-select">Lượt đã lưu<select disabled={running} value={workflow.selectedId} onChange={(event) => { workflow.setSelectedId(event.target.value); setDetailIndex(null) }}>{workflow.studies.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString('vi-VN')} · {label(item.status)}</option>)}</select></label>}
+    {study && <>
       <div className="validation-partitions">{[['train', '1. Train'], ['validation', '2. Validation'], ['test', '3. Test']].map(([key, title]) => {
         const partition = study.protocol.partitions[key]
         return <article key={key}><h3>{title}</h3><span>{partition.session_count} session</span><p>{partition.recording_dates.join(', ')}</p></article>
